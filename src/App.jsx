@@ -726,6 +726,161 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
   );
 }
 
+// ─── Stats View ────────────────────────────────────────────────────────────────
+
+function StatsView({ watchedMovies, watchedRatings }) {
+  const statsRef = useRef(null);
+
+  const stats = useMemo(() => {
+    const totalMovies = watchedMovies.size;
+    const totalHours = totalMovies * 2;
+
+    let highest = null;
+    let lowest = null;
+    let highScore = -1;
+    let lowScore = 101;
+
+    watchedRatings.forEach((score, id) => {
+      const movie = watchedMovies.get(id);
+      if (!movie) return;
+      if (score > highScore) { highScore = score; highest = movie; }
+      if (score < lowScore) { lowScore = score; lowest = movie; }
+    });
+
+    const genreCounts = {};
+    watchedMovies.forEach((movie) => {
+      const genre = movie.genre || "Other";
+      genreCounts[genre] = (genreCounts[genre] || 0) + 1;
+    });
+
+    const genres = Object.entries(genreCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count }));
+
+    return {
+      totalMovies, totalHours,
+      highest: highest ? { movie: highest, score: highScore } : null,
+      lowest: lowest ? { movie: lowest, score: lowScore } : null,
+      genres,
+    };
+  }, [watchedMovies, watchedRatings]);
+
+  useEffect(() => {
+    const container = statsRef.current;
+    if (!container) return;
+    const cards = container.querySelectorAll(".stats-card");
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("visible");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.15 }
+    );
+    cards.forEach((card) => observer.observe(card));
+    return () => observer.disconnect();
+  }, [stats]);
+
+  if (stats.totalMovies === 0) {
+    return (
+      <div className="rankings-empty">
+        Watch some movies to see your stats here.
+      </div>
+    );
+  }
+
+  const totalGenres = stats.genres.reduce((sum, g) => sum + g.count, 0);
+  const donutSize = 140;
+  const strokeWidth = 24;
+  const radius = (donutSize - strokeWidth) / 2;
+  const cx = donutSize / 2;
+  const cy = donutSize / 2;
+  const circumference = 2 * Math.PI * radius;
+
+  let cumulativeOffset = 0;
+  const arcs = stats.genres.map((g) => {
+    const pct = g.count / totalGenres;
+    const dashLen = circumference * pct;
+    const rotation = (cumulativeOffset / totalGenres) * 360 - 90;
+    cumulativeOffset += g.count;
+    const color = GENRE_COLORS[g.name] || "#8e90a0";
+    return { ...g, dashLen, rotation, color };
+  });
+
+  return (
+    <div className="stats-grid" ref={statsRef}>
+      <div className="stats-card full">
+        <div className="stats-big-number">{stats.totalMovies}</div>
+        <div className="stats-subtitle">
+          that's {stats.totalHours} hours of cinema
+        </div>
+      </div>
+
+      {stats.highest && stats.lowest && (
+        <>
+          <div className="stats-card">
+            <div className="stats-card-label">Highest Rated</div>
+            <div className="stats-card-movie">
+              <div className="stats-card-poster">
+                <PosterImage posterPath={stats.highest.movie.poster_path} title={stats.highest.movie.title} />
+              </div>
+              <div className="stats-card-info">
+                <div className="stats-card-title">{stats.highest.movie.title}</div>
+                <ScoreRing score={stats.highest.score} size={44} />
+              </div>
+            </div>
+          </div>
+          <div className="stats-card">
+            <div className="stats-card-label">Lowest Rated</div>
+            <div className="stats-card-movie">
+              <div className="stats-card-poster">
+                <PosterImage posterPath={stats.lowest.movie.poster_path} title={stats.lowest.movie.title} />
+              </div>
+              <div className="stats-card-info">
+                <div className="stats-card-title">{stats.lowest.movie.title}</div>
+                <ScoreRing score={stats.lowest.score} size={44} />
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {stats.genres.length > 0 && (
+        <div className="stats-card full">
+          <div className="stats-card-label">Genre Breakdown</div>
+          <div className="stats-donut-container">
+            <svg width={donutSize} height={donutSize} viewBox={`0 0 ${donutSize} ${donutSize}`}>
+              {arcs.map((arc) => (
+                <circle
+                  key={arc.name}
+                  cx={cx} cy={cy} r={radius}
+                  fill="none"
+                  stroke={arc.color}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={`${arc.dashLen} ${circumference - arc.dashLen}`}
+                  transform={`rotate(${arc.rotation} ${cx} ${cy})`}
+                />
+              ))}
+            </svg>
+          </div>
+          <div className="stats-legend">
+            {stats.genres.map((g) => (
+              <div key={g.name} className="stats-legend-item">
+                <span className="stats-legend-dot" style={{ background: GENRE_COLORS[g.name] || "#8e90a0" }} />
+                <span className="stats-legend-name">{g.name}</span>
+                <span className="stats-legend-count">{g.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Journal Tab ───────────────────────────────────────────────────────────────
 
 function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, tasteProfile, onSetTasteProfile }) {
@@ -794,6 +949,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
         <div className="journal-toggle">
           <button className={`journal-toggle-btn ${view === "journal" ? "active" : ""}`} onClick={() => setView("journal")}>Journal</button>
           <button className={`journal-toggle-btn ${view === "rankings" ? "active" : ""}`} onClick={() => setView("rankings")}>Rankings</button>
+          <button className={`journal-toggle-btn ${view === "stats" ? "active" : ""}`} onClick={() => setView("stats")}>Stats</button>
         </div>
 
         <div className="taste-profile-card">
@@ -857,6 +1013,10 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
               </div>
             )}
           </>
+        )}
+
+        {view === "stats" && (
+          <StatsView watchedMovies={watchedMovies} watchedRatings={watchedRatings} />
         )}
       </div>
 
