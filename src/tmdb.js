@@ -63,6 +63,30 @@ export async function getSimilar(movieId) {
   return data.results.slice(0, 12).map(tmdbToMovie);
 }
 
+export async function getHiddenGems(page = 1) {
+  const data = await tmdbFetch("/discover/movie", {
+    "vote_average.gte": "7.5",
+    "vote_count.gte": "50",
+    "vote_count.lte": "500",
+    sort_by: "vote_average.desc",
+    page,
+  });
+  return { movies: data.results.map(tmdbToMovie), totalPages: data.total_pages };
+}
+
+export async function getWatchProviders(movieId, region = "TH") {
+  const data = await tmdbFetch(`/movie/${movieId}/watch/providers`);
+  const country = data.results?.[region];
+  if (!country) return [];
+  const all = [...(country.flatrate || []), ...(country.ads || []), ...(country.buy || []), ...(country.rent || [])];
+  const seen = new Set();
+  return all.filter((p) => {
+    if (seen.has(p.provider_id)) return false;
+    seen.add(p.provider_id);
+    return true;
+  });
+}
+
 export async function discoverByGenres(genreIds, page = 1) {
   const data = await tmdbFetch("/discover/movie", {
     with_genres: genreIds.join(","),

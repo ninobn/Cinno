@@ -3,8 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>CineCompanion</title>
+    <title>Cinno</title>
     <style>body { margin: 0; background: #0f0e0c; }</style>
+    <script>
+      try {
+        var t = JSON.parse(localStorage.getItem("cc_theme"));
+        if (t === "light") {
+          document.documentElement.setAttribute("data-theme", "light");
+          document.querySelector("style").textContent = "body{margin:0;background:#f5f3f0}";
+        }
+      } catch(e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
