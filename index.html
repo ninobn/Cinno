@@ -3,19 +3,73 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Cinno</title>
-    <style>body { margin: 0; background: #0f0e0c; }</style>
+    <style>
+      body { margin: 0; background: #0f0e0c; }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0f0e0c;
+        transition: opacity 0.4s ease, visibility 0.4s ease;
+      }
+      #splash.fade-out {
+        opacity: 0;
+        visibility: hidden;
+      }
+      .splash-logo {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        animation: splash-in 0.5s ease-out;
+      }
+      .splash-mark {
+        width: 64px;
+        height: 64px;
+        background: linear-gradient(135deg, #c49060, #a0714a);
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 34px;
+        font-weight: 700;
+        color: white;
+      }
+      .splash-name {
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 22px;
+        font-weight: 600;
+        color: #ede9e4;
+        letter-spacing: 0.5px;
+      }
+      @keyframes splash-in {
+        from { opacity: 0; transform: scale(0.9); }
+        to   { opacity: 1; transform: scale(1); }
+      }
+    </style>
     <script>
       try {
         var t = JSON.parse(localStorage.getItem("cc_theme"));
         if (t === "light") {
           document.documentElement.setAttribute("data-theme", "light");
-          document.querySelector("style").textContent = "body{margin:0;background:#f5f3f0}";
+          document.querySelector("style").textContent += "#splash{background:#f5f3f0} .splash-name{color:#1a1816} body{background:#f5f3f0}";
         }
       } catch(e) {}
     </script>
   </head>
   <body>
+    <div id="splash">
+      <div class="splash-logo">
+        <div class="splash-mark">C</div>
+        <div class="splash-name">Cinno</div>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

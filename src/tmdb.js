@@ -58,6 +58,10 @@ export async function getNowPlaying(page = 1) {
   return { movies: data.results.map(tmdbToMovie), totalPages: data.total_pages };
 }
 
+export async function getMovieDetails(movieId) {
+  return tmdbFetch(`/movie/${movieId}`);
+}
+
 export async function getSimilar(movieId) {
   const data = await tmdbFetch(`/movie/${movieId}/recommendations`);
   return data.results.slice(0, 12).map(tmdbToMovie);

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, getHiddenGems, getWatchProviders, IMG_BASE } from "./tmdb.js";
+import { createPortal } from "react-dom";
+import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, getHiddenGems, getWatchProviders, getMovieDetails, IMG_BASE } from "./tmdb.js";
 
 const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
 
@@ -18,6 +19,15 @@ const ALL_SUGGESTIONS = [
   "Movies like Interstellar", "Dark comedies worth watching", "Classic noir films",
   "Must-see foreign films", "Best ensemble casts", "Movies that make you think",
   "Feel-good films to rewatch",
+];
+
+const DEBRIEF_OPENERS = [
+  (t, s, n) => `I just watched ${t}${s ? ` and rated it ${s}/100` : ""}. ${n || ""} Let's debrief.`,
+  (t, s, n) => `Just finished ${t}.${s ? ` I'd give it a ${s}/100.` : ""} ${n ? " " + n : ""} What are your thoughts on it?`,
+  (t, s, n) => `${t} — just watched it.${s ? ` Gave it ${s}/100.` : ""} ${n ? " " + n : ""} I need to talk about this one.`,
+  (t, s, n) => `Okay I need to talk about ${t}.${s ? ` Rating: ${s}/100.` : ""} ${n ? " " + n : ""} Debrief me.`,
+  (t, s, n) => `So I just saw ${t}${s ? ` (${s}/100)` : ""}.${n ? " " + n : ""} Let's break it down.`,
+  (t, s, n) => `Just got done watching ${t}.${s ? ` My score: ${s}/100.` : ""} ${n ? " " + n : ""} Talk to me about this film.`,
 ];
 
 const EMPTY_JOURNAL = [
@@ -229,6 +239,15 @@ const GearIcon = () => (
   </svg>
 );
 
+const PopcornIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M7 8h10l-1.5 13H8.5L7 8z" />
+    <path d="M7 8a3 3 0 015-2.2A3 3 0 0117 8" />
+    <path d="M7 8a3 3 0 01-.5-4.5A3 3 0 019.5 4" />
+    <path d="M17 8a3 3 0 00.5-4.5A3 3 0 0014.5 4" />
+  </svg>
+);
+
 // ─── Shared Components ─────────────────────────────────────────────────────────
 
 function SkeletonGrid({ count = 12 }) {
@@ -381,17 +400,43 @@ function MovieTile({ movie, onClick, isSaved, onToggleSave, className }) {
   );
 }
 
-function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, savedIds, isWatched, onToggleWatched }) {
+function formatRuntime(minutes) {
+  if (!minutes) return null;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+}
+
+const MODAL_TAB_ORDER = { overview: 0, similar: 1, notes: 1 };
+
+function useTabDirection(tab) {
+  const prevRef = useRef(tab);
+  const [dir, setDir] = useState(null);
+  useEffect(() => {
+    if (prevRef.current !== tab) {
+      setDir((MODAL_TAB_ORDER[tab] ?? 0) > (MODAL_TAB_ORDER[prevRef.current] ?? 0) ? "right" : "left");
+      prevRef.current = tab;
+    }
+  }, [tab]);
+  return dir;
+}
+
+function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, savedIds, isWatched, onToggleWatched, onStartDebrief }) {
   const genreColor = GENRE_COLORS[movie.genre] || "#8e90a0";
   const ratingColor = getRatingColor(movie.rating);
   const [tab, setTab] = useState("overview");
+  const tabDir = useTabDirection(tab);
   const [similar, setSimilar] = useState([]);
   const [similarLoaded, setSimilarLoaded] = useState(false);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
   const [providers, setProviders] = useState([]);
+  const [details, setDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(true);
 
   useEffect(() => {
     getWatchProviders(movie.id).then(setProviders).catch(() => {});
+    setDetailsLoading(true);
+    getMovieDetails(movie.id).then(setDetails).catch(() => {}).finally(() => setDetailsLoading(false));
   }, [movie.id]);
 
   const loadSimilar = async () => {
@@ -414,10 +459,12 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
   };
 
   const backdropUrl = movie.backdrop_path ? `${IMG_BASE}/w780${movie.backdrop_path}` : null;
+  const posterBlurUrl = movie.poster_path ? `${IMG_BASE}/w342${movie.poster_path}` : null;
 
-  return (
+  return createPortal(
     <div className="movie-modal-overlay" onClick={onClose}>
       <div className="movie-modal movie-modal-lg" onClick={(e) => e.stopPropagation()}>
+        {posterBlurUrl && <div className="modal-poster-bg" style={{ backgroundImage: `url(${posterBlurUrl})` }} />}
         <div className="modal-handle-bar">
           <div className="modal-handle" />
         </div>
@@ -444,6 +491,11 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
                   {movie.genre}
                 </span>
               </div>
+              {detailsLoading ? (
+                <span className="modal-runtime-loading">...</span>
+              ) : details?.runtime ? (
+                <span className="modal-runtime">{formatRuntime(details.runtime)}</span>
+              ) : null}
               <div className="modal-actions">
                 <button className={`modal-save-btn ${isSaved ? "saved" : ""}`} onClick={() => onToggleSave(movie)}>
                   <BookmarkIcon />
@@ -453,6 +505,12 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
                   <EyeIcon />
                   {isWatched ? "Watched" : "Mark watched"}
                 </button>
+                {isWatched && onStartDebrief && (
+                  <button className="modal-debrief-btn" onClick={() => onStartDebrief(movie)}>
+                    <ChatIcon />
+                    Debrief
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -460,64 +518,78 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
             <button className={`modal-tab ${tab === "overview" ? "active" : ""}`} onClick={() => handleTabSwitch("overview")}>Overview</button>
             <button className={`modal-tab ${tab === "similar" ? "active" : ""}`} onClick={() => handleTabSwitch("similar")}>Similar to this</button>
           </div>
-          {tab === "overview" && (
-            <>
-              <p className="modal-synopsis">{movie.synopsis}</p>
-              {providers.length > 0 && (
-                <div className="watch-providers">
-                  <div className="watch-providers-label">Available on</div>
-                  <div className="watch-providers-row">
-                    {providers.map((p) => (
-                      <img
-                        key={p.provider_id}
-                        className="watch-provider-logo"
-                        src={`${IMG_BASE}/w92${p.logo_path}`}
-                        alt={p.provider_name}
-                        title={p.provider_name}
+          <div className={`modal-tab-content ${tabDir ? `slide-${tabDir}` : ""}`} key={tab}>
+            {tab === "overview" && (
+              <>
+                {detailsLoading ? (
+                  <div className="modal-tagline-loading" />
+                ) : details?.tagline ? (
+                  <p className="modal-tagline">{details.tagline}</p>
+                ) : null}
+                <p className="modal-synopsis">{movie.synopsis}</p>
+                {providers.length > 0 && (
+                  <div className="watch-providers">
+                    <div className="watch-providers-label">Available on</div>
+                    <div className="watch-providers-row">
+                      {providers.map((p) => (
+                        <img
+                          key={p.provider_id}
+                          className="watch-provider-logo"
+                          src={`${IMG_BASE}/w92${p.logo_path}`}
+                          alt={p.provider_name}
+                          title={p.provider_name}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+            {tab === "similar" && (
+              <div className="modal-similar">
+                {loadingSimilar ? (
+                  <div className="loading-container"><div className="loading-spinner" /></div>
+                ) : similar.length === 0 && similarLoaded ? (
+                  <div className="no-results"><p>No similar movies found.</p></div>
+                ) : (
+                  <div className="movies-grid">
+                    {similar.map((m, i) => (
+                      <MovieTile
+                        key={m.id}
+                        movie={{ ...m, _idx: i }}
+                        isSaved={savedIds ? savedIds.has(m.id) : false}
+                        onToggleSave={onToggleSave}
+                        onClick={() => onMovieSelect(m)}
                       />
                     ))}
                   </div>
-                </div>
-              )}
-            </>
-          )}
-          {tab === "similar" && (
-            <div className="modal-similar">
-              {loadingSimilar ? (
-                <div className="loading-container"><div className="loading-spinner" /></div>
-              ) : similar.length === 0 && similarLoaded ? (
-                <div className="no-results"><p>No similar movies found.</p></div>
-              ) : (
-                <div className="movies-grid">
-                  {similar.map((m, i) => (
-                    <MovieTile
-                      key={m.id}
-                      movie={{ ...m, _idx: i }}
-                      isSaved={savedIds ? savedIds.has(m.id) : false}
-                      onToggleSave={onToggleSave}
-                      onClick={() => onMovieSelect(m)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
-function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggleSave, onToggleWatched, rating, onSetRating }) {
+function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggleSave, onToggleWatched, rating, onSetRating, onStartDebrief }) {
   const genreColor = GENRE_COLORS[movie.genre] || "#8e90a0";
   const ratingColor = getRatingColor(movie.rating);
   const [tab, setTab] = useState("overview");
+  const tabDir = useTabDirection(tab);
   const [noteText, setNoteText] = useState(note || "");
   const [providers, setProviders] = useState([]);
+  const [details, setDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(true);
   const backdropUrl = movie.backdrop_path ? `${IMG_BASE}/w780${movie.backdrop_path}` : null;
+  const posterBlurUrl = movie.poster_path ? `${IMG_BASE}/w342${movie.poster_path}` : null;
 
   useEffect(() => {
     getWatchProviders(movie.id).then(setProviders).catch(() => {});
+    setDetailsLoading(true);
+    getMovieDetails(movie.id).then(setDetails).catch(() => {}).finally(() => setDetailsLoading(false));
   }, [movie.id]);
 
   const saveNote = useCallback(() => onSaveNote(movie.id, noteText), [movie.id, noteText, onSaveNote]);
@@ -527,9 +599,10 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
     setTab(t);
   };
 
-  return (
+  return createPortal(
     <div className="movie-modal-overlay" onClick={onClose}>
       <div className="movie-modal movie-modal-lg" onClick={(e) => e.stopPropagation()}>
+        {posterBlurUrl && <div className="modal-poster-bg" style={{ backgroundImage: `url(${posterBlurUrl})` }} />}
         <div className="modal-handle-bar">
           <div className="modal-handle" />
         </div>
@@ -556,6 +629,11 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
                   {movie.genre}
                 </span>
               </div>
+              {detailsLoading ? (
+                <span className="modal-runtime-loading">...</span>
+              ) : details?.runtime ? (
+                <span className="modal-runtime">{formatRuntime(details.runtime)}</span>
+              ) : null}
               <div className="modal-actions">
                 <button className={`modal-save-btn ${isSaved ? "saved" : ""}`} onClick={() => onToggleSave(movie)}>
                   <BookmarkIcon />
@@ -565,6 +643,12 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
                   <EyeIcon />
                   Watched
                 </button>
+                {onStartDebrief && (
+                  <button className="modal-debrief-btn" onClick={() => onStartDebrief(movie)}>
+                    <ChatIcon />
+                    Debrief
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -589,47 +673,55 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
             <button className={`modal-tab ${tab === "overview" ? "active" : ""}`} onClick={() => handleTabSwitch("overview")}>Overview</button>
             <button className={`modal-tab ${tab === "notes" ? "active" : ""}`} onClick={() => handleTabSwitch("notes")}>Notes</button>
           </div>
-          {tab === "overview" && (
-            <>
-              <p className="modal-synopsis">{movie.synopsis}</p>
-              {providers.length > 0 && (
-                <div className="watch-providers">
-                  <div className="watch-providers-label">Available on</div>
-                  <div className="watch-providers-row">
-                    {providers.map((p) => (
-                      <img
-                        key={p.provider_id}
-                        className="watch-provider-logo"
-                        src={`${IMG_BASE}/w92${p.logo_path}`}
-                        alt={p.provider_name}
-                        title={p.provider_name}
-                      />
-                    ))}
+          <div className={`modal-tab-content ${tabDir ? `slide-${tabDir}` : ""}`} key={tab}>
+            {tab === "overview" && (
+              <>
+                {detailsLoading ? (
+                  <div className="modal-tagline-loading" />
+                ) : details?.tagline ? (
+                  <p className="modal-tagline">{details.tagline}</p>
+                ) : null}
+                <p className="modal-synopsis">{movie.synopsis}</p>
+                {providers.length > 0 && (
+                  <div className="watch-providers">
+                    <div className="watch-providers-label">Available on</div>
+                    <div className="watch-providers-row">
+                      {providers.map((p) => (
+                        <img
+                          key={p.provider_id}
+                          className="watch-provider-logo"
+                          src={`${IMG_BASE}/w92${p.logo_path}`}
+                          alt={p.provider_name}
+                          title={p.provider_name}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </>
-          )}
-          {tab === "notes" && (
-            <div className="journal-notes">
-              <textarea
-                className="journal-notes-input"
-                placeholder="Write your thoughts about this film..."
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-                onBlur={saveNote}
-              />
-            </div>
-          )}
+                )}
+              </>
+            )}
+            {tab === "notes" && (
+              <div className="journal-notes">
+                <textarea
+                  className="journal-notes-input"
+                  placeholder="Write your thoughts about this film..."
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  onBlur={saveNote}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
 // ─── Search Tab ────────────────────────────────────────────────────────────────
 
-function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched }) {
+function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [movies, setMovies] = useState([]);
@@ -1044,6 +1136,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched }) {
           savedIds={savedIds}
           isWatched={watchedIds.has(selectedMovie.id)}
           onToggleWatched={toggleWatched}
+          onStartDebrief={startDebrief}
         />
       )}
     </>
@@ -1052,7 +1145,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched }) {
 
 // ─── Saved Tab ─────────────────────────────────────────────────────────────────
 
-function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched }) {
+function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [emptyMsg] = useState(() => pickRandom(EMPTY_WATCHLIST));
   const movies = useMemo(
@@ -1099,6 +1192,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
           savedIds={savedIds}
           isWatched={watchedIds.has(selectedMovie.id)}
           onToggleWatched={toggleWatched}
+          onStartDebrief={startDebrief}
         />
       )}
     </>
@@ -1262,7 +1356,7 @@ function StatsView({ watchedMovies, watchedRatings }) {
 
 // ─── Journal Tab ───────────────────────────────────────────────────────────────
 
-function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, tasteProfile, onSetTasteProfile }) {
+function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, tasteProfile, onSetTasteProfile, startDebrief }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [view, setView] = useState("journal");
   const [generatingProfile, setGeneratingProfile] = useState(false);
@@ -1431,6 +1525,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
           onToggleWatched={handleToggleWatched}
           rating={watchedRatings.get(selectedMovie.id) ?? null}
           onSetRating={setWatchedRating}
+          onStartDebrief={startDebrief}
         />
       )}
     </>
@@ -1439,7 +1534,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 
 // ─── Chat Tab ──────────────────────────────────────────────────────────────────
 
-function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile }) {
+function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile, debriefPayload, onDebriefHandled }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1448,6 +1543,7 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile 
   const [renameValue, setRenameValue] = useState("");
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
+  const debriefHandledRef = useRef(null);
 
   const activeChat = chats.find((c) => c.id === activeChatId);
   const messages = activeChat ? activeChat.messages : [];
@@ -1539,7 +1635,9 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile 
 
     try {
       const personalContext = tasteProfile ? `The user's taste profile: ${tasteProfile}` : "";
-      const movieContext = `You are a knowledgeable movie companion. Help users with movie recommendations, plot explanations, character analysis, and post-watch debriefing. Be conversational and concise. Never use emojis, markdown bold, headers, horizontal rules or bullet points. Write in plain natural sentences and short paragraphs. No lists - just talk naturally like a friend who knows a lot about movies. Keep responses to 2-3 short paragraphs max. When the user asks for recommendations without being specific, ask all your clarifying questions in ONE message. For example, ask what vibe/genre they want, what mood they're in, any movies they already love, and whether they want something new or classic - all in one short message. Never ask follow up questions across multiple messages. Once you have enough info, give your recommendations immediately.${personalContext ? "\n\n" + personalContext : ""}`;
+      const mc = activeChat?.movieContext;
+      const debriefContext = mc ? `\n\nThe user is debriefing about "${mc.title}" (${mc.year}, ${mc.genre}). TMDB rating: ${mc.tmdbRating}/10. Synopsis: ${mc.synopsis}.` : "";
+      const movieContext = `You're a movie-obsessed friend who loves chatting about films. Keep it casual and natural like a text conversation. Sometimes short replies are good, sometimes longer is acceptable - match the energy of what the user says. Don't volunteer cast, director, or production details unless asked - only keep actual details about the movie. No essays, no formal analysis (unless asked). Just talk like a real person who watches too many movies. Be opinionated, have fun with it, crack jokes when it fits. If someone asks for recs, keep it tight - movie name, year, one sentence why. Bullet points are acceptable, no bold, no emojis, no markdown formatting ever.${debriefContext}${personalContext ? "\n\n" + personalContext : ""}`;
 
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -1558,7 +1656,7 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile 
       const assistantText = data.content?.filter((b) => b.type === "text").map((b) => b.text).join("\n") || "I couldn't generate a response. Please try again.";
       updateMessages([...newMessages, { role: "assistant", content: assistantText }]);
 
-      if (isFirstMessage) generateTitle(userMsg, assistantText);
+      if (isFirstMessage && !activeChat?.movieContext) generateTitle(userMsg, assistantText);
     } catch {
       setError("Chat is temporarily unavailable. Please try again in a moment.");
     } finally {
@@ -1569,6 +1667,14 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
+
+  useEffect(() => {
+    if (debriefPayload && debriefPayload.chatId === activeChatId && debriefHandledRef.current !== debriefPayload.chatId) {
+      debriefHandledRef.current = debriefPayload.chatId;
+      sendMessage(debriefPayload.message);
+      onDebriefHandled?.();
+    }
+  }, [debriefPayload, activeChatId]);
 
   return (
     <div className="chat-layout">
@@ -1679,6 +1785,179 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile 
 
 // ─── Settings Modal ────────────────────────────────────────────────────────────
 
+const PICKER_MOODS = [
+  { id: "chill", label: "Chill", emoji: "🌿" },
+  { id: "intense", label: "Intense", emoji: "🔥" },
+  { id: "funny", label: "Funny", emoji: "😂" },
+  { id: "romantic", label: "Romantic", emoji: "💛" },
+  { id: "mind-bending", label: "Mind-bending", emoji: "🌀" },
+];
+
+const PICKER_DECADES = [
+  { id: "1960s", label: "60s" },
+  { id: "1970s", label: "70s" },
+  { id: "1980s", label: "80s" },
+  { id: "1990s", label: "90s" },
+  { id: "2000s", label: "2000s" },
+  { id: "2010s", label: "2010s" },
+  { id: "2020s", label: "2020s" },
+];
+
+function MovieNightPicker({ onClose }) {
+  const [people, setPeople] = useState(2);
+  const [mood, setMood] = useState(null);
+  const [decade, setDecade] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      let userMsg = `We are ${people} ${people === 1 ? "person" : "people"} looking for a ${mood} movie to watch tonight.`;
+      if (decade) userMsg += ` Preferably from the ${decade}.`;
+      userMsg += " Pick one movie for us.";
+
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": ANTHROPIC_KEY,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6-20250514",
+          max_tokens: 300,
+          system: 'You are a movie recommender. Respond with ONLY valid JSON in this exact format: {"title": "Movie Title", "year": 2000, "reason": "One sentence why this is perfect for the group."}. No markdown, no extra text.',
+          messages: [{ role: "user", content: userMsg }],
+        }),
+      });
+
+      if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+      const data = await resp.json();
+      let text = data.content?.[0]?.text || "";
+      // Strip markdown fences if present
+      text = text.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+      const parsed = JSON.parse(text);
+
+      // Fetch poster from TMDB
+      let posterPath = null;
+      try {
+        const tmdbResult = await searchMovies(`${parsed.title} ${parsed.year}`);
+        if (tmdbResult.movies.length > 0) {
+          posterPath = tmdbResult.movies[0].poster_path;
+        }
+      } catch {}
+
+      setResult({
+        title: parsed.title,
+        year: parsed.year,
+        reason: parsed.reason,
+        posterPath,
+      });
+    } catch (e) {
+      console.error("Picker error:", e);
+      setError("Couldn't pick a movie. Try again!");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePickAgain = () => {
+    setResult(null);
+    setError(null);
+  };
+
+  return createPortal(
+    <div className="picker-overlay" onClick={onClose}>
+      <div className="picker-card" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close-btn" style={{ position: "absolute", top: 12, right: 12 }} onClick={onClose}>✕</button>
+
+        {!result ? (
+          <>
+            <div className="picker-header">
+              <div className="picker-emoji">🍿</div>
+              <div className="picker-title">Movie Night</div>
+              <div className="picker-subtitle">Let's find the perfect film</div>
+            </div>
+
+            <div className="picker-section">
+              <div className="picker-label">How many people?</div>
+              <div className="picker-people">
+                {[1, 2, 3, 4, 5, 6].map((n) => (
+                  <button
+                    key={n}
+                    className={`picker-person ${n <= people ? "active" : ""}`}
+                    onClick={() => setPeople(n)}
+                  >
+                    <PersonIcon />
+                  </button>
+                ))}
+                <span className="picker-people-count">{people}</span>
+              </div>
+            </div>
+
+            <div className="picker-section">
+              <div className="picker-label">Mood</div>
+              <div className="picker-chips">
+                {PICKER_MOODS.map((m) => (
+                  <button
+                    key={m.id}
+                    className={`category-pill ${mood === m.id ? "active" : ""}`}
+                    onClick={() => setMood(m.id)}
+                  >
+                    {m.emoji} {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="picker-section">
+              <div className="picker-label">Decade <span>(optional)</span></div>
+              <div className="picker-chips">
+                {PICKER_DECADES.map((d) => (
+                  <button
+                    key={d.id}
+                    className={`category-pill ${decade === d.id ? "active" : ""}`}
+                    onClick={() => setDecade((prev) => prev === d.id ? null : d.id)}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {error && <div className="picker-error">{error}</div>}
+
+            <button
+              className="picker-submit"
+              disabled={!mood || loading}
+              onClick={handleSubmit}
+            >
+              {loading ? <span className="picker-spinner" /> : "Pick for us"}
+            </button>
+          </>
+        ) : (
+          <div className="picker-result">
+            <div className="picker-result-poster">
+              <PosterImage posterPath={result.posterPath} title={result.title} />
+            </div>
+            <div className="picker-result-title">{result.title}</div>
+            <div className="picker-result-year">{result.year}</div>
+            <div className="picker-result-reason">{result.reason}</div>
+            <button className="picker-submit" onClick={handlePickAgain}>
+              Pick again
+            </button>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
   const [confirmClear, setConfirmClear] = useState(false);
 
@@ -1734,9 +2013,20 @@ function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
 
 // ─── Main App ──────────────────────────────────────────────────────────────────
 
+const MAIN_TAB_ORDER = { search: 0, saved: 1, journal: 2, chat: 3 };
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState("search");
+  const [activeTab, _setActiveTab] = useState("search");
+  const prevTabRef = useRef("search");
+  const [tabDir, setTabDir] = useState(null);
+  const setActiveTab = useCallback((t) => {
+    if (t === prevTabRef.current) return;
+    setTabDir(MAIN_TAB_ORDER[t] > MAIN_TAB_ORDER[prevTabRef.current] ? "right" : "left");
+    prevTabRef.current = t;
+    _setActiveTab(t);
+  }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [theme, setTheme] = useState(() => loadFromStorage("cc_theme", "dark"));
   const [savedIds, setSavedIds] = useState(() => new Set(loadFromStorage("cc_savedIds", [])));
   const [savedMovies, setSavedMovies] = useState(() => new Map(loadFromStorage("cc_savedMovies", [])));
@@ -1745,6 +2035,7 @@ export default function App() {
   const [watchedNotes, setWatchedNotes] = useState(() => new Map(loadFromStorage("cc_watchedNotes", [])));
   const [watchedRatings, setWatchedRatings] = useState(() => new Map(loadFromStorage("cc_watchedRatings", [])));
   const [tasteProfile, setTasteProfile] = useState(() => loadFromStorage("cc_tasteProfile", ""));
+  const [debriefPayload, setDebriefPayload] = useState(null);
 
   const defaultChatId = "default";
   const [chats, setChats] = useState(() => loadFromStorage("cc_chats", [{ id: defaultChatId, title: "New chat", messages: [] }]));
@@ -1812,6 +2103,21 @@ export default function App() {
     });
   };
 
+  const startDebrief = (movie) => {
+    const chatId = Date.now().toString();
+    const rating = watchedRatings.get(movie.id);
+    const notes = watchedNotes.get(movie.id);
+    const opener = DEBRIEF_OPENERS[Math.floor(Math.random() * DEBRIEF_OPENERS.length)];
+    const userMsg = opener(movie.title, rating, notes ? notes.trim() : null);
+    setChats((prev) => [{
+      id: chatId, title: movie.title, messages: [],
+      movieContext: { title: movie.title, year: movie.year, genre: movie.genre, tmdbRating: movie.rating, synopsis: movie.synopsis },
+    }, ...prev]);
+    setActiveChatId(chatId);
+    setActiveTab("chat");
+    setDebriefPayload({ chatId, message: userMsg });
+  };
+
   useEffect(() => { saveToStorage("cc_savedIds",     [...savedIds]);     }, [savedIds]);
   useEffect(() => { saveToStorage("cc_savedMovies",  [...savedMovies]);  }, [savedMovies]);
   useEffect(() => { saveToStorage("cc_watchedIds",   [...watchedIds]);   }, [watchedIds]);
@@ -1836,17 +2142,22 @@ export default function App() {
           <div className="logo-mark">C</div>
           Cinno
         </div>
-        <button className="header-settings-btn" onClick={() => setSettingsOpen(true)}>
-          <GearIcon />
-        </button>
+        <div className="header-actions">
+          <button className="header-settings-btn" onClick={() => setPickerOpen(true)}>
+            <PopcornIcon />
+          </button>
+          <button className="header-settings-btn" onClick={() => setSettingsOpen(true)}>
+            <GearIcon />
+          </button>
+        </div>
       </div>
 
-      <div className="tab-panel" key={activeTab}>
+      <div className={`tab-panel ${tabDir ? `slide-${tabDir}` : ""}`} key={activeTab}>
         {activeTab === "search" && (
-          <SearchTab savedIds={savedIds} toggleSave={toggleSave} watchedIds={watchedIds} toggleWatched={toggleWatched} />
+          <SearchTab savedIds={savedIds} toggleSave={toggleSave} watchedIds={watchedIds} toggleWatched={toggleWatched} startDebrief={startDebrief} />
         )}
         {activeTab === "saved" && (
-          <SavedTab savedIds={savedIds} toggleSave={toggleSave} savedMovies={savedMovies} watchedIds={watchedIds} toggleWatched={toggleWatched} />
+          <SavedTab savedIds={savedIds} toggleSave={toggleSave} savedMovies={savedMovies} watchedIds={watchedIds} toggleWatched={toggleWatched} startDebrief={startDebrief} />
         )}
         {activeTab === "journal" && (
           <JournalTab
@@ -1861,12 +2172,14 @@ export default function App() {
             setWatchedRating={setWatchedRating}
             tasteProfile={tasteProfile}
             onSetTasteProfile={setTasteProfile}
+            startDebrief={startDebrief}
           />
         )}
         {activeTab === "chat" && (
           <ChatTab
             chats={chats} setChats={setChats} activeChatId={activeChatId} setActiveChatId={setActiveChatId}
             tasteProfile={tasteProfile}
+            debriefPayload={debriefPayload} onDebriefHandled={() => setDebriefPayload(null)}
           />
         )}
       </div>
@@ -1889,6 +2202,9 @@ export default function App() {
           onToggleTheme={toggleTheme}
         />
       )}
+
+      {pickerOpen && <MovieNightPicker onClose={() => setPickerOpen(false)} />}
+
     </div>
   );
 }
