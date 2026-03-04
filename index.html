@@ -6,7 +6,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Cinno</title>
     <style>
-      body { margin: 0; background: #0f0e0c; }
+      body { margin: 0; background: #121016; }
       #splash {
         position: fixed;
         inset: 0;
@@ -14,7 +14,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #0f0e0c;
+        background: #121016;
         transition: opacity 0.4s ease, visibility 0.4s ease;
       }
       #splash.fade-out {
@@ -31,21 +31,22 @@
       .splash-mark {
         width: 64px;
         height: 64px;
-        background: linear-gradient(135deg, #c49060, #a0714a);
+        background: linear-gradient(135deg, #8B3A4A, #6B2A38);
         border-radius: 16px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-family: system-ui, -apple-system, sans-serif;
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
         font-size: 34px;
         font-weight: 700;
         color: white;
       }
       .splash-name {
-        font-family: system-ui, -apple-system, sans-serif;
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
         font-size: 22px;
-        font-weight: 600;
-        color: #ede9e4;
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: #F0EBE3;
         letter-spacing: 0.5px;
       }
       @keyframes splash-in {
@@ -58,7 +59,7 @@
         var t = JSON.parse(localStorage.getItem("cc_theme"));
         if (t === "light") {
           document.documentElement.setAttribute("data-theme", "light");
-          document.querySelector("style").textContent += "#splash{background:#f5f3f0} .splash-name{color:#1a1816} body{background:#f5f3f0}";
+          document.querySelector("style").textContent += "#splash{background:#F4F1ED} .splash-name{color:#1A1618} body{background:#F4F1ED}";
         }
       } catch(e) {}
     </script>

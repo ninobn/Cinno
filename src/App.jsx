@@ -5,11 +5,11 @@ import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discove
 const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
 
 const GENRE_COLORS = {
-  Action: "#b8a088", Adventure: "#a0b88b", Animation: "#8bc4a0", Comedy: "#c4b88b",
-  Crime: "#c49b9b", Documentary: "#8ba0b8", Drama: "#8b9dc3", Family: "#b8a0c4",
-  Fantasy: "#b39ddb", History: "#a09b8b", Horror: "#9e7e7e", Music: "#9db8c4",
-  Mystery: "#a0887e", Romance: "#c48b9f", "Sci-Fi": "#7eb8b8", Thriller: "#9b8ec4",
-  War: "#8a9a7b", Western: "#b89a6e", Film: "#8e90a0",
+  Action: "#C4856A", Adventure: "#8BA88C", Animation: "#7AADA0", Comedy: "#C4B07A",
+  Crime: "#A87070", Documentary: "#7A96AD", Drama: "#8B7EA8", Family: "#AD8EB8",
+  Fantasy: "#9A86B8", History: "#A09880", Horror: "#8B2635", Music: "#7AADB8",
+  Mystery: "#8A7A70", Romance: "#B8707E", "Sci-Fi": "#6AA0A0", Thriller: "#7A6A90",
+  War: "#7A8A6B", Western: "#AD8A5E", Film: "#7A7878",
 };
 
 const ALL_SUGGESTIONS = [
@@ -139,7 +139,7 @@ function ScoreRing({ score, size = 44 }) {
         fill={score ? color : "var(--text-muted)"}
         fontSize={fontSize}
         fontWeight="700"
-        fontFamily="Outfit, sans-serif"
+        fontFamily="Plus Jakarta Sans, sans-serif"
       >
         {score ?? "—"}
       </text>
@@ -335,7 +335,7 @@ const BadgeIconHorror = () => (
 const BadgeIconCentury = () => (
   <svg viewBox="0 0 40 40" fill="none">
     <rect x="6" y="8" width="28" height="24" rx="3" stroke="currentColor" strokeWidth="1.5" />
-    <text x="20" y="24" textAnchor="middle" fill="currentColor" fontSize="12" fontWeight="700" fontFamily="Outfit, sans-serif">100</text>
+    <text x="20" y="24" textAnchor="middle" fill="currentColor" fontSize="12" fontWeight="700" fontFamily="Plus Jakarta Sans, sans-serif">100</text>
     <path d="M6 14h28" stroke="currentColor" strokeWidth="1.5" />
   </svg>
 );
@@ -555,7 +555,7 @@ function ScrollRow({ children }) {
 
 function MovieTile({ movie, onClick, isSaved, onToggleSave, className }) {
   const ratingColor = getRatingColor(movie.rating);
-  const genreColor = GENRE_COLORS[movie.genre] || "#8e90a0";
+  const genreColor = GENRE_COLORS[movie.genre] || "#7A7878";
   return (
     <div className={`movie-tile ${className || ""}`} onClick={onClick} style={{ animationDelay: `${(movie._idx || 0) * 25}ms` }}>
       <div className="movie-poster">
@@ -597,7 +597,7 @@ function useTabDirection(tab) {
 }
 
 function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, savedIds, isWatched, onToggleWatched, onStartDebrief, collections, toggleMovieInCollection }) {
-  const genreColor = GENRE_COLORS[movie.genre] || "#8e90a0";
+  const genreColor = GENRE_COLORS[movie.genre] || "#7A7878";
   const ratingColor = getRatingColor(movie.rating);
   const [tab, setTab] = useState("overview");
   const tabDir = useTabDirection(tab);
@@ -787,7 +787,7 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
 }
 
 function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggleSave, onToggleWatched, rating, onSetRating, onStartDebrief }) {
-  const genreColor = GENRE_COLORS[movie.genre] || "#8e90a0";
+  const genreColor = GENRE_COLORS[movie.genre] || "#7A7878";
   const ratingColor = getRatingColor(movie.rating);
   const [tab, setTab] = useState("overview");
   const tabDir = useTabDirection(tab);
@@ -1656,11 +1656,24 @@ function StatsView({ watchedMovies, watchedRatings }) {
       .sort((a, b) => b[1] - a[1])
       .map(([name, count]) => ({ name, count }));
 
+    // Unpopular opinions: biggest disagreements with TMDB
+    const disagreements = [];
+    watchedRatings.forEach((userScore, id) => {
+      const movie = watchedMovies.get(id);
+      if (!movie || movie.rating === "—") return;
+      const tmdbScore = parseFloat(movie.rating) * 10;
+      const diff = userScore - tmdbScore;
+      disagreements.push({ movie, userScore, tmdbScore: parseFloat(movie.rating), diff, absDiff: Math.abs(diff) });
+    });
+    disagreements.sort((a, b) => b.absDiff - a.absDiff);
+    const unpopularOpinions = disagreements.slice(0, 3);
+
     return {
       totalMovies, totalHours,
       highest: highest ? { movie: highest, score: highScore } : null,
       lowest: lowest ? { movie: lowest, score: lowScore } : null,
       genres,
+      unpopularOpinions,
     };
   }, [watchedMovies, watchedRatings]);
 
@@ -1705,7 +1718,7 @@ function StatsView({ watchedMovies, watchedRatings }) {
     const dashLen = circumference * pct;
     const rotation = (cumulativeOffset / totalGenres) * 360 - 90;
     cumulativeOffset += g.count;
-    const color = GENRE_COLORS[g.name] || "#8e90a0";
+    const color = GENRE_COLORS[g.name] || "#7A7878";
     return { ...g, dashLen, rotation, color };
   });
 
@@ -1768,9 +1781,42 @@ function StatsView({ watchedMovies, watchedRatings }) {
           <div className="stats-legend">
             {stats.genres.map((g) => (
               <div key={g.name} className="stats-legend-item">
-                <span className="stats-legend-dot" style={{ background: GENRE_COLORS[g.name] || "#8e90a0" }} />
+                <span className="stats-legend-dot" style={{ background: GENRE_COLORS[g.name] || "#7A7878" }} />
                 <span className="stats-legend-name">{g.name}</span>
                 <span className="stats-legend-count">{g.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {stats.unpopularOpinions.length > 0 && (
+        <div className="stats-card full">
+          <div className="stats-card-label">Unpopular Opinions</div>
+          <div className="stats-card-sublabel">Your biggest disagreements with the public</div>
+          <div className="unpopular-list">
+            {stats.unpopularOpinions.map((item) => (
+              <div key={item.movie.id} className="unpopular-item">
+                <div className="unpopular-poster">
+                  <PosterImage posterPath={item.movie.poster_path} title={item.movie.title} />
+                </div>
+                <div className="unpopular-info">
+                  <div className="unpopular-title">{item.movie.title}</div>
+                  <div className="unpopular-scores">
+                    <div className="unpopular-score-pair">
+                      <span className="unpopular-score-label">You</span>
+                      <ScoreRing score={item.userScore} size={36} />
+                    </div>
+                    <div className="unpopular-vs">vs</div>
+                    <div className="unpopular-score-pair">
+                      <span className="unpopular-score-label">TMDB</span>
+                      <span className="unpopular-tmdb">{item.tmdbScore.toFixed(1)}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className={`unpopular-diff ${item.diff > 0 ? "higher" : "lower"}`}>
+                  {item.diff > 0 ? "+" : ""}{Math.round(item.diff)}
+                </div>
               </div>
             ))}
           </div>
@@ -1782,11 +1828,82 @@ function StatsView({ watchedMovies, watchedRatings }) {
 
 // ─── Journal Tab ───────────────────────────────────────────────────────────────
 
+const INSIGHT_TYPES = ["movie_twin", "vibe_check", "blind_spot", "taste_evolution", "movie_dna"];
+
+const INSIGHT_LABELS = {
+  movie_twin: "Movie Twin",
+  vibe_check: "Vibe Check",
+  blind_spot: "Blind Spot",
+  taste_evolution: "Taste Evolution",
+  movie_dna: "Movie DNA",
+};
+
+const INSIGHT_ICONS = {
+  movie_twin: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
+  ),
+  vibe_check: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>
+    </svg>
+  ),
+  blind_spot: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/><line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+  ),
+  taste_evolution: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+    </svg>
+  ),
+  movie_dna: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2v20M2 12h20M12 2a10 10 0 0 1 10 10M12 2a10 10 0 0 0-10 10M12 22a10 10 0 0 1-10-10M12 22a10 10 0 0 0 10-10"/>
+    </svg>
+  ),
+};
+
+const FALLBACK_INSIGHTS = [
+  { type: "vibe_check", text: "The Late-Night Rabbit Hole Diver -- you never watch just one." },
+  { type: "movie_twin", text: "You watch like someone who grew up rewinding VHS tapes and never stopped chasing that feeling." },
+  { type: "blind_spot", text: "Your watchlist is suspiciously low on foreign cinema. There's a whole world out there." },
+  { type: "taste_evolution", text: "Your taste is quietly maturing -- fewer explosions, more conversations." },
+  { type: "movie_dna", text: "Heavy on drama, generous with your ratings, and you've seen more movies this month than most people see in a year." },
+  { type: "vibe_check", text: "The Curated Minimalist -- every pick is deliberate, nothing is filler." },
+  { type: "movie_twin", text: "You've got Villeneuve energy -- patient, atmospheric, always chasing the bigger picture." },
+  { type: "blind_spot", text: "When's the last time you watched something made before 1990? Just asking." },
+];
+
+const INSIGHT_PROMPTS = {
+  movie_twin: 'Compare the user\'s taste to a famous director or filmmaker in exactly ONE sentence. Format: "You watch like [Director] -- [2-3 word description of shared quality]." Be specific and witty. No quotes around the director name.',
+  vibe_check: 'Give the user a fun, specific personality label based on their movie taste in exactly ONE sentence. Format: "The [Creative Label] -- [one short explanatory clause]." Make it feel like a horoscope for movie lovers. Be playful.',
+  blind_spot: 'Identify ONE genre, decade, or type of film conspicuously absent from their list in exactly ONE sentence. Be direct and a little teasing. Example tone: "You\'ve never touched a documentary" or "The 70s called, they want you to visit."',
+  taste_evolution: 'Describe how their taste appears to be shifting in exactly ONE sentence based on any pattern you see (early vs recent entries, rating patterns). Format: "You started [X] but you\'re drifting into [Y]." If no clear shift, note what stays constant.',
+  movie_dna: 'Summarize their movie DNA in exactly ONE line: top genre + average rating tendency + one fun stat or observation. Keep it punchy like a dating profile bio for their taste.',
+};
+
+const MOODS = [
+  { id: "happy", label: "Happy" },
+  { id: "sad", label: "Sad" },
+  { id: "stressed", label: "Stressed" },
+  { id: "bored", label: "Bored" },
+  { id: "romantic", label: "Romantic" },
+  { id: "adventurous", label: "Adventurous" },
+];
+
 function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, tasteProfile, onSetTasteProfile, startDebrief }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [view, setView] = useState("journal");
-  const [generatingProfile, setGeneratingProfile] = useState(false);
-  const [profileError, setProfileError] = useState("");
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insight, setInsight] = useState(null);
+  const [moodOpen, setMoodOpen] = useState(false);
+  const [moodSelected, setMoodSelected] = useState(null);
+  const [moodLoading, setMoodLoading] = useState(false);
+  const [moodPlaylist, setMoodPlaylist] = useState(() => loadFromStorage("cc_moodPlaylist", null));
+  const [moodError, setMoodError] = useState("");
   const [emptyJournal] = useState(() => pickRandom(EMPTY_JOURNAL));
   const [emptyRankings] = useState(() => pickRandom(EMPTY_RANKINGS));
   const [emptyStats] = useState(() => pickRandom(EMPTY_STATS));
@@ -1808,30 +1925,108 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
     setSelectedMovie(null);
   };
 
-  const generateProfile = async () => {
-    setGeneratingProfile(true);
-    setProfileError("");
+  const generateMoodPlaylist = async (mood) => {
+    setMoodSelected(mood);
+    setMoodLoading(true);
+    setMoodError("");
     try {
-      const lines = Array.from(watchedMovies.values()).map((m) => {
+      const recent = movies.slice(-20);
+      const lines = recent.map((m) => {
         const score = watchedRatings.get(m.id);
         return `${m.title} (${m.genre}, ${m.year})${score ? ` — rated ${score}/100` : ""}`;
       });
-      const prompt = `Based on these movies the user has watched and rated, write a brief 2-3 sentence taste profile describing their movie preferences. Be specific and insightful — focus on patterns in genre, tone, era, and themes. Write in second person ("You tend to..."). Movies: ${lines.join(", ")}`;
+      const systemPrompt = `You are a movie recommendation engine. The user is feeling "${mood}" and has watched these movies: ${lines.join("; ")}. Recommend exactly 5 movies they haven't seen that match their mood AND taste. Consider their genre preferences and rating patterns. Respond ONLY with a JSON array of 5 objects, each with "title" (string), "year" (number), and "reason" (one short sentence why this fits their mood). No markdown, no code fences, just raw JSON.`;
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 200, messages: [{ role: "user", content: prompt }] }),
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, system: systemPrompt, messages: [{ role: "user", content: `I'm feeling ${mood}. What should I watch?` }] }),
       });
       const data = await resp.json();
       if (data.error) throw new Error(data.error.message || "API error");
       const text = data.content?.[0]?.text?.trim();
-      if (text) onSetTasteProfile(text);
+      if (!text) throw new Error("Empty response");
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("Bad format");
+
+      // Fetch posters from TMDB for each movie
+      const withPosters = await Promise.all(
+        parsed.slice(0, 5).map(async (item) => {
+          try {
+            const result = await searchMovies(`${item.title} ${item.year || ""}`.trim());
+            const match = result.movies?.[0];
+            return { ...item, poster_path: match?.poster_path || null };
+          } catch {
+            return { ...item, poster_path: null };
+          }
+        })
+      );
+
+      const playlist = { mood, items: withPosters, ts: Date.now() };
+      setMoodPlaylist(playlist);
+      saveToStorage("cc_moodPlaylist", playlist);
     } catch {
-      setProfileError("Couldn't generate your profile right now. Try again later.");
+      setMoodError("Couldn't generate your playlist. Try again.");
     } finally {
-      setGeneratingProfile(false);
+      setMoodLoading(false);
     }
   };
+
+  // AI Insight Card — auto-fetch on mount with 1hr cache
+  useEffect(() => {
+    if (movies.length < 3) return;
+    const cached = (() => {
+      try {
+        const raw = localStorage.getItem("cc_aiInsight");
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (Date.now() - parsed.ts < 3600000) return parsed;
+        return null;
+      } catch { return null; }
+    })();
+    if (cached) {
+      setInsight({ type: cached.type, text: cached.text });
+      // also keep tasteProfile in sync for ChatTab context
+      if (cached.text) onSetTasteProfile(cached.text);
+      return;
+    }
+    // Pick a random insight type
+    const insightType = INSIGHT_TYPES[Math.floor(Math.random() * INSIGHT_TYPES.length)];
+    const fetchInsight = async () => {
+      setInsightLoading(true);
+      try {
+        const recent = movies.slice(-20);
+        const lines = recent.map((m) => {
+          const score = watchedRatings.get(m.id);
+          return `${m.title} (${m.genre}, ${m.year})${score ? ` — rated ${score}/100` : ""}`;
+        });
+        const systemPrompt = `You are a witty, concise movie taste analyst. The user has watched these movies: ${lines.join("; ")}. Respond with ONLY the insight text, nothing else. No preamble, no "Here's your insight", just the insight itself. Max 2 sentences.`;
+        const userPrompt = INSIGHT_PROMPTS[insightType];
+        const resp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 120, system: systemPrompt, messages: [{ role: "user", content: userPrompt }] }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error.message || "API error");
+        const text = data.content?.[0]?.text?.trim();
+        if (text) {
+          const result = { type: insightType, text, ts: Date.now() };
+          localStorage.setItem("cc_aiInsight", JSON.stringify(result));
+          setInsight({ type: insightType, text });
+          onSetTasteProfile(text);
+        } else {
+          throw new Error("Empty response");
+        }
+      } catch {
+        // Fallback: pick a random pre-written insight
+        const fb = FALLBACK_INSIGHTS[Math.floor(Math.random() * FALLBACK_INSIGHTS.length)];
+        setInsight({ type: fb.type, text: fb.text });
+      } finally {
+        setInsightLoading(false);
+      }
+    };
+    fetchInsight();
+  }, [movies.length >= 3 ? "ready" : "waiting"]);
 
   return (
     <>
@@ -1870,20 +2065,33 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 
         {movies.length > 0 && (
           <>
-            <div className="taste-profile-card">
-              {tasteProfile ? (
-                <p className="taste-profile-text">{tasteProfile}</p>
-              ) : (
-                <p className="taste-profile-empty">Generate an AI taste profile based on your watched movies and ratings.</p>
-              )}
-              <div className="taste-profile-footer">
-                <button className="taste-profile-btn" onClick={generateProfile} disabled={generatingProfile}>
-                  {generatingProfile
-                    ? <><div className="loading-spinner" style={{ width: 12, height: 12, borderWidth: 2 }} /> Generating…</>
-                    : tasteProfile ? "Regenerate" : "Generate taste profile"}
-                </button>
-                {profileError && <span className="taste-profile-error">{profileError}</span>}
-              </div>
+            <div className={`insight-card${insightLoading ? " insight-loading" : ""}`}>
+              {movies.length < 3 ? (
+                <p className="insight-text" style={{ fontStyle: "normal", color: "var(--text-muted)" }}>Watch at least 3 movies to unlock AI insights about your taste.</p>
+              ) : insightLoading ? (
+                <div className="insight-shimmer">
+                  <div className="insight-shimmer-label" />
+                  <div className="insight-shimmer-line" />
+                  <div className="insight-shimmer-line short" />
+                </div>
+              ) : insight ? (
+                <>
+                  <div className="insight-label">
+                    {INSIGHT_ICONS[insight.type]}
+                    {INSIGHT_LABELS[insight.type]}
+                  </div>
+                  <p className="insight-text">{insight.text}</p>
+                </>
+              ) : null}
+            </div>
+
+            <div className="mood-section">
+              <button className="mood-btn" onClick={() => setMoodOpen(true)}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+                </svg>
+                Mood Playlist
+              </button>
             </div>
 
             {view === "journal" && (
@@ -1939,6 +2147,73 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
           </>
         )}
       </div>
+
+      {moodOpen && (
+        <div className="mood-overlay" onClick={(e) => { if (e.target === e.currentTarget && !moodLoading) setMoodOpen(false); }}>
+          <div className="mood-card">
+            <div className="mood-card-header">
+              <span className="mood-card-title">{moodPlaylist?.items && !moodLoading ? "Your Playlist" : "How are you feeling?"}</span>
+              <button className="mood-close" onClick={() => { if (!moodLoading) { setMoodOpen(false); setMoodSelected(null); setMoodError(""); } }}>&times;</button>
+            </div>
+
+            {!moodLoading && !moodPlaylist?.items && !moodError && (
+              <div className="mood-chips">
+                {MOODS.map((m) => (
+                  <button key={m.id} className={`mood-chip${moodSelected === m.id ? " selected" : ""}`} onClick={() => generateMoodPlaylist(m.id)}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {!moodLoading && moodPlaylist?.items && (
+              <>
+                <div className="mood-chips">
+                  {MOODS.map((m) => (
+                    <button key={m.id} className={`mood-chip${moodPlaylist.mood === m.id ? " selected" : ""}`} onClick={() => generateMoodPlaylist(m.id)}>
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mood-results">
+                  {moodPlaylist.items.map((item, i) => (
+                    <div key={i} className="mood-result-item">
+                      <span className="mood-result-num">{i + 1}</span>
+                      <div className="mood-result-poster">
+                        {item.poster_path ? (
+                          <img src={`${IMG_BASE}/w154${item.poster_path}`} alt={item.title} loading="lazy" />
+                        ) : (
+                          <div className="movie-poster-fallback">{(item.title || "?")[0]}</div>
+                        )}
+                      </div>
+                      <div className="mood-result-info">
+                        <div className="mood-result-title">{item.title} {item.year ? `(${item.year})` : ""}</div>
+                        <div className="mood-result-reason">{item.reason}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {moodLoading && (
+              <div className="mood-loading">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <div key={i} className="mood-shimmer-row" style={{ animationDelay: `${i * 60}ms` }}>
+                    <div className="mood-shimmer-poster" />
+                    <div className="mood-shimmer-lines">
+                      <div className={`mood-shimmer-line ${i % 2 === 0 ? "w60" : "w80"}`} />
+                      <div className={`mood-shimmer-line ${i % 2 === 0 ? "w80" : "w50"}`} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {moodError && <div className="mood-error">{moodError}</div>}
+          </div>
+        </div>
+      )}
 
       {selectedMovie && (
         <JournalDetailModal
@@ -2569,7 +2844,7 @@ export default function App() {
   const toggleTheme = () => setTheme((t) => t === "dark" ? "light" : "dark");
 
   const clearAllData = () => {
-    const keys = ["cc_savedIds", "cc_savedMovies", "cc_watchedIds", "cc_watchedMovies", "cc_watchedNotes", "cc_watchedRatings", "cc_tasteProfile", "cc_chats", "cc_activeChatId", "cc_collections", "cc_badges", "cc_watchedDates"];
+    const keys = ["cc_savedIds", "cc_savedMovies", "cc_watchedIds", "cc_watchedMovies", "cc_watchedNotes", "cc_watchedRatings", "cc_tasteProfile", "cc_aiInsight", "cc_moodPlaylist", "cc_chats", "cc_activeChatId", "cc_collections", "cc_badges", "cc_watchedDates"];
     keys.forEach((k) => localStorage.removeItem(k));
     setSavedIds(new Set());
     setSavedMovies(new Map());
