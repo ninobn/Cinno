@@ -248,6 +248,181 @@ const PopcornIcon = () => (
   </svg>
 );
 
+const FolderIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+  </svg>
+);
+
+const HeartIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
+  </svg>
+);
+
+const TrashIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+  </svg>
+);
+
+const ChevronLeftIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="15 18 9 12 15 6" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);
+
+const PlusIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+
+const PencilIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 3a2.83 2.83 0 114 4L7.5 20.5 2 22l1.5-5.5z" />
+  </svg>
+);
+
+const TrophyIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 9H4a2 2 0 01-2-2V5a2 2 0 012-2h2" /><path d="M18 9h2a2 2 0 002-2V5a2 2 0 00-2-2h-2" />
+    <path d="M4 22h16" /><path d="M10 22V14a2 2 0 00-2-2H6V3h12v9h-2a2 2 0 00-2 2v8" />
+  </svg>
+);
+
+const LockIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0110 0v4" />
+  </svg>
+);
+
+// ─── Badge Icons (each unique per badge) ────────────────────────────────────────
+const BadgeIconFirstWatch = () => (
+  <svg viewBox="0 0 40 40" fill="none">
+    <circle cx="20" cy="20" r="14" stroke="currentColor" strokeWidth="1.5" />
+    <polygon points="20,10 22.5,17 30,17 24,21.5 26,29 20,24.5 14,29 16,21.5 10,17 17.5,17" fill="currentColor" opacity="0.85" />
+  </svg>
+);
+
+const BadgeIconCritic = () => (
+  <svg viewBox="0 0 40 40" fill="none">
+    <rect x="8" y="12" width="24" height="17" rx="2" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M14 19h12M14 23h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <circle cx="28" cy="12" r="4" fill="currentColor" opacity="0.3" />
+    <path d="M26.5 12l1 1 2-2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
+const BadgeIconHorror = () => (
+  <svg viewBox="0 0 40 40" fill="none">
+    <path d="M20 6c-6 0-11 4-11 11 0 4 2 7 4 9 1.5 1.5 2 3 2 5h10c0-2 .5-3.5 2-5 2-2 4-5 4-9 0-7-5-11-11-11z" stroke="currentColor" strokeWidth="1.5" />
+    <circle cx="15" cy="18" r="2" fill="currentColor" />
+    <circle cx="25" cy="18" r="2" fill="currentColor" />
+    <path d="M14 24h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <path d="M16 24v3M20 24v3M24 24v3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+  </svg>
+);
+
+const BadgeIconCentury = () => (
+  <svg viewBox="0 0 40 40" fill="none">
+    <rect x="6" y="8" width="28" height="24" rx="3" stroke="currentColor" strokeWidth="1.5" />
+    <text x="20" y="24" textAnchor="middle" fill="currentColor" fontSize="12" fontWeight="700" fontFamily="Outfit, sans-serif">100</text>
+    <path d="M6 14h28" stroke="currentColor" strokeWidth="1.5" />
+  </svg>
+);
+
+const BadgeIconPerfectionist = () => (
+  <svg viewBox="0 0 40 40" fill="none">
+    <circle cx="20" cy="20" r="13" stroke="currentColor" strokeWidth="1.5" />
+    <circle cx="20" cy="20" r="8" stroke="currentColor" strokeWidth="1.5" opacity="0.5" />
+    <circle cx="20" cy="20" r="3" fill="currentColor" />
+    <path d="M20 7v3M20 30v3M7 20h3M30 20h3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" opacity="0.4" />
+  </svg>
+);
+
+const BadgeIconExplorer = () => (
+  <svg viewBox="0 0 40 40" fill="none">
+    <circle cx="20" cy="20" r="14" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M14 14l4 8 8-4-4-8z" fill="currentColor" opacity="0.25" stroke="currentColor" strokeWidth="1.2" />
+    <circle cx="20" cy="20" r="2" fill="currentColor" />
+  </svg>
+);
+
+const BadgeIconBinge = () => (
+  <svg viewBox="0 0 40 40" fill="none">
+    <rect x="7" y="10" width="10" height="15" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+    <rect x="15" y="8" width="10" height="15" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+    <rect x="23" y="10" width="10" height="15" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M12 30l3-3M20 28l0-3M28 30l-3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+  </svg>
+);
+
+const BadgeIconCollector = () => (
+  <svg viewBox="0 0 40 40" fill="none">
+    <rect x="6" y="14" width="12" height="16" rx="2" stroke="currentColor" strokeWidth="1.2" />
+    <rect x="14" y="10" width="12" height="16" rx="2" stroke="currentColor" strokeWidth="1.2" fill="currentColor" fillOpacity="0.1" />
+    <rect x="22" y="14" width="12" height="16" rx="2" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M18 17h4M18 20h4" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+  </svg>
+);
+
+// ─── Badge Definitions ──────────────────────────────────────────────────────────
+const ALL_GENRES = Object.keys(GENRE_COLORS).filter((g) => g !== "Film");
+
+const BADGE_DEFS = [
+  { id: "first_watch",    title: "First Watch",     desc: "Watch your first movie",              target: 1,   icon: BadgeIconFirstWatch },
+  { id: "critic",         title: "Critic",           desc: "Rate 10 movies",                     target: 10,  icon: BadgeIconCritic },
+  { id: "horror_fan",     title: "Horror Fan",       desc: "Watch 5 horror movies",              target: 5,   icon: BadgeIconHorror },
+  { id: "century_club",   title: "Century Club",     desc: "Watch 100 movies",                   target: 100, icon: BadgeIconCentury },
+  { id: "perfectionist",  title: "Perfectionist",    desc: "Give a perfect 100 rating",          target: 1,   icon: BadgeIconPerfectionist },
+  { id: "genre_explorer", title: "Genre Explorer",   desc: "Watch a movie from every genre",     target: ALL_GENRES.length, icon: BadgeIconExplorer },
+  { id: "binge_watcher",  title: "Binge Watcher",    desc: "Watch 3 movies in one day",          target: 3,   icon: BadgeIconBinge },
+  { id: "collector",      title: "Collector",         desc: "Create 5 collections",               target: 5,   icon: BadgeIconCollector },
+];
+
+function computeBadgeProgress(badgeId, { watchedMovies, watchedRatings, collections, watchedDates }) {
+  switch (badgeId) {
+    case "first_watch":    return Math.min(watchedMovies.size, 1);
+    case "critic":         return Math.min(watchedRatings.size, 10);
+    case "horror_fan": {
+      let count = 0;
+      watchedMovies.forEach((m) => { if (m.genre === "Horror") count++; });
+      return Math.min(count, 5);
+    }
+    case "century_club":   return Math.min(watchedMovies.size, 100);
+    case "perfectionist": {
+      let has = false;
+      watchedRatings.forEach((r) => { if (r === 100) has = true; });
+      return has ? 1 : 0;
+    }
+    case "genre_explorer": {
+      const seen = new Set();
+      watchedMovies.forEach((m) => { if (m.genre && m.genre !== "Film") seen.add(m.genre); });
+      return Math.min(seen.size, ALL_GENRES.length);
+    }
+    case "binge_watcher": {
+      const dayCounts = {};
+      watchedDates.forEach((dateStr) => { dayCounts[dateStr] = (dayCounts[dateStr] || 0) + 1; });
+      const maxInDay = Object.values(dayCounts).reduce((mx, v) => Math.max(mx, v), 0);
+      return Math.min(maxInDay, 3);
+    }
+    case "collector": {
+      const userCollections = collections.filter((c) => !c.isDefault);
+      return Math.min(userCollections.length, 5);
+    }
+    default: return 0;
+  }
+}
+
 // ─── Shared Components ─────────────────────────────────────────────────────────
 
 function SkeletonGrid({ count = 12 }) {
@@ -421,7 +596,7 @@ function useTabDirection(tab) {
   return dir;
 }
 
-function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, savedIds, isWatched, onToggleWatched, onStartDebrief }) {
+function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, savedIds, isWatched, onToggleWatched, onStartDebrief, collections, toggleMovieInCollection }) {
   const genreColor = GENRE_COLORS[movie.genre] || "#8e90a0";
   const ratingColor = getRatingColor(movie.rating);
   const [tab, setTab] = useState("overview");
@@ -432,6 +607,17 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
   const [providers, setProviders] = useState([]);
   const [details, setDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(true);
+  const [collectionDropdown, setCollectionDropdown] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    if (!collectionDropdown) return;
+    const handleClick = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setCollectionDropdown(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [collectionDropdown]);
 
   useEffect(() => {
     getWatchProviders(movie.id).then(setProviders).catch(() => {});
@@ -510,6 +696,32 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
                     <ChatIcon />
                     Debrief
                   </button>
+                )}
+                {collections && toggleMovieInCollection && (
+                  <div className="collection-dropdown-wrap" ref={dropdownRef}>
+                    <button className="modal-collection-btn" onClick={() => setCollectionDropdown((v) => !v)}>
+                      <FolderIcon />
+                      Collection
+                    </button>
+                    {collectionDropdown && (
+                      <div className="collection-dropdown">
+                        {collections.map((col) => {
+                          const inCol = col.movieIds.includes(movie.id);
+                          return (
+                            <button
+                              key={col.id}
+                              className={`collection-dropdown-item ${inCol ? "active" : ""}`}
+                              onClick={() => toggleMovieInCollection(col.id, movie)}
+                            >
+                              <span className="collection-dropdown-check">{inCol ? <CheckIcon /> : null}</span>
+                              <span className="collection-dropdown-name">{col.name}</span>
+                              <span className="collection-dropdown-count">{col.movieIds.length}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -721,7 +933,7 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
 
 // ─── Search Tab ────────────────────────────────────────────────────────────────
 
-function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief }) {
+function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [movies, setMovies] = useState([]);
@@ -1137,6 +1349,8 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
           isWatched={watchedIds.has(selectedMovie.id)}
           onToggleWatched={toggleWatched}
           onStartDebrief={startDebrief}
+          collections={collections}
+          toggleMovieInCollection={toggleMovieInCollection}
         />
       )}
     </>
@@ -1145,41 +1359,148 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
 
 // ─── Saved Tab ─────────────────────────────────────────────────────────────────
 
-function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief }) {
-  const [selectedMovie, setSelectedMovie] = useState(null);
-  const [emptyMsg] = useState(() => pickRandom(EMPTY_WATCHLIST));
-  const movies = useMemo(
-    () => Array.from(savedMovies.values()).map((m, i) => ({ ...m, _idx: i })),
-    [savedMovies]
-  );
+function CreateCollectionModal({ onClose, onCreate }) {
+  const [name, setName] = useState("");
+  const inputRef = useRef(null);
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
-  if (movies.length === 0) {
-    return (
-      <div className="content">
-        <div className="saved-empty">
-          <div className="saved-icon">{emptyMsg.icon}</div>
-          <div className="saved-title">{emptyMsg.title}</div>
-          <div className="saved-desc">{emptyMsg.desc}</div>
+  const handleSubmit = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onCreate(trimmed);
+    onClose();
+  };
+
+  return createPortal(
+    <div className="movie-modal-overlay" onClick={onClose}>
+      <div className="collection-create-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-handle-bar"><div className="modal-handle" /></div>
+        <div className="collection-create-header">New Collection</div>
+        <input
+          ref={inputRef}
+          className="collection-create-input"
+          type="text"
+          placeholder="Collection name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+          maxLength={40}
+        />
+        <div className="collection-create-actions">
+          <button className="collection-create-cancel" onClick={onClose}>Cancel</button>
+          <button className="collection-create-submit" disabled={!name.trim()} onClick={handleSubmit}>Create</button>
         </div>
       </div>
-    );
-  }
+    </div>,
+    document.body
+  );
+}
+
+function CollectionCard({ collection, savedMovies, onClick }) {
+  const previewMovies = collection.movieIds
+    .slice(0, 3)
+    .map((id) => savedMovies.get(id))
+    .filter(Boolean);
+
+  return (
+    <div className="collection-card scroll-tile" onClick={onClick}>
+      <div className="collection-card-posters">
+        {previewMovies.length > 0 ? (
+          previewMovies.map((m, i) => (
+            <div
+              key={m.id}
+              className="collection-poster-thumb"
+              style={{
+                zIndex: 3 - i,
+                transform: `translateX(${i * 18}px) rotate(${i === 0 ? -3 : i === 1 ? 1 : 4}deg)`,
+              }}
+            >
+              <img src={`${IMG_BASE}/w154${m.poster_path}`} alt={m.title} />
+            </div>
+          ))
+        ) : (
+          <div className="collection-poster-empty">
+            {collection.isDefault ? <HeartIcon /> : <FolderIcon />}
+          </div>
+        )}
+      </div>
+      <div className="collection-card-name">{collection.name}</div>
+      <div className="collection-card-count">{collection.movieIds.length} movie{collection.movieIds.length !== 1 ? "s" : ""}</div>
+    </div>
+  );
+}
+
+function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, onBack, onRename, onDelete, collections, toggleMovieInCollection }) {
+  const [selectedMovie, setSelectedMovie] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState(collection.name);
+  const editRef = useRef(null);
+
+  useEffect(() => { if (editing) editRef.current?.focus(); }, [editing]);
+
+  const movies = collection.movieIds
+    .map((id) => savedMovies.get(id))
+    .filter(Boolean)
+    .map((m, i) => ({ ...m, _idx: i }));
+
+  const handleSaveName = () => {
+    const trimmed = editName.trim();
+    if (trimmed && trimmed !== collection.name) onRename(collection.id, trimmed);
+    else setEditName(collection.name);
+    setEditing(false);
+  };
 
   return (
     <>
       <div className="content">
-        <div className="results-label">{movies.length} movie{movies.length !== 1 ? "s" : ""} in your watchlist</div>
-        <div className="movies-grid">
-          {movies.map((movie) => (
-            <MovieTile
-              key={movie.id}
-              movie={movie}
-              isSaved={true}
-              onToggleSave={toggleSave}
-              onClick={() => setSelectedMovie(movie)}
-            />
-          ))}
+        <div className="collection-detail-header">
+          <button className="collection-back-btn" onClick={onBack}>
+            <ChevronLeftIcon />
+          </button>
+          <div className="collection-detail-title-area">
+            {editing ? (
+              <input
+                ref={editRef}
+                className="collection-rename-input"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onBlur={handleSaveName}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSaveName(); if (e.key === "Escape") { setEditName(collection.name); setEditing(false); } }}
+                maxLength={40}
+              />
+            ) : (
+              <div className="collection-detail-title" onClick={() => !collection.isDefault && setEditing(true)}>
+                {collection.name}
+                {!collection.isDefault && <span className="collection-edit-icon"><PencilIcon /></span>}
+              </div>
+            )}
+            <div className="collection-detail-count">{movies.length} movie{movies.length !== 1 ? "s" : ""}</div>
+          </div>
+          {!collection.isDefault && (
+            <button className="collection-delete-btn" onClick={() => { onDelete(collection.id); onBack(); }}>
+              <TrashIcon />
+            </button>
+          )}
         </div>
+        {movies.length === 0 ? (
+          <div className="saved-empty">
+            <div className="saved-icon">{collection.isDefault ? "❤️" : "📁"}</div>
+            <div className="saved-title">No movies yet</div>
+            <div className="saved-desc">Add movies from the movie detail view.</div>
+          </div>
+        ) : (
+          <div className="movies-grid">
+            {movies.map((movie) => (
+              <MovieTile
+                key={movie.id}
+                movie={movie}
+                isSaved={savedIds.has(movie.id)}
+                onToggleSave={toggleSave}
+                onClick={() => setSelectedMovie(movie)}
+              />
+            ))}
+          </div>
+        )}
       </div>
       {selectedMovie && (
         <MovieModal
@@ -1193,6 +1514,111 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
           isWatched={watchedIds.has(selectedMovie.id)}
           onToggleWatched={toggleWatched}
           onStartDebrief={startDebrief}
+          collections={collections}
+          toggleMovieInCollection={toggleMovieInCollection}
+        />
+      )}
+    </>
+  );
+}
+
+function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief, collections, createCollection, renameCollection, deleteCollection, toggleMovieInCollection }) {
+  const [selectedMovie, setSelectedMovie] = useState(null);
+  const [emptyMsg] = useState(() => pickRandom(EMPTY_WATCHLIST));
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [activeCollection, setActiveCollection] = useState(null);
+
+  const movies = useMemo(
+    () => Array.from(savedMovies.values()).map((m, i) => ({ ...m, _idx: i })),
+    [savedMovies]
+  );
+
+  const viewingCollection = activeCollection ? collections.find((c) => c.id === activeCollection) : null;
+
+  if (viewingCollection) {
+    return (
+      <CollectionDetailView
+        collection={viewingCollection}
+        savedMovies={savedMovies}
+        savedIds={savedIds}
+        toggleSave={toggleSave}
+        watchedIds={watchedIds}
+        toggleWatched={toggleWatched}
+        startDebrief={startDebrief}
+        onBack={() => setActiveCollection(null)}
+        onRename={renameCollection}
+        onDelete={deleteCollection}
+        collections={collections}
+        toggleMovieInCollection={toggleMovieInCollection}
+      />
+    );
+  }
+
+  return (
+    <>
+      <div className="content">
+        <div className="collections-section">
+          <div className="collections-header">
+            <div className="collections-title">My Collections</div>
+            <button className="collections-add-btn" onClick={() => setShowCreateModal(true)}>
+              <PlusIcon />
+            </button>
+          </div>
+          <div className="collections-scroll">
+            {collections.map((col) => (
+              <CollectionCard
+                key={col.id}
+                collection={col}
+                savedMovies={savedMovies}
+                onClick={() => setActiveCollection(col.id)}
+              />
+            ))}
+          </div>
+        </div>
+
+        {movies.length === 0 ? (
+          <div className="saved-empty">
+            <div className="saved-icon">{emptyMsg.icon}</div>
+            <div className="saved-title">{emptyMsg.title}</div>
+            <div className="saved-desc">{emptyMsg.desc}</div>
+          </div>
+        ) : (
+          <>
+            <div className="results-label">{movies.length} movie{movies.length !== 1 ? "s" : ""} in your watchlist</div>
+            <div className="movies-grid">
+              {movies.map((movie) => (
+                <MovieTile
+                  key={movie.id}
+                  movie={movie}
+                  isSaved={true}
+                  onToggleSave={toggleSave}
+                  onClick={() => setSelectedMovie(movie)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      {selectedMovie && (
+        <MovieModal
+          key={selectedMovie.id}
+          movie={selectedMovie}
+          onClose={() => setSelectedMovie(null)}
+          isSaved={savedIds.has(selectedMovie.id)}
+          onToggleSave={toggleSave}
+          onMovieSelect={setSelectedMovie}
+          savedIds={savedIds}
+          isWatched={watchedIds.has(selectedMovie.id)}
+          onToggleWatched={toggleWatched}
+          onStartDebrief={startDebrief}
+          collections={collections}
+          toggleMovieInCollection={toggleMovieInCollection}
+        />
+      )}
+      {showCreateModal && (
+        <CreateCollectionModal
+          onClose={() => setShowCreateModal(false)}
+          onCreate={createCollection}
         />
       )}
     </>
@@ -1958,7 +2384,79 @@ function MovieNightPicker({ onClose }) {
   );
 }
 
-function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
+// ─── Achievements View ──────────────────────────────────────────────────────────
+
+function AchievementsView({ onBack, unlockedBadges, watchedMovies, watchedRatings, collections, watchedDates }) {
+  const ctx = { watchedMovies, watchedRatings, collections, watchedDates };
+  const unlocked = unlockedBadges.length;
+  const total = BADGE_DEFS.length;
+
+  return createPortal(
+    <div className="movie-modal-overlay" onClick={onBack}>
+      <div className="movie-modal achievements-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-handle" />
+        <div className="achievements-header">
+          <div className="achievements-title-row">
+            <div className="achievements-title">Achievements</div>
+            <button className="modal-close-btn" style={{ position: "static" }} onClick={onBack}>✕</button>
+          </div>
+          <div className="achievements-progress-summary">
+            <div className="achievements-progress-bar-bg">
+              <div className="achievements-progress-bar-fill" style={{ width: `${(unlocked / total) * 100}%` }} />
+            </div>
+            <div className="achievements-progress-text">{unlocked} / {total} unlocked</div>
+          </div>
+        </div>
+        <div className="badge-grid">
+          {BADGE_DEFS.map((badge) => {
+            const isUnlocked = unlockedBadges.includes(badge.id);
+            const progress = computeBadgeProgress(badge.id, ctx);
+            const pct = Math.min((progress / badge.target) * 100, 100);
+            const Icon = badge.icon;
+            return (
+              <div key={badge.id} className={`badge-card ${isUnlocked ? "unlocked" : "locked"}`}>
+                {!isUnlocked && (
+                  <div className="badge-lock-overlay">
+                    <LockIcon />
+                  </div>
+                )}
+                <div className="badge-icon-wrap">
+                  <Icon />
+                </div>
+                <div className="badge-title">{badge.title}</div>
+                <div className="badge-desc">{badge.desc}</div>
+                <div className="badge-progress-row">
+                  <div className="badge-progress-track">
+                    <div className="badge-progress-fill" style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="badge-progress-label">{progress}/{badge.target}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function BadgeToast({ badge, visible }) {
+  if (!badge) return null;
+  const Icon = badge.icon;
+  return createPortal(
+    <div className={`badge-toast ${visible ? "show" : "hide"}`}>
+      <div className="badge-toast-icon"><Icon /></div>
+      <div className="badge-toast-content">
+        <div className="badge-toast-label">Badge Unlocked</div>
+        <div className="badge-toast-title">{badge.title}</div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function SettingsModal({ onClose, onClearData, theme, onToggleTheme, onOpenAchievements, unlockedBadges }) {
   const [confirmClear, setConfirmClear] = useState(false);
 
   const handleClear = () => {
@@ -1994,6 +2492,19 @@ function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
         </div>
 
         <div className="settings-section">
+          <button className="settings-achievements-btn" onClick={onOpenAchievements}>
+            <div className="settings-achievements-left">
+              <div className="settings-achievements-icon"><TrophyIcon /></div>
+              <div>
+                <div className="settings-label">Achievements</div>
+                <div className="settings-desc">{unlockedBadges.length} / {BADGE_DEFS.length} badges unlocked</div>
+              </div>
+            </div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 6 15 12 9 18" /></svg>
+          </button>
+        </div>
+
+        <div className="settings-section">
           <div className="settings-row">
             <div>
               <div className="settings-label">Clear all data</div>
@@ -2026,6 +2537,7 @@ export default function App() {
     _setActiveTab(t);
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [theme, setTheme] = useState(() => loadFromStorage("cc_theme", "dark"));
   const [savedIds, setSavedIds] = useState(() => new Set(loadFromStorage("cc_savedIds", [])));
@@ -2036,6 +2548,14 @@ export default function App() {
   const [watchedRatings, setWatchedRatings] = useState(() => new Map(loadFromStorage("cc_watchedRatings", [])));
   const [tasteProfile, setTasteProfile] = useState(() => loadFromStorage("cc_tasteProfile", ""));
   const [debriefPayload, setDebriefPayload] = useState(null);
+  const [collections, setCollections] = useState(() => {
+    const stored = loadFromStorage("cc_collections", null);
+    if (stored) return stored;
+    return [{ id: "favourites", name: "Favourites", movieIds: [], isDefault: true }];
+  });
+  const [unlockedBadges, setUnlockedBadges] = useState(() => loadFromStorage("cc_badges", []));
+  const [watchedDates, setWatchedDates] = useState(() => new Map(loadFromStorage("cc_watchedDates", [])));
+  const [badgeToast, setBadgeToast] = useState(null);
 
   const defaultChatId = "default";
   const [chats, setChats] = useState(() => loadFromStorage("cc_chats", [{ id: defaultChatId, title: "New chat", messages: [] }]));
@@ -2049,7 +2569,7 @@ export default function App() {
   const toggleTheme = () => setTheme((t) => t === "dark" ? "light" : "dark");
 
   const clearAllData = () => {
-    const keys = ["cc_savedIds", "cc_savedMovies", "cc_watchedIds", "cc_watchedMovies", "cc_watchedNotes", "cc_watchedRatings", "cc_tasteProfile", "cc_chats", "cc_activeChatId"];
+    const keys = ["cc_savedIds", "cc_savedMovies", "cc_watchedIds", "cc_watchedMovies", "cc_watchedNotes", "cc_watchedRatings", "cc_tasteProfile", "cc_chats", "cc_activeChatId", "cc_collections", "cc_badges", "cc_watchedDates"];
     keys.forEach((k) => localStorage.removeItem(k));
     setSavedIds(new Set());
     setSavedMovies(new Map());
@@ -2058,6 +2578,9 @@ export default function App() {
     setWatchedNotes(new Map());
     setWatchedRatings(new Map());
     setTasteProfile("");
+    setCollections([{ id: "favourites", name: "Favourites", movieIds: [], isDefault: true }]);
+    setUnlockedBadges([]);
+    setWatchedDates(new Map());
     const newId = Date.now().toString();
     setChats([{ id: newId, title: "New chat", messages: [] }]);
     setActiveChatId(newId);
@@ -2079,6 +2602,7 @@ export default function App() {
 
   const toggleWatched = (movie) => {
     const id = movie.id;
+    const wasWatched = watchedIds.has(id);
     setWatchedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
@@ -2089,6 +2613,12 @@ export default function App() {
       if (next.has(id)) next.delete(id); else next.set(id, movie);
       return next;
     });
+    if (!wasWatched) {
+      const today = new Date().toISOString().slice(0, 10);
+      setWatchedDates((prev) => new Map(prev).set(id, today));
+    } else {
+      setWatchedDates((prev) => { const next = new Map(prev); next.delete(id); return next; });
+    }
   };
 
   const setWatchedNote = (id, text) => {
@@ -2101,6 +2631,36 @@ export default function App() {
       if (rating === null) next.delete(id); else next.set(id, rating);
       return next;
     });
+  };
+
+  const createCollection = (name) => {
+    const id = Date.now().toString();
+    setCollections((prev) => [...prev, { id, name, movieIds: [], isDefault: false }]);
+    return id;
+  };
+
+  const renameCollection = (collectionId, newName) => {
+    setCollections((prev) => prev.map((c) => c.id === collectionId ? { ...c, name: newName } : c));
+  };
+
+  const deleteCollection = (collectionId) => {
+    setCollections((prev) => prev.filter((c) => c.id !== collectionId || c.isDefault));
+  };
+
+  const toggleMovieInCollection = (collectionId, movie) => {
+    setSavedMovies((prev) => {
+      if (!prev.has(movie.id)) {
+        const next = new Map(prev);
+        next.set(movie.id, movie);
+        return next;
+      }
+      return prev;
+    });
+    setCollections((prev) => prev.map((c) => {
+      if (c.id !== collectionId) return c;
+      const has = c.movieIds.includes(movie.id);
+      return { ...c, movieIds: has ? c.movieIds.filter((id) => id !== movie.id) : [...c.movieIds, movie.id] };
+    }));
   };
 
   const startDebrief = (movie) => {
@@ -2125,8 +2685,43 @@ export default function App() {
   useEffect(() => { saveToStorage("cc_watchedNotes",   [...watchedNotes]);   }, [watchedNotes]);
   useEffect(() => { saveToStorage("cc_watchedRatings", [...watchedRatings]); }, [watchedRatings]);
   useEffect(() => { saveToStorage("cc_tasteProfile",  tasteProfile);      }, [tasteProfile]);
+  useEffect(() => { saveToStorage("cc_collections",   collections);       }, [collections]);
+  useEffect(() => { saveToStorage("cc_badges",       unlockedBadges);    }, [unlockedBadges]);
+  useEffect(() => { saveToStorage("cc_watchedDates", [...watchedDates]); }, [watchedDates]);
   useEffect(() => { saveToStorage("cc_chats",        chats);             }, [chats]);
   useEffect(() => { saveToStorage("cc_activeChatId", activeChatId);      }, [activeChatId]);
+
+  // ── Badge checking effect ──────────────────────────────────
+  const badgeToastQueue = useRef([]);
+  const badgeToastTimer = useRef(null);
+
+  const showNextToast = useCallback(() => {
+    if (badgeToastQueue.current.length === 0) return;
+    const badge = badgeToastQueue.current.shift();
+    setBadgeToast(badge);
+    badgeToastTimer.current = setTimeout(() => {
+      setBadgeToast(null);
+      setTimeout(() => showNextToast(), 300);
+    }, 3000);
+  }, []);
+
+  useEffect(() => {
+    const ctx = { watchedMovies, watchedRatings, collections, watchedDates };
+    const newlyUnlocked = [];
+    BADGE_DEFS.forEach((badge) => {
+      if (unlockedBadges.includes(badge.id)) return;
+      const progress = computeBadgeProgress(badge.id, ctx);
+      if (progress >= badge.target) newlyUnlocked.push(badge.id);
+    });
+    if (newlyUnlocked.length > 0) {
+      setUnlockedBadges((prev) => [...prev, ...newlyUnlocked]);
+      const toShow = newlyUnlocked.map((id) => BADGE_DEFS.find((b) => b.id === id)).filter(Boolean);
+      badgeToastQueue.current.push(...toShow);
+      if (!badgeToastTimer.current) showNextToast();
+    }
+  }, [watchedMovies, watchedRatings, collections, watchedDates, unlockedBadges, showNextToast]);
+
+  useEffect(() => () => clearTimeout(badgeToastTimer.current), []);
 
   const tabs = [
     { id: "search",  label: "Search",  icon: SearchIcon    },
@@ -2154,10 +2749,16 @@ export default function App() {
 
       <div className={`tab-panel ${tabDir ? `slide-${tabDir}` : ""}`} key={activeTab}>
         {activeTab === "search" && (
-          <SearchTab savedIds={savedIds} toggleSave={toggleSave} watchedIds={watchedIds} toggleWatched={toggleWatched} startDebrief={startDebrief} />
+          <SearchTab savedIds={savedIds} toggleSave={toggleSave} watchedIds={watchedIds} toggleWatched={toggleWatched} startDebrief={startDebrief} collections={collections} toggleMovieInCollection={toggleMovieInCollection} />
         )}
         {activeTab === "saved" && (
-          <SavedTab savedIds={savedIds} toggleSave={toggleSave} savedMovies={savedMovies} watchedIds={watchedIds} toggleWatched={toggleWatched} startDebrief={startDebrief} />
+          <SavedTab
+            savedIds={savedIds} toggleSave={toggleSave} savedMovies={savedMovies}
+            watchedIds={watchedIds} toggleWatched={toggleWatched} startDebrief={startDebrief}
+            collections={collections} createCollection={createCollection}
+            renameCollection={renameCollection} deleteCollection={deleteCollection}
+            toggleMovieInCollection={toggleMovieInCollection}
+          />
         )}
         {activeTab === "journal" && (
           <JournalTab
@@ -2200,11 +2801,25 @@ export default function App() {
           onClearData={clearAllData}
           theme={theme}
           onToggleTheme={toggleTheme}
+          onOpenAchievements={() => { setSettingsOpen(false); setAchievementsOpen(true); }}
+          unlockedBadges={unlockedBadges}
+        />
+      )}
+
+      {achievementsOpen && (
+        <AchievementsView
+          onBack={() => setAchievementsOpen(false)}
+          unlockedBadges={unlockedBadges}
+          watchedMovies={watchedMovies}
+          watchedRatings={watchedRatings}
+          collections={collections}
+          watchedDates={watchedDates}
         />
       )}
 
       {pickerOpen && <MovieNightPicker onClose={() => setPickerOpen(false)} />}
 
+      <BadgeToast badge={badgeToast} visible={!!badgeToast} />
     </div>
   );
 }
