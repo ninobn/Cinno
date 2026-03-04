@@ -21,6 +21,12 @@ const ALL_SUGGESTIONS = [
   "Feel-good films to rewatch",
 ];
 
+const PICKER_SUGGESTIONS = [
+  "feeling adrenaline", "cozy night in", "date night picks", "something weird",
+  "comfort rewatch", "mind-bending", "group of friends", "solo chill night",
+  "need a good cry", "visually stunning", "hidden gem", "90s nostalgia",
+];
+
 const DEBRIEF_OPENERS = [
   (t, s, n) => `I just watched ${t}${s ? ` and rated it ${s}/100` : ""}. ${n || ""} Let's debrief.`,
   (t, s, n) => `Just finished ${t}.${s ? ` I'd give it a ${s}/100.` : ""} ${n ? " " + n : ""} What are your thoughts on it?`,
@@ -1522,7 +1528,7 @@ function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, w
   );
 }
 
-function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief, collections, createCollection, renameCollection, deleteCollection, toggleMovieInCollection }) {
+function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief, collections, createCollection, renameCollection, deleteCollection, toggleMovieInCollection, onStartMoviePicker }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [emptyMsg] = useState(() => pickRandom(EMPTY_WATCHLIST));
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -1557,6 +1563,19 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
   return (
     <>
       <div className="content">
+        <button className="movie-picker-card" onClick={onStartMoviePicker}>
+          <div className="movie-picker-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" /><line x1="7" y1="2" x2="7" y2="22" /><line x1="17" y1="2" x2="17" y2="22" /><line x1="2" y1="12" x2="22" y2="12" /><line x1="2" y1="7" x2="7" y2="7" /><line x1="2" y1="17" x2="7" y2="17" /><line x1="17" y1="7" x2="22" y2="7" /><line x1="17" y1="17" x2="22" y2="17" />
+            </svg>
+          </div>
+          <div className="movie-picker-text">
+            <div className="movie-picker-title">Movie Picker</div>
+            <div className="movie-picker-desc">Tell me the vibe, I'll find the film</div>
+          </div>
+          <svg className="movie-picker-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 6 15 12 9 18" /></svg>
+        </button>
+
         <div className="collections-section">
           <div className="collections-header">
             <div className="collections-title">My Collections</div>
@@ -1627,12 +1646,17 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
 
 // ─── Stats View ────────────────────────────────────────────────────────────────
 
-function StatsView({ watchedMovies, watchedRatings }) {
+function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges, collections }) {
   const statsRef = useRef(null);
 
   const stats = useMemo(() => {
     const totalMovies = watchedMovies.size;
     const totalHours = totalMovies * 2;
+    const totalGenresExplored = new Set();
+    watchedMovies.forEach((m) => totalGenresExplored.add(m.genre || "Other"));
+    const avgRating = watchedRatings.size > 0
+      ? Math.round([...watchedRatings.values()].reduce((s, v) => s + v, 0) / watchedRatings.size)
+      : 0;
 
     let highest = null;
     let lowest = null;
@@ -1656,7 +1680,7 @@ function StatsView({ watchedMovies, watchedRatings }) {
       .sort((a, b) => b[1] - a[1])
       .map(([name, count]) => ({ name, count }));
 
-    // Unpopular opinions: biggest disagreements with TMDB
+    // Unpopular opinions
     const disagreements = [];
     watchedRatings.forEach((userScore, id) => {
       const movie = watchedMovies.get(id);
@@ -1668,14 +1692,26 @@ function StatsView({ watchedMovies, watchedRatings }) {
     disagreements.sort((a, b) => b.absDiff - a.absDiff);
     const unpopularOpinions = disagreements.slice(0, 3);
 
+    // Recent activity (last 5 by date)
+    const recentActivity = [];
+    if (watchedDates) {
+      const sorted = [...watchedDates.entries()].sort((a, b) => b[1].localeCompare(a[1]));
+      for (const [id, dateStr] of sorted.slice(0, 5)) {
+        const movie = watchedMovies.get(id);
+        if (movie) recentActivity.push({ movie, date: dateStr });
+      }
+    }
+
     return {
-      totalMovies, totalHours,
+      totalMovies, totalHours, avgRating,
+      genreCount: totalGenresExplored.size,
       highest: highest ? { movie: highest, score: highScore } : null,
       lowest: lowest ? { movie: lowest, score: lowScore } : null,
       genres,
       unpopularOpinions,
+      recentActivity,
     };
-  }, [watchedMovies, watchedRatings]);
+  }, [watchedMovies, watchedRatings, watchedDates]);
 
   useEffect(() => {
     const container = statsRef.current;
@@ -1704,9 +1740,9 @@ function StatsView({ watchedMovies, watchedRatings }) {
     );
   }
 
-  const totalGenres = stats.genres.reduce((sum, g) => sum + g.count, 0);
-  const donutSize = 140;
-  const strokeWidth = 24;
+  const totalGenreMovies = stats.genres.reduce((sum, g) => sum + g.count, 0);
+  const donutSize = 100;
+  const strokeWidth = 18;
   const radius = (donutSize - strokeWidth) / 2;
   const cx = donutSize / 2;
   const cy = donutSize / 2;
@@ -1714,82 +1750,101 @@ function StatsView({ watchedMovies, watchedRatings }) {
 
   let cumulativeOffset = 0;
   const arcs = stats.genres.map((g) => {
-    const pct = g.count / totalGenres;
+    const pct = g.count / totalGenreMovies;
     const dashLen = circumference * pct;
-    const rotation = (cumulativeOffset / totalGenres) * 360 - 90;
+    const rotation = (cumulativeOffset / totalGenreMovies) * 360 - 90;
     cumulativeOffset += g.count;
     const color = GENRE_COLORS[g.name] || "#7A7878";
-    return { ...g, dashLen, rotation, color };
+    return { ...g, pct, dashLen, rotation, color };
   });
 
   return (
     <div className="stats-grid" ref={statsRef}>
-      <div className="stats-card full">
-        <div className="stats-big-number">{stats.totalMovies}</div>
-        <div className="stats-subtitle">
-          that's {stats.totalHours} hours of cinema
+      {/* ── Quick Stats Row ── */}
+      <div className="stats-card full stats-row">
+        <div className="stat-mini">
+          <div className="stat-mini-num">{stats.totalMovies}</div>
+          <div className="stat-mini-label">movies</div>
+        </div>
+        <div className="stat-mini">
+          <div className="stat-mini-num">{stats.totalHours}h</div>
+          <div className="stat-mini-label">watched</div>
+        </div>
+        <div className="stat-mini">
+          <div className="stat-mini-num">{stats.avgRating}</div>
+          <div className="stat-mini-label">avg rating</div>
+        </div>
+        <div className="stat-mini">
+          <div className="stat-mini-num">{stats.genreCount}</div>
+          <div className="stat-mini-label">genres</div>
         </div>
       </div>
 
+      {/* ── Best vs Worst ── */}
       {stats.highest && stats.lowest && (
-        <>
-          <div className="stats-card">
-            <div className="stats-card-label">Highest Rated</div>
-            <div className="stats-card-movie">
+        <div className="stats-card full">
+          <div className="stats-card-label">Best vs Worst</div>
+          <div className="stats-vs">
+            <div className="stats-vs-side">
               <div className="stats-card-poster">
                 <PosterImage posterPath={stats.highest.movie.poster_path} title={stats.highest.movie.title} />
               </div>
-              <div className="stats-card-info">
+              <div className="stats-vs-info">
                 <div className="stats-card-title">{stats.highest.movie.title}</div>
-                <ScoreRing score={stats.highest.score} size={44} />
+                <ScoreRing score={stats.highest.score} size={38} />
               </div>
             </div>
-          </div>
-          <div className="stats-card">
-            <div className="stats-card-label">Lowest Rated</div>
-            <div className="stats-card-movie">
+            <div className="stats-vs-divider">vs</div>
+            <div className="stats-vs-side">
               <div className="stats-card-poster">
                 <PosterImage posterPath={stats.lowest.movie.poster_path} title={stats.lowest.movie.title} />
               </div>
-              <div className="stats-card-info">
+              <div className="stats-vs-info">
                 <div className="stats-card-title">{stats.lowest.movie.title}</div>
-                <ScoreRing score={stats.lowest.score} size={44} />
+                <ScoreRing score={stats.lowest.score} size={38} />
               </div>
             </div>
-          </div>
-        </>
-      )}
-
-      {stats.genres.length > 0 && (
-        <div className="stats-card full">
-          <div className="stats-card-label">Genre Breakdown</div>
-          <div className="stats-donut-container">
-            <svg width={donutSize} height={donutSize} viewBox={`0 0 ${donutSize} ${donutSize}`}>
-              {arcs.map((arc) => (
-                <circle
-                  key={arc.name}
-                  cx={cx} cy={cy} r={radius}
-                  fill="none"
-                  stroke={arc.color}
-                  strokeWidth={strokeWidth}
-                  strokeDasharray={`${arc.dashLen} ${circumference - arc.dashLen}`}
-                  transform={`rotate(${arc.rotation} ${cx} ${cy})`}
-                />
-              ))}
-            </svg>
-          </div>
-          <div className="stats-legend">
-            {stats.genres.map((g) => (
-              <div key={g.name} className="stats-legend-item">
-                <span className="stats-legend-dot" style={{ background: GENRE_COLORS[g.name] || "#7A7878" }} />
-                <span className="stats-legend-name">{g.name}</span>
-                <span className="stats-legend-count">{g.count}</span>
-              </div>
-            ))}
           </div>
         </div>
       )}
 
+      {/* ── Genre Breakdown ── */}
+      {stats.genres.length > 0 && (
+        <div className="stats-card full">
+          <div className="stats-card-label">Genre Breakdown</div>
+          <div className="stats-genre-row">
+            <div className="stats-donut-container">
+              <svg width={donutSize} height={donutSize} viewBox={`0 0 ${donutSize} ${donutSize}`}>
+                {arcs.map((arc) => (
+                  <circle
+                    key={arc.name}
+                    cx={cx} cy={cy} r={radius}
+                    fill="none"
+                    stroke={arc.color}
+                    strokeWidth={strokeWidth}
+                    strokeDasharray={`${arc.dashLen} ${circumference - arc.dashLen}`}
+                    transform={`rotate(${arc.rotation} ${cx} ${cy})`}
+                  />
+                ))}
+              </svg>
+            </div>
+            <div className="stats-genre-bars">
+              {arcs.slice(0, 6).map((g) => (
+                <div key={g.name} className="genre-bar-row">
+                  <span className="genre-bar-dot" style={{ background: g.color }} />
+                  <span className="genre-bar-name">{g.name}</span>
+                  <div className="genre-bar-track">
+                    <div className="genre-bar-fill" style={{ width: `${g.pct * 100}%`, background: g.color }} />
+                  </div>
+                  <span className="genre-bar-count">{g.count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Unpopular Opinions ── */}
       {stats.unpopularOpinions.length > 0 && (
         <div className="stats-card full">
           <div className="stats-card-label">Unpopular Opinions</div>
@@ -1815,13 +1870,74 @@ function StatsView({ watchedMovies, watchedRatings }) {
                   </div>
                 </div>
                 <div className={`unpopular-diff ${item.diff > 0 ? "higher" : "lower"}`}>
-                  {item.diff > 0 ? "+" : ""}{Math.round(item.diff)}
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    {item.diff > 0 ? <polyline points="18 15 12 9 6 15"/> : <polyline points="6 9 12 15 18 9"/>}
+                  </svg>
+                  {Math.round(item.absDiff)}
                 </div>
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {/* ── Recent Activity ── */}
+      {stats.recentActivity.length > 0 && (
+        <div className="stats-card full">
+          <div className="stats-card-label">Recent Activity</div>
+          <div className="recent-activity-row">
+            {stats.recentActivity.map((item) => (
+              <div key={item.movie.id} className="recent-activity-item">
+                <div className="recent-activity-poster">
+                  <PosterImage posterPath={item.movie.poster_path} title={item.movie.title} />
+                </div>
+                <div className="recent-activity-date">{new Date(item.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Achievements ── */}
+      {(() => {
+        const badgeCtx = { watchedMovies, watchedRatings, collections: collections || [], watchedDates: watchedDates || new Map() };
+        const unlocked = (unlockedBadges || []).length;
+        const total = BADGE_DEFS.length;
+        return (
+          <div className="stats-card full achievements-section">
+            <div className="achievements-inline-header">
+              <div className="stats-card-label">Achievements</div>
+              <div className="achievements-count">{unlocked} of {total} unlocked</div>
+            </div>
+            <div className="achievements-inline-bar">
+              <div className="achievements-inline-bar-fill" style={{ width: `${(unlocked / total) * 100}%` }} />
+            </div>
+            <div className="badge-grid-inline">
+              {BADGE_DEFS.map((badge) => {
+                const isUnlocked = (unlockedBadges || []).includes(badge.id);
+                const progress = computeBadgeProgress(badge.id, badgeCtx);
+                const pct = Math.min((progress / badge.target) * 100, 100);
+                const Icon = badge.icon;
+                return (
+                  <div key={badge.id} className={`badge-inline ${isUnlocked ? "unlocked" : "locked"}`}>
+                    <div className="badge-inline-icon">
+                      {!isUnlocked && <div className="badge-inline-lock"><LockIcon /></div>}
+                      <Icon />
+                    </div>
+                    <div className="badge-inline-name">{badge.title}</div>
+                    <div className="badge-inline-progress">
+                      <div className="badge-inline-track">
+                        <div className="badge-inline-fill" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="badge-inline-frac">{progress}/{badge.target}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -1885,25 +2001,13 @@ const INSIGHT_PROMPTS = {
   movie_dna: 'Summarize their movie DNA in exactly ONE line: top genre + average rating tendency + one fun stat or observation. Keep it punchy like a dating profile bio for their taste.',
 };
 
-const MOODS = [
-  { id: "happy", label: "Happy" },
-  { id: "sad", label: "Sad" },
-  { id: "stressed", label: "Stressed" },
-  { id: "bored", label: "Bored" },
-  { id: "romantic", label: "Romantic" },
-  { id: "adventurous", label: "Adventurous" },
-];
 
-function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, tasteProfile, onSetTasteProfile, startDebrief }) {
+function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [view, setView] = useState("journal");
+  const [rankSort, setRankSort] = useState("rating");
   const [insightLoading, setInsightLoading] = useState(false);
   const [insight, setInsight] = useState(null);
-  const [moodOpen, setMoodOpen] = useState(false);
-  const [moodSelected, setMoodSelected] = useState(null);
-  const [moodLoading, setMoodLoading] = useState(false);
-  const [moodPlaylist, setMoodPlaylist] = useState(() => loadFromStorage("cc_moodPlaylist", null));
-  const [moodError, setMoodError] = useState("");
   const [emptyJournal] = useState(() => pickRandom(EMPTY_JOURNAL));
   const [emptyRankings] = useState(() => pickRandom(EMPTY_RANKINGS));
   const [emptyStats] = useState(() => pickRandom(EMPTY_STATS));
@@ -1913,118 +2017,79 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
     [watchedMovies]
   );
 
-  const rankedMovies = useMemo(
-    () => movies
-      .filter((m) => watchedRatings.has(m.id))
-      .sort((a, b) => watchedRatings.get(b.id) - watchedRatings.get(a.id)),
-    [movies, watchedRatings]
-  );
+  const rankedMovies = useMemo(() => {
+    const rated = movies.filter((m) => watchedRatings.has(m.id));
+    if (rankSort === "date") {
+      return [...rated].sort((a, b) => {
+        const da = watchedDates?.get(a.id) || "";
+        const db = watchedDates?.get(b.id) || "";
+        return db.localeCompare(da);
+      });
+    }
+    return [...rated].sort((a, b) => watchedRatings.get(b.id) - watchedRatings.get(a.id));
+  }, [movies, watchedRatings, watchedDates, rankSort]);
+
+  const rankingStats = useMemo(() => {
+    if (rankedMovies.length === 0) return null;
+    const total = rankedMovies.length;
+    const avg = Math.round(rankedMovies.reduce((s, m) => s + watchedRatings.get(m.id), 0) / total);
+    const genreCounts = {};
+    rankedMovies.forEach((m) => { genreCounts[m.genre] = (genreCounts[m.genre] || 0) + 1; });
+    const topGenre = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
+    return { total, avg, topGenre };
+  }, [rankedMovies, watchedRatings]);
 
   const handleToggleWatched = (movie) => {
     toggleWatched(movie);
     setSelectedMovie(null);
   };
 
-  const generateMoodPlaylist = async (mood) => {
-    setMoodSelected(mood);
-    setMoodLoading(true);
-    setMoodError("");
+  // AI Insight Card — fetch a fresh insight
+  const fetchInsight = useCallback(async () => {
+    if (movies.length < 3) return;
+    const insightType = INSIGHT_TYPES[Math.floor(Math.random() * INSIGHT_TYPES.length)];
+    setInsightLoading(true);
     try {
       const recent = movies.slice(-20);
       const lines = recent.map((m) => {
         const score = watchedRatings.get(m.id);
         return `${m.title} (${m.genre}, ${m.year})${score ? ` — rated ${score}/100` : ""}`;
       });
-      const systemPrompt = `You are a movie recommendation engine. The user is feeling "${mood}" and has watched these movies: ${lines.join("; ")}. Recommend exactly 5 movies they haven't seen that match their mood AND taste. Consider their genre preferences and rating patterns. Respond ONLY with a JSON array of 5 objects, each with "title" (string), "year" (number), and "reason" (one short sentence why this fits their mood). No markdown, no code fences, just raw JSON.`;
+      const systemPrompt = `You are a witty, concise movie taste analyst. The user has watched these movies: ${lines.join("; ")}. Respond with ONLY the insight text, nothing else. No preamble, no "Here's your insight", just the insight itself. Max 2 sentences.`;
+      const userPrompt = INSIGHT_PROMPTS[insightType];
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, system: systemPrompt, messages: [{ role: "user", content: `I'm feeling ${mood}. What should I watch?` }] }),
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 120, system: systemPrompt, messages: [{ role: "user", content: userPrompt }] }),
       });
       const data = await resp.json();
       if (data.error) throw new Error(data.error.message || "API error");
       const text = data.content?.[0]?.text?.trim();
-      if (!text) throw new Error("Empty response");
-      const parsed = JSON.parse(text);
-      if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("Bad format");
-
-      // Fetch posters from TMDB for each movie
-      const withPosters = await Promise.all(
-        parsed.slice(0, 5).map(async (item) => {
-          try {
-            const result = await searchMovies(`${item.title} ${item.year || ""}`.trim());
-            const match = result.movies?.[0];
-            return { ...item, poster_path: match?.poster_path || null };
-          } catch {
-            return { ...item, poster_path: null };
-          }
-        })
-      );
-
-      const playlist = { mood, items: withPosters, ts: Date.now() };
-      setMoodPlaylist(playlist);
-      saveToStorage("cc_moodPlaylist", playlist);
+      if (text) {
+        const result = { type: insightType, text, ts: Date.now() };
+        localStorage.setItem("cc_aiInsight", JSON.stringify(result));
+        setInsight({ type: insightType, text });
+        onSetTasteProfile(text);
+      } else {
+        throw new Error("Empty response");
+      }
     } catch {
-      setMoodError("Couldn't generate your playlist. Try again.");
+      const fb = FALLBACK_INSIGHTS[Math.floor(Math.random() * FALLBACK_INSIGHTS.length)];
+      setInsight({ type: fb.type, text: fb.text });
     } finally {
-      setMoodLoading(false);
+      setInsightLoading(false);
     }
-  };
+  }, [movies, watchedRatings, onSetTasteProfile]);
 
-  // AI Insight Card — auto-fetch on mount with 1hr cache
+  const refreshInsight = useCallback(() => {
+    localStorage.removeItem("cc_aiInsight");
+    setInsight(null);
+    fetchInsight();
+  }, [fetchInsight]);
+
+  // Auto-fetch on mount — always fresh
   useEffect(() => {
     if (movies.length < 3) return;
-    const cached = (() => {
-      try {
-        const raw = localStorage.getItem("cc_aiInsight");
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        if (Date.now() - parsed.ts < 3600000) return parsed;
-        return null;
-      } catch { return null; }
-    })();
-    if (cached) {
-      setInsight({ type: cached.type, text: cached.text });
-      // also keep tasteProfile in sync for ChatTab context
-      if (cached.text) onSetTasteProfile(cached.text);
-      return;
-    }
-    // Pick a random insight type
-    const insightType = INSIGHT_TYPES[Math.floor(Math.random() * INSIGHT_TYPES.length)];
-    const fetchInsight = async () => {
-      setInsightLoading(true);
-      try {
-        const recent = movies.slice(-20);
-        const lines = recent.map((m) => {
-          const score = watchedRatings.get(m.id);
-          return `${m.title} (${m.genre}, ${m.year})${score ? ` — rated ${score}/100` : ""}`;
-        });
-        const systemPrompt = `You are a witty, concise movie taste analyst. The user has watched these movies: ${lines.join("; ")}. Respond with ONLY the insight text, nothing else. No preamble, no "Here's your insight", just the insight itself. Max 2 sentences.`;
-        const userPrompt = INSIGHT_PROMPTS[insightType];
-        const resp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 120, system: systemPrompt, messages: [{ role: "user", content: userPrompt }] }),
-        });
-        const data = await resp.json();
-        if (data.error) throw new Error(data.error.message || "API error");
-        const text = data.content?.[0]?.text?.trim();
-        if (text) {
-          const result = { type: insightType, text, ts: Date.now() };
-          localStorage.setItem("cc_aiInsight", JSON.stringify(result));
-          setInsight({ type: insightType, text });
-          onSetTasteProfile(text);
-        } else {
-          throw new Error("Empty response");
-        }
-      } catch {
-        // Fallback: pick a random pre-written insight
-        const fb = FALLBACK_INSIGHTS[Math.floor(Math.random() * FALLBACK_INSIGHTS.length)];
-        setInsight({ type: fb.type, text: fb.text });
-      } finally {
-        setInsightLoading(false);
-      }
-    };
     fetchInsight();
   }, [movies.length >= 3 ? "ready" : "waiting"]);
 
@@ -2065,37 +2130,33 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 
         {movies.length > 0 && (
           <>
-            <div className={`insight-card${insightLoading ? " insight-loading" : ""}`}>
-              {movies.length < 3 ? (
-                <p className="insight-text" style={{ fontStyle: "normal", color: "var(--text-muted)" }}>Watch at least 3 movies to unlock AI insights about your taste.</p>
-              ) : insightLoading ? (
-                <div className="insight-shimmer">
-                  <div className="insight-shimmer-label" />
-                  <div className="insight-shimmer-line" />
-                  <div className="insight-shimmer-line short" />
-                </div>
-              ) : insight ? (
-                <>
-                  <div className="insight-label">
-                    {INSIGHT_ICONS[insight.type]}
-                    {INSIGHT_LABELS[insight.type]}
-                  </div>
-                  <p className="insight-text">{insight.text}</p>
-                </>
-              ) : null}
-            </div>
-
-            <div className="mood-section">
-              <button className="mood-btn" onClick={() => setMoodOpen(true)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
-                </svg>
-                Mood Playlist
-              </button>
-            </div>
-
             {view === "journal" && (
               <>
+                <div className={`insight-card${insightLoading ? " insight-loading" : ""}`}>
+                  {movies.length < 3 ? (
+                    <p className="insight-text" style={{ fontStyle: "normal", color: "var(--text-muted)" }}>Watch at least 3 movies to unlock AI insights about your taste.</p>
+                  ) : insightLoading ? (
+                    <div className="insight-shimmer">
+                      <div className="insight-shimmer-label" />
+                      <div className="insight-shimmer-line" />
+                      <div className="insight-shimmer-line short" />
+                    </div>
+                  ) : insight ? (
+                    <>
+                      <div className="insight-label">
+                        {INSIGHT_ICONS[insight.type]}
+                        {INSIGHT_LABELS[insight.type]}
+                        <button className="insight-refresh" onClick={refreshInsight} title="New insight">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                          </svg>
+                        </button>
+                      </div>
+                      <p className="insight-text">{insight.text}</p>
+                    </>
+                  ) : null}
+                </div>
+
                 <div className="results-label">{movies.length} watched movie{movies.length !== 1 ? "s" : ""}</div>
                 <div className="movies-grid">
                   {movies.map((movie) => (
@@ -2113,107 +2174,107 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 
             {view === "rankings" && (
               <>
-                <div className="results-label">{rankedMovies.length} rated movie{rankedMovies.length !== 1 ? "s" : ""}</div>
                 {rankedMovies.length === 0 ? (
                   <div className="rankings-empty">Rate movies in your journal to see them ranked here.</div>
                 ) : (
-                  <div className="rankings-list">
-                    {rankedMovies.map((movie, i) => (
-                      <div
-                        key={movie.id}
-                        className="ranking-item"
-                        onClick={() => setSelectedMovie(movie)}
-                        style={{ animationDelay: `${i * 30}ms` }}
-                      >
-                        <span className={`ranking-num ${i < 3 ? "top3" : ""}`}>#{i + 1}</span>
-                        <div className="ranking-poster">
-                          <PosterImage posterPath={movie.poster_path} title={movie.title} />
-                        </div>
-                        <div className="ranking-info">
-                          <div className="ranking-title">{movie.title}</div>
-                          <div className="ranking-meta">{movie.genre} · {movie.year}</div>
-                        </div>
-                        <ScoreRing score={watchedRatings.get(movie.id)} size={44} />
+                  <>
+                    {rankingStats && (
+                      <div className="rank-pills">
+                        <div className="rank-pill"><span className="rank-pill-val">{rankingStats.total}</span> rated</div>
+                        <div className="rank-pill">Avg: <span className="rank-pill-val">{rankingStats.avg}</span>/100</div>
+                        <div className="rank-pill">Top: <span className="rank-pill-val">{rankingStats.topGenre}</span></div>
                       </div>
-                    ))}
-                  </div>
+                    )}
+
+                    <div className="rank-sort-row">
+                      <button className={`rank-sort-btn${rankSort === "rating" ? " active" : ""}`} onClick={() => setRankSort("rating")}>By rating</button>
+                      <button className={`rank-sort-btn${rankSort === "date" ? " active" : ""}`} onClick={() => setRankSort("date")}>By date</button>
+                    </div>
+
+                    {rankSort === "rating" && rankedMovies.length >= 3 && (
+                      <div className="podium">
+                        <div className="podium-slot second" onClick={() => setSelectedMovie(rankedMovies[1])}>
+                          <div className="podium-rank">2</div>
+                          <div className="podium-poster">
+                            <PosterImage posterPath={rankedMovies[1].poster_path} title={rankedMovies[1].title} />
+                          </div>
+                          <div className="podium-title">{rankedMovies[1].title}</div>
+                          <ScoreRing score={watchedRatings.get(rankedMovies[1].id)} size={36} />
+                        </div>
+                        <div className="podium-slot first" onClick={() => setSelectedMovie(rankedMovies[0])}>
+                          <div className="podium-rank">1</div>
+                          <div className="podium-poster">
+                            <PosterImage posterPath={rankedMovies[0].poster_path} title={rankedMovies[0].title} />
+                          </div>
+                          <div className="podium-title">{rankedMovies[0].title}</div>
+                          <ScoreRing score={watchedRatings.get(rankedMovies[0].id)} size={40} />
+                        </div>
+                        <div className="podium-slot third" onClick={() => setSelectedMovie(rankedMovies[2])}>
+                          <div className="podium-rank">3</div>
+                          <div className="podium-poster">
+                            <PosterImage posterPath={rankedMovies[2].poster_path} title={rankedMovies[2].title} />
+                          </div>
+                          <div className="podium-title">{rankedMovies[2].title}</div>
+                          <ScoreRing score={watchedRatings.get(rankedMovies[2].id)} size={36} />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="rankings-list">
+                      {(rankSort === "rating" ? rankedMovies.slice(rankedMovies.length >= 3 ? 3 : 0) : rankedMovies).map((movie, i) => {
+                        const rank = rankSort === "rating" ? i + 4 : i + 1;
+                        return (
+                          <div key={movie.id} className="ranking-item" onClick={() => setSelectedMovie(movie)} style={{ animationDelay: `${i * 30}ms` }}>
+                            <span className="ranking-num">#{rank}</span>
+                            <div className="ranking-poster">
+                              <PosterImage posterPath={movie.poster_path} title={movie.title} />
+                            </div>
+                            <div className="ranking-info">
+                              <div className="ranking-title">{movie.title}</div>
+                              <div className="ranking-meta">{movie.genre} · {movie.year}</div>
+                            </div>
+                            <ScoreRing score={watchedRatings.get(movie.id)} size={38} />
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className={`insight-card${insightLoading ? " insight-loading" : ""}`} style={{ marginTop: 16 }}>
+                      {movies.length < 3 ? (
+                        <p className="insight-text" style={{ fontStyle: "normal", color: "var(--text-muted)" }}>Watch at least 3 movies to unlock AI insights about your taste.</p>
+                      ) : insightLoading ? (
+                        <div className="insight-shimmer">
+                          <div className="insight-shimmer-label" />
+                          <div className="insight-shimmer-line" />
+                          <div className="insight-shimmer-line short" />
+                        </div>
+                      ) : insight ? (
+                        <>
+                          <div className="insight-label">
+                            {INSIGHT_ICONS[insight.type]}
+                            {INSIGHT_LABELS[insight.type]}
+                            <button className="insight-refresh" onClick={refreshInsight} title="New insight">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                              </svg>
+                            </button>
+                          </div>
+                          <p className="insight-text">{insight.text}</p>
+                        </>
+                      ) : null}
+                    </div>
+
+                  </>
                 )}
               </>
             )}
 
             {view === "stats" && (
-              <StatsView watchedMovies={watchedMovies} watchedRatings={watchedRatings} />
+              <StatsView watchedMovies={watchedMovies} watchedRatings={watchedRatings} watchedDates={watchedDates} unlockedBadges={unlockedBadges} collections={collections} />
             )}
           </>
         )}
       </div>
-
-      {moodOpen && (
-        <div className="mood-overlay" onClick={(e) => { if (e.target === e.currentTarget && !moodLoading) setMoodOpen(false); }}>
-          <div className="mood-card">
-            <div className="mood-card-header">
-              <span className="mood-card-title">{moodPlaylist?.items && !moodLoading ? "Your Playlist" : "How are you feeling?"}</span>
-              <button className="mood-close" onClick={() => { if (!moodLoading) { setMoodOpen(false); setMoodSelected(null); setMoodError(""); } }}>&times;</button>
-            </div>
-
-            {!moodLoading && !moodPlaylist?.items && !moodError && (
-              <div className="mood-chips">
-                {MOODS.map((m) => (
-                  <button key={m.id} className={`mood-chip${moodSelected === m.id ? " selected" : ""}`} onClick={() => generateMoodPlaylist(m.id)}>
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {!moodLoading && moodPlaylist?.items && (
-              <>
-                <div className="mood-chips">
-                  {MOODS.map((m) => (
-                    <button key={m.id} className={`mood-chip${moodPlaylist.mood === m.id ? " selected" : ""}`} onClick={() => generateMoodPlaylist(m.id)}>
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="mood-results">
-                  {moodPlaylist.items.map((item, i) => (
-                    <div key={i} className="mood-result-item">
-                      <span className="mood-result-num">{i + 1}</span>
-                      <div className="mood-result-poster">
-                        {item.poster_path ? (
-                          <img src={`${IMG_BASE}/w154${item.poster_path}`} alt={item.title} loading="lazy" />
-                        ) : (
-                          <div className="movie-poster-fallback">{(item.title || "?")[0]}</div>
-                        )}
-                      </div>
-                      <div className="mood-result-info">
-                        <div className="mood-result-title">{item.title} {item.year ? `(${item.year})` : ""}</div>
-                        <div className="mood-result-reason">{item.reason}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {moodLoading && (
-              <div className="mood-loading">
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <div key={i} className="mood-shimmer-row" style={{ animationDelay: `${i * 60}ms` }}>
-                    <div className="mood-shimmer-poster" />
-                    <div className="mood-shimmer-lines">
-                      <div className={`mood-shimmer-line ${i % 2 === 0 ? "w60" : "w80"}`} />
-                      <div className={`mood-shimmer-line ${i % 2 === 0 ? "w80" : "w50"}`} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {moodError && <div className="mood-error">{moodError}</div>}
-          </div>
-        </div>
-      )}
 
       {selectedMovie && (
         <JournalDetailModal
@@ -2320,6 +2381,7 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
   };
 
   const [suggestions] = useState(() => [...ALL_SUGGESTIONS].sort(() => Math.random() - 0.5).slice(0, 4));
+  const [pickerHints] = useState(() => [...PICKER_SUGGESTIONS].sort(() => Math.random() - 0.5).slice(0, 4));
 
   const sendMessage = async (text) => {
     const userMsg = text || input.trim();
@@ -2335,10 +2397,30 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
     setLoading(true);
 
     try {
-      const personalContext = tasteProfile ? `The user's taste profile: ${tasteProfile}` : "";
-      const mc = activeChat?.movieContext;
-      const debriefContext = mc ? `\n\nThe user is debriefing about "${mc.title}" (${mc.year}, ${mc.genre}). TMDB rating: ${mc.tmdbRating}/10. Synopsis: ${mc.synopsis}.` : "";
-      const movieContext = `You're a movie-obsessed friend who loves chatting about films. Keep it casual and natural like a text conversation. Sometimes short replies are good, sometimes longer is acceptable - match the energy of what the user says. Don't volunteer cast, director, or production details unless asked - only keep actual details about the movie. No essays, no formal analysis (unless asked). Just talk like a real person who watches too many movies. Be opinionated, have fun with it, crack jokes when it fits. If someone asks for recs, keep it tight - movie name, year, one sentence why. Bullet points are acceptable, no bold, no emojis, no markdown formatting ever.${debriefContext}${personalContext ? "\n\n" + personalContext : ""}`;
+      let movieContext;
+      const picker = activeChat?.pickerMode;
+      const pc = activeChat?.pickerContext;
+
+      if (picker) {
+        movieContext = `You are a movie picker assistant helping someone decide what to watch right now. Be warm, casual, and conversational — like a friend who just happens to know every movie ever made.
+
+Your approach: Have a natural conversation to understand what they want. Ask naturally (not as a form): how many people are watching, what mood or vibe they want, any genre or decade preferences, and whether they want something new or a comfort rewatch. Don't ask all at once — let the conversation flow. If they already gave you some info, work with it and ask follow-up questions.
+
+Once you have enough info, recommend 2-3 specific movies with title, year, and a one-sentence reason each. Be opinionated and decisive — don't hedge.
+
+Never use internet slang. No bold, no emojis, no markdown formatting ever. Bullet points are fine for listing movies.${pc?.watched ? `\n\nMovies they've watched recently: ${pc.watched}` : ""}${pc?.watchlist ? `\n\nMovies on their watchlist (haven't watched yet): ${pc.watchlist}` : ""}${pc?.tasteProfile ? `\n\nTheir taste profile: ${pc.tasteProfile}` : ""}`;
+      } else {
+        const personalContext = tasteProfile ? `The user's taste profile: ${tasteProfile}` : "";
+        const mc = activeChat?.movieContext;
+        const debriefContext = mc ? `\n\nThe user is debriefing about "${mc.title}" (${mc.year}, ${mc.genre}). TMDB rating: ${mc.tmdbRating}/10. Synopsis: ${mc.synopsis}.` : "";
+        movieContext = `You're a movie-loving friend who genuinely enjoys talking about films. Keep it conversational and natural. Match the user's energy — short replies when they're casual, longer when they ask something deeper. Don't volunteer cast, director, or production details unless asked.
+
+You have two modes and should switch fluidly based on context:
+- Casual mode: relaxed, conversational, opinionated. Crack jokes when it fits. Keep recommendations tight — movie name, year, one sentence why. This is the default.
+- Thoughtful mode: when someone asks for a plot explanation, thematic analysis, character breakdown, or recommendation reasoning, respond with clarity and depth. Be insightful without being academic. Structure your thoughts but keep the tone warm and approachable.
+
+Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write like a real person having a real conversation, not like a text message. Bullet points are acceptable when listing things. No bold, no emojis, no markdown formatting ever.${debriefContext}${personalContext ? "\n\n" + personalContext : ""}`;
+      }
 
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -2357,7 +2439,7 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
       const assistantText = data.content?.filter((b) => b.type === "text").map((b) => b.text).join("\n") || "I couldn't generate a response. Please try again.";
       updateMessages([...newMessages, { role: "assistant", content: assistantText }]);
 
-      if (isFirstMessage && !activeChat?.movieContext) generateTitle(userMsg, assistantText);
+      if (isFirstMessage && !activeChat?.movieContext && !activeChat?.pickerMode) generateTitle(userMsg, assistantText);
     } catch {
       setError("Chat is temporarily unavailable. Please try again in a moment.");
     } finally {
@@ -2419,7 +2501,7 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
         </>
       )}
 
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+      <div className="chat-main">
         <div className="chat-topbar">
           <button className="chat-menu-btn" onClick={() => setSidebarOpen(true)}><MenuIcon /></button>
           <span className="chat-topbar-title">{activeChat?.title || "New chat"}</span>
@@ -2486,236 +2568,6 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
 
 // ─── Settings Modal ────────────────────────────────────────────────────────────
 
-const PICKER_MOODS = [
-  { id: "chill", label: "Chill", emoji: "🌿" },
-  { id: "intense", label: "Intense", emoji: "🔥" },
-  { id: "funny", label: "Funny", emoji: "😂" },
-  { id: "romantic", label: "Romantic", emoji: "💛" },
-  { id: "mind-bending", label: "Mind-bending", emoji: "🌀" },
-];
-
-const PICKER_DECADES = [
-  { id: "1960s", label: "60s" },
-  { id: "1970s", label: "70s" },
-  { id: "1980s", label: "80s" },
-  { id: "1990s", label: "90s" },
-  { id: "2000s", label: "2000s" },
-  { id: "2010s", label: "2010s" },
-  { id: "2020s", label: "2020s" },
-];
-
-function MovieNightPicker({ onClose }) {
-  const [people, setPeople] = useState(2);
-  const [mood, setMood] = useState(null);
-  const [decade, setDecade] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-
-  const handleSubmit = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      let userMsg = `We are ${people} ${people === 1 ? "person" : "people"} looking for a ${mood} movie to watch tonight.`;
-      if (decade) userMsg += ` Preferably from the ${decade}.`;
-      userMsg += " Pick one movie for us.";
-
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": ANTHROPIC_KEY,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6-20250514",
-          max_tokens: 300,
-          system: 'You are a movie recommender. Respond with ONLY valid JSON in this exact format: {"title": "Movie Title", "year": 2000, "reason": "One sentence why this is perfect for the group."}. No markdown, no extra text.',
-          messages: [{ role: "user", content: userMsg }],
-        }),
-      });
-
-      if (!resp.ok) throw new Error(`API error: ${resp.status}`);
-      const data = await resp.json();
-      let text = data.content?.[0]?.text || "";
-      // Strip markdown fences if present
-      text = text.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-      const parsed = JSON.parse(text);
-
-      // Fetch poster from TMDB
-      let posterPath = null;
-      try {
-        const tmdbResult = await searchMovies(`${parsed.title} ${parsed.year}`);
-        if (tmdbResult.movies.length > 0) {
-          posterPath = tmdbResult.movies[0].poster_path;
-        }
-      } catch {}
-
-      setResult({
-        title: parsed.title,
-        year: parsed.year,
-        reason: parsed.reason,
-        posterPath,
-      });
-    } catch (e) {
-      console.error("Picker error:", e);
-      setError("Couldn't pick a movie. Try again!");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePickAgain = () => {
-    setResult(null);
-    setError(null);
-  };
-
-  return createPortal(
-    <div className="picker-overlay" onClick={onClose}>
-      <div className="picker-card" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close-btn" style={{ position: "absolute", top: 12, right: 12 }} onClick={onClose}>✕</button>
-
-        {!result ? (
-          <>
-            <div className="picker-header">
-              <div className="picker-emoji">🍿</div>
-              <div className="picker-title">Movie Night</div>
-              <div className="picker-subtitle">Let's find the perfect film</div>
-            </div>
-
-            <div className="picker-section">
-              <div className="picker-label">How many people?</div>
-              <div className="picker-people">
-                {[1, 2, 3, 4, 5, 6].map((n) => (
-                  <button
-                    key={n}
-                    className={`picker-person ${n <= people ? "active" : ""}`}
-                    onClick={() => setPeople(n)}
-                  >
-                    <PersonIcon />
-                  </button>
-                ))}
-                <span className="picker-people-count">{people}</span>
-              </div>
-            </div>
-
-            <div className="picker-section">
-              <div className="picker-label">Mood</div>
-              <div className="picker-chips">
-                {PICKER_MOODS.map((m) => (
-                  <button
-                    key={m.id}
-                    className={`category-pill ${mood === m.id ? "active" : ""}`}
-                    onClick={() => setMood(m.id)}
-                  >
-                    {m.emoji} {m.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="picker-section">
-              <div className="picker-label">Decade <span>(optional)</span></div>
-              <div className="picker-chips">
-                {PICKER_DECADES.map((d) => (
-                  <button
-                    key={d.id}
-                    className={`category-pill ${decade === d.id ? "active" : ""}`}
-                    onClick={() => setDecade((prev) => prev === d.id ? null : d.id)}
-                  >
-                    {d.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {error && <div className="picker-error">{error}</div>}
-
-            <button
-              className="picker-submit"
-              disabled={!mood || loading}
-              onClick={handleSubmit}
-            >
-              {loading ? <span className="picker-spinner" /> : "Pick for us"}
-            </button>
-          </>
-        ) : (
-          <div className="picker-result">
-            <div className="picker-result-poster">
-              <PosterImage posterPath={result.posterPath} title={result.title} />
-            </div>
-            <div className="picker-result-title">{result.title}</div>
-            <div className="picker-result-year">{result.year}</div>
-            <div className="picker-result-reason">{result.reason}</div>
-            <button className="picker-submit" onClick={handlePickAgain}>
-              Pick again
-            </button>
-          </div>
-        )}
-      </div>
-    </div>,
-    document.body
-  );
-}
-
-// ─── Achievements View ──────────────────────────────────────────────────────────
-
-function AchievementsView({ onBack, unlockedBadges, watchedMovies, watchedRatings, collections, watchedDates }) {
-  const ctx = { watchedMovies, watchedRatings, collections, watchedDates };
-  const unlocked = unlockedBadges.length;
-  const total = BADGE_DEFS.length;
-
-  return createPortal(
-    <div className="movie-modal-overlay" onClick={onBack}>
-      <div className="movie-modal achievements-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-handle" />
-        <div className="achievements-header">
-          <div className="achievements-title-row">
-            <div className="achievements-title">Achievements</div>
-            <button className="modal-close-btn" style={{ position: "static" }} onClick={onBack}>✕</button>
-          </div>
-          <div className="achievements-progress-summary">
-            <div className="achievements-progress-bar-bg">
-              <div className="achievements-progress-bar-fill" style={{ width: `${(unlocked / total) * 100}%` }} />
-            </div>
-            <div className="achievements-progress-text">{unlocked} / {total} unlocked</div>
-          </div>
-        </div>
-        <div className="badge-grid">
-          {BADGE_DEFS.map((badge) => {
-            const isUnlocked = unlockedBadges.includes(badge.id);
-            const progress = computeBadgeProgress(badge.id, ctx);
-            const pct = Math.min((progress / badge.target) * 100, 100);
-            const Icon = badge.icon;
-            return (
-              <div key={badge.id} className={`badge-card ${isUnlocked ? "unlocked" : "locked"}`}>
-                {!isUnlocked && (
-                  <div className="badge-lock-overlay">
-                    <LockIcon />
-                  </div>
-                )}
-                <div className="badge-icon-wrap">
-                  <Icon />
-                </div>
-                <div className="badge-title">{badge.title}</div>
-                <div className="badge-desc">{badge.desc}</div>
-                <div className="badge-progress-row">
-                  <div className="badge-progress-track">
-                    <div className="badge-progress-fill" style={{ width: `${pct}%` }} />
-                  </div>
-                  <div className="badge-progress-label">{progress}/{badge.target}</div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
 function BadgeToast({ badge, visible }) {
   if (!badge) return null;
   const Icon = badge.icon;
@@ -2731,7 +2583,7 @@ function BadgeToast({ badge, visible }) {
   );
 }
 
-function SettingsModal({ onClose, onClearData, theme, onToggleTheme, onOpenAchievements, unlockedBadges }) {
+function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
   const [confirmClear, setConfirmClear] = useState(false);
 
   const handleClear = () => {
@@ -2767,19 +2619,6 @@ function SettingsModal({ onClose, onClearData, theme, onToggleTheme, onOpenAchie
         </div>
 
         <div className="settings-section">
-          <button className="settings-achievements-btn" onClick={onOpenAchievements}>
-            <div className="settings-achievements-left">
-              <div className="settings-achievements-icon"><TrophyIcon /></div>
-              <div>
-                <div className="settings-label">Achievements</div>
-                <div className="settings-desc">{unlockedBadges.length} / {BADGE_DEFS.length} badges unlocked</div>
-              </div>
-            </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 6 15 12 9 18" /></svg>
-          </button>
-        </div>
-
-        <div className="settings-section">
           <div className="settings-row">
             <div>
               <div className="settings-label">Clear all data</div>
@@ -2812,8 +2651,8 @@ export default function App() {
     _setActiveTab(t);
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [achievementsOpen, setAchievementsOpen] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
+
+
   const [theme, setTheme] = useState(() => loadFromStorage("cc_theme", "dark"));
   const [savedIds, setSavedIds] = useState(() => new Set(loadFromStorage("cc_savedIds", [])));
   const [savedMovies, setSavedMovies] = useState(() => new Map(loadFromStorage("cc_savedMovies", [])));
@@ -2953,6 +2792,32 @@ export default function App() {
     setDebriefPayload({ chatId, message: userMsg });
   };
 
+  const startMoviePicker = () => {
+    const chatId = Date.now().toString();
+    // Build context from user's watchlist and journal
+    const watchedList = Array.from(watchedMovies.values()).slice(-30);
+    const watchedLines = watchedList.map((m) => {
+      const score = watchedRatings.get(m.id);
+      return `${m.title} (${m.genre}, ${m.year})${score ? ` — rated ${score}/100` : ""}`;
+    });
+    const savedList = Array.from(savedMovies.values()).slice(0, 15);
+    const savedLines = savedList.map((m) => `${m.title} (${m.genre}, ${m.year})`);
+
+    const pickerContext = {
+      watched: watchedLines.join("; "),
+      watchlist: savedLines.join("; "),
+      tasteProfile: tasteProfile || "",
+    };
+
+    setChats((prev) => [{
+      id: chatId, title: "Movie Picker", messages: [],
+      pickerMode: true,
+      pickerContext,
+    }, ...prev]);
+    setActiveChatId(chatId);
+    setActiveTab("chat");
+  };
+
   useEffect(() => { saveToStorage("cc_savedIds",     [...savedIds]);     }, [savedIds]);
   useEffect(() => { saveToStorage("cc_savedMovies",  [...savedMovies]);  }, [savedMovies]);
   useEffect(() => { saveToStorage("cc_watchedIds",   [...watchedIds]);   }, [watchedIds]);
@@ -3013,9 +2878,6 @@ export default function App() {
           Cinno
         </div>
         <div className="header-actions">
-          <button className="header-settings-btn" onClick={() => setPickerOpen(true)}>
-            <PopcornIcon />
-          </button>
           <button className="header-settings-btn" onClick={() => setSettingsOpen(true)}>
             <GearIcon />
           </button>
@@ -3033,6 +2895,7 @@ export default function App() {
             collections={collections} createCollection={createCollection}
             renameCollection={renameCollection} deleteCollection={deleteCollection}
             toggleMovieInCollection={toggleMovieInCollection}
+            onStartMoviePicker={startMoviePicker}
           />
         )}
         {activeTab === "journal" && (
@@ -3046,9 +2909,12 @@ export default function App() {
             toggleSave={toggleSave}
             watchedRatings={watchedRatings}
             setWatchedRating={setWatchedRating}
+            watchedDates={watchedDates}
             tasteProfile={tasteProfile}
             onSetTasteProfile={setTasteProfile}
             startDebrief={startDebrief}
+            unlockedBadges={unlockedBadges}
+            collections={collections}
           />
         )}
         {activeTab === "chat" && (
@@ -3076,23 +2942,8 @@ export default function App() {
           onClearData={clearAllData}
           theme={theme}
           onToggleTheme={toggleTheme}
-          onOpenAchievements={() => { setSettingsOpen(false); setAchievementsOpen(true); }}
-          unlockedBadges={unlockedBadges}
         />
       )}
-
-      {achievementsOpen && (
-        <AchievementsView
-          onBack={() => setAchievementsOpen(false)}
-          unlockedBadges={unlockedBadges}
-          watchedMovies={watchedMovies}
-          watchedRatings={watchedRatings}
-          collections={collections}
-          watchedDates={watchedDates}
-        />
-      )}
-
-      {pickerOpen && <MovieNightPicker onClose={() => setPickerOpen(false)} />}
 
       <BadgeToast badge={badgeToast} visible={!!badgeToast} />
     </div>
