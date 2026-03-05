@@ -91,11 +91,43 @@ export async function getWatchProviders(movieId, region = "TH") {
   });
 }
 
+const GENRE_MAP_FULL = {
+  28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
+  99: "Documentary", 18: "Drama", 10751: "Family", 14: "Fantasy", 36: "History",
+  27: "Horror", 10402: "Music", 9648: "Mystery", 10749: "Romance", 878: "Sci-Fi",
+  10770: "TV Movie", 53: "Thriller", 10752: "War", 37: "Western",
+};
+
+export async function getMovieById(movieId) {
+  const m = await tmdbFetch(`/movie/${movieId}`);
+  const genre = m.genres?.length ? (GENRE_MAP_FULL[m.genres[0].id] || m.genres[0].name || "Film") : "Film";
+  return {
+    id: m.id,
+    title: m.title || "Untitled",
+    year: (m.release_date || "").slice(0, 4) || "—",
+    rating: m.vote_average ? m.vote_average.toFixed(1) : "—",
+    genre,
+    poster_path: m.poster_path,
+    backdrop_path: m.backdrop_path,
+    synopsis: m.overview || "No description available.",
+  };
+}
+
 export async function discoverByGenres(genreIds, page = 1) {
   const data = await tmdbFetch("/discover/movie", {
     with_genres: genreIds.join(","),
     sort_by: "popularity.desc",
     page,
   });
+  return { movies: data.results.map(tmdbToMovie), totalPages: data.total_pages };
+}
+
+export async function getMovieKeywords(movieId) {
+  const data = await tmdbFetch(`/movie/${movieId}/keywords`);
+  return data.keywords || [];
+}
+
+export async function discoverMovies(params = {}, page = 1) {
+  const data = await tmdbFetch("/discover/movie", { ...params, page });
   return { movies: data.results.map(tmdbToMovie), totalPages: data.total_pages };
 }

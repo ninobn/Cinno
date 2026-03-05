@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, getHiddenGems, getWatchProviders, getMovieDetails, IMG_BASE } from "./tmdb.js";
+import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getMovieKeywords, IMG_BASE } from "./tmdb.js";
 
 const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
 
@@ -263,6 +263,49 @@ const FolderIcon = () => (
 const HeartIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
+  </svg>
+);
+
+const DiscoverIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="4" width="15" height="18" rx="2.5" />
+    <rect x="7" y="2" width="15" height="18" rx="2.5" opacity="0.4" />
+  </svg>
+);
+
+const SwipeHeartIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z" />
+  </svg>
+);
+
+const SwipeXIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
+const InfoIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
+  </svg>
+);
+
+const UndoIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 102.13-9.36L1 10" />
+  </svg>
+);
+
+const ClockIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+  </svg>
+);
+
+const StarIconSolid = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" />
   </svg>
 );
 
@@ -1363,6 +1406,219 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
   );
 }
 
+// ─── Share Icons ────────────────────────────────────────────────────────────────
+
+const ShareIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+  </svg>
+);
+
+const CopyIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+  </svg>
+);
+
+const LinkIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+  </svg>
+);
+
+// ─── Share Watchlist Modal ──────────────────────────────────────────────────────
+
+function ShareWatchlistModal({ onClose, savedMovies }) {
+  const [copied, setCopied] = useState(false);
+
+  const ids = Array.from(savedMovies.keys());
+  const shareUrl = useMemo(() => {
+    const url = new URL(window.location.origin + window.location.pathname);
+    url.searchParams.set("shared", ids.join(","));
+    return url.toString();
+  }, [ids]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      const input = document.createElement("textarea");
+      input.value = shareUrl;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return createPortal(
+    <div className="movie-modal-overlay" onClick={onClose}>
+      <div className="share-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-handle-bar"><div className="modal-handle" /></div>
+        <button className="modal-close-btn" onClick={onClose}>✕</button>
+        <div className="share-modal-icon">
+          <LinkIcon />
+        </div>
+        <div className="share-modal-title">Share Your Watchlist</div>
+        <div className="share-modal-desc">
+          Anyone with this link can browse your {ids.length} saved movie{ids.length !== 1 ? "s" : ""}.
+        </div>
+        <div className="share-link-box">
+          <div className="share-link-text">{shareUrl}</div>
+        </div>
+        <button className={`share-copy-btn ${copied ? "copied" : ""}`} onClick={handleCopy}>
+          {copied ? (
+            <>
+              <CheckIcon />
+              Copied!
+            </>
+          ) : (
+            <>
+              <CopyIcon />
+              Copy link
+            </>
+          )}
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── Shared Watchlist View (read-only standalone page) ──────────────────────────
+
+function SharedWatchlistView() {
+  const [movies, setMovies] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [selectedMovie, setSelectedMovie] = useState(null);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", loadFromStorage("cc_theme", "dark"));
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const shared = params.get("shared");
+    if (!shared) { setLoading(false); setError(true); return; }
+    const ids = shared.split(",").filter(Boolean).map(Number).filter((n) => n > 0);
+    if (ids.length === 0) { setLoading(false); setError(true); return; }
+
+    Promise.allSettled(ids.map((id) => getMovieById(id)))
+      .then((results) => {
+        const loaded = results
+          .filter((r) => r.status === "fulfilled")
+          .map((r, i) => ({ ...r.value, _idx: i }));
+        setMovies(loaded);
+        setLoading(false);
+      })
+      .catch(() => { setLoading(false); setError(true); });
+  }, []);
+
+  return (
+    <div className="shared-page">
+      <div className="shared-header">
+        <div className="shared-header-inner">
+          <div className="header-title">
+            <div className="logo-mark">C</div>
+            Cinno
+          </div>
+        </div>
+      </div>
+      <div className="shared-hero">
+        <div className="shared-hero-label">Shared Watchlist</div>
+        <div className="shared-hero-title">Someone's Watchlist</div>
+        {!loading && !error && (
+          <div className="shared-hero-count">{movies.length} movie{movies.length !== 1 ? "s" : ""}</div>
+        )}
+      </div>
+      <div className="shared-content">
+        {loading ? (
+          <div className="movies-grid">
+            {Array.from({ length: 12 }, (_, i) => (
+              <div key={i} className="skeleton-tile">
+                <div className="skeleton-poster" />
+                <div className="skeleton-title" />
+              </div>
+            ))}
+          </div>
+        ) : error || movies.length === 0 ? (
+          <div className="saved-empty">
+            <div className="saved-icon">🔗</div>
+            <div className="saved-title">Invalid share link</div>
+            <div className="saved-desc">This link doesn't contain a valid watchlist.</div>
+          </div>
+        ) : (
+          <div className="movies-grid">
+            {movies.map((movie) => (
+              <div
+                key={movie.id}
+                className="movie-tile"
+                onClick={() => setSelectedMovie(movie)}
+                style={{ animationDelay: `${(movie._idx || 0) * 25}ms` }}
+              >
+                <div className="movie-poster">
+                  <PosterImage posterPath={movie.poster_path} title={movie.title} />
+                  <span className="movie-poster-rating" style={{ color: getRatingColor(movie.rating) }}>★ {movie.rating}</span>
+                </div>
+                <div className="movie-tile-title">{movie.title}</div>
+                <div className="movie-tile-genre" style={{ color: GENRE_COLORS[movie.genre] || "#7A7878" }}>{movie.genre}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {selectedMovie && createPortal(
+        <div className="movie-modal-overlay" onClick={() => setSelectedMovie(null)}>
+          <div className="shared-detail-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-handle-bar"><div className="modal-handle" /></div>
+            <button className="modal-close-btn" onClick={() => setSelectedMovie(null)}>✕</button>
+            {selectedMovie.backdrop_path && (
+              <div className="modal-backdrop">
+                <img src={`${IMG_BASE}/w780${selectedMovie.backdrop_path}`} alt={selectedMovie.title} />
+                <div className="modal-backdrop-fade" />
+              </div>
+            )}
+            <div className="shared-detail-body">
+              <div className="modal-top-row">
+                <div className="modal-poster">
+                  <PosterImage posterPath={selectedMovie.poster_path} title={selectedMovie.title} />
+                </div>
+                <div className="modal-info">
+                  <div className="modal-title">{selectedMovie.title}</div>
+                  <div className="modal-meta">
+                    <span className="modal-year">{selectedMovie.year}</span>
+                    <span className="modal-rating" style={{ color: getRatingColor(selectedMovie.rating) }}>★ {selectedMovie.rating}</span>
+                    <span className="modal-genre" style={{
+                      color: GENRE_COLORS[selectedMovie.genre] || "#7A7878",
+                      background: (GENRE_COLORS[selectedMovie.genre] || "#7A7878") + "18"
+                    }}>
+                      {selectedMovie.genre}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <p className="modal-synopsis">{selectedMovie.synopsis}</p>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      <div className="shared-footer">
+        Made with Cinno
+      </div>
+    </div>
+  );
+}
+
 // ─── Saved Tab ─────────────────────────────────────────────────────────────────
 
 function CreateCollectionModal({ onClose, onCreate }) {
@@ -1532,6 +1788,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [emptyMsg] = useState(() => pickRandom(EMPTY_WATCHLIST));
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [activeCollection, setActiveCollection] = useState(null);
 
   const movies = useMemo(
@@ -1575,6 +1832,19 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
           </div>
           <svg className="movie-picker-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 6 15 12 9 18" /></svg>
         </button>
+
+        {movies.length > 0 && (
+          <button className="movie-picker-card" onClick={() => setShowShareModal(true)}>
+            <div className="movie-picker-icon share-icon-bg">
+              <ShareIcon />
+            </div>
+            <div className="movie-picker-text">
+              <div className="movie-picker-title">Share Watchlist</div>
+              <div className="movie-picker-desc">Send your picks to a friend</div>
+            </div>
+            <svg className="movie-picker-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 6 15 12 9 18" /></svg>
+          </button>
+        )}
 
         <div className="collections-section">
           <div className="collections-header">
@@ -1638,6 +1908,12 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
         <CreateCollectionModal
           onClose={() => setShowCreateModal(false)}
           onCreate={createCollection}
+        />
+      )}
+      {showShareModal && (
+        <ShareWatchlistModal
+          onClose={() => setShowShareModal(false)}
+          savedMovies={savedMovies}
         />
       )}
     </>
@@ -2002,12 +2278,16 @@ const INSIGHT_PROMPTS = {
 };
 
 
+const AI_INSIGHTS_ENABLED = false;
+
 function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [view, setView] = useState("journal");
   const [rankSort, setRankSort] = useState("rating");
   const [insightLoading, setInsightLoading] = useState(false);
-  const [insight, setInsight] = useState(null);
+  const [insight, setInsight] = useState(() =>
+    AI_INSIGHTS_ENABLED ? null : { type: "movie_twin", text: "You watch like Christopher Nolan — big ideas wrapped in blockbuster packaging." }
+  );
   const [emptyJournal] = useState(() => pickRandom(EMPTY_JOURNAL));
   const [emptyRankings] = useState(() => pickRandom(EMPTY_RANKINGS));
   const [emptyStats] = useState(() => pickRandom(EMPTY_STATS));
@@ -2046,6 +2326,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 
   // AI Insight Card — fetch a fresh insight
   const fetchInsight = useCallback(async () => {
+    if (!AI_INSIGHTS_ENABLED) return;
     if (movies.length < 3) return;
     const insightType = INSIGHT_TYPES[Math.floor(Math.random() * INSIGHT_TYPES.length)];
     setInsightLoading(true);
@@ -2299,6 +2580,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile, debriefPayload, onDebriefHandled }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [typingHint, setTypingHint] = useState(null);
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [renamingId, setRenamingId] = useState(null);
@@ -2394,6 +2676,12 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
     const newMessages = [...messages, { role: "user", content: userMsg }];
     updateMessages(newMessages);
     const isFirstMessage = messages.length === 0;
+    const TYPING_HINTS = [
+      "Replaying that moment...", "Thinking about that scene...", "Processing your take...",
+      "That soundtrack though...", "Picturing the cinematography...", "Rewinding to that part...",
+      "Sitting with that ending...",
+    ];
+    setTypingHint(Math.random() < 0.4 ? TYPING_HINTS[Math.floor(Math.random() * TYPING_HINTS.length)] : null);
     setLoading(true);
 
     try {
@@ -2502,6 +2790,15 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
       )}
 
       <div className="chat-main">
+        {activeChat?.posterPath && (
+          <img
+            key={activeChat.id}
+            className="chat-debrief-bg"
+            src={`${IMG_BASE}/w780${activeChat.posterPath}`}
+            alt=""
+            onError={(e) => { e.target.style.display = "none"; }}
+          />
+        )}
         <div className="chat-topbar">
           <button className="chat-menu-btn" onClick={() => setSidebarOpen(true)}><MenuIcon /></button>
           <span className="chat-topbar-title">{activeChat?.title || "New chat"}</span>
@@ -2537,7 +2834,12 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
               {loading && (
                 <div className="msg msg-assistant">
                   <div className="msg-avatar"><BotIcon /></div>
-                  <div className="msg-bubble"><div className="msg-typing"><span /><span /><span /></div></div>
+                  <div className="msg-bubble">
+                    <div className="msg-typing">
+                      {typingHint && <em className="msg-typing-hint">{typingHint}</em>}
+                      <span /><span /><span />
+                    </div>
+                  </div>
                 </div>
               )}
             </>
@@ -2636,11 +2938,772 @@ function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
   );
 }
 
+// ─── Discover Tab (Tinder-style swiping) ────────────────────────────────────────
+
+const DISCOVER_GENRE_IDS = GENRE_FILTERS.map((g) => g.id);
+const GENRE_ID_TO_LABEL = {};
+GENRE_FILTERS.forEach((g) => { GENRE_ID_TO_LABEL[g.id] = g.label; });
+const GENRE_LABEL_TO_ID = {};
+GENRE_FILTERS.forEach((g) => { GENRE_LABEL_TO_ID[g.label] = g.id; });
+
+function buildTasteProfile(watchedMovies, watchedRatings) {
+  const hasData = watchedMovies?.size > 0;
+  const genreScores = {};
+  const genreCounts = {};
+  const decadeCounts = {};
+  const ratedMovies = [];
+
+  if (hasData) {
+    watchedMovies.forEach((m, id) => {
+      const genre = m.genre || "Film";
+      const rating = watchedRatings?.get(id);
+      if (rating != null) {
+        genreScores[genre] = (genreScores[genre] || 0) + rating;
+        genreCounts[genre] = (genreCounts[genre] || 0) + 1;
+        ratedMovies.push({ id, rating, genre });
+      } else {
+        genreCounts[genre] = (genreCounts[genre] || 0) + 1;
+      }
+      const year = parseInt(m.year);
+      if (year) {
+        const decade = `${Math.floor(year / 10) * 10}s`;
+        decadeCounts[decade] = (decadeCounts[decade] || 0) + 1;
+      }
+    });
+  }
+
+  // Average rating per genre
+  const genreAvg = {};
+  Object.entries(genreScores).forEach(([g, total]) => {
+    genreAvg[g] = Math.round(total / genreCounts[g]);
+  });
+
+  // Top 3 genre IDs by score, fallback to count
+  const sortedGenres = Object.entries(genreCounts)
+    .sort(([a], [b]) => (genreAvg[b] || 50) - (genreAvg[a] || 50))
+    .map(([label]) => GENRE_LABEL_TO_ID[label])
+    .filter(Boolean);
+  const topGenreIds = sortedGenres.slice(0, 3);
+
+  // Preferred decade
+  const preferredDecade = Object.entries(decadeCounts)
+    .sort(([, a], [, b]) => b - a)[0]?.[0] || null;
+
+  // Top 5 rated movies for keyword fetching
+  ratedMovies.sort((a, b) => b.rating - a.rating);
+  const topRatedIds = ratedMovies.slice(0, 5).map((m) => m.id);
+
+  return { genreAvg, topGenreIds, preferredDecade, topRatedIds, hasData, genreCounts };
+}
+
+const DISCOVER_CHIPS = [
+  { id: 28, label: "Action" }, { id: 35, label: "Comedy" }, { id: 18, label: "Drama" },
+  { id: 27, label: "Horror" }, { id: 878, label: "Sci-Fi" }, { id: 53, label: "Thriller" },
+  { id: 10749, label: "Romance" }, { id: 16, label: "Animation" },
+];
+
+function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, watchedMovies, watchedRatings }) {
+  const [cards, setCards] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [sessionCount, setSessionCount] = useState(0);
+  const [swipeWeights, setSwipeWeights] = useState(() => loadFromStorage("cc_discover_swipe_weights", {}));
+  const [seenIds, setSeenIds] = useState(() => new Set(loadFromStorage("cc_discover_seen", [])));
+  const [swipeDir, setSwipeDir] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragX, setDragX] = useState(0);
+  const [selectedMovie, setSelectedMovie] = useState(null);
+  const [undoHistory, setUndoHistory] = useState([]);
+  const [showStamp, setShowStamp] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [cardDetails, setCardDetails] = useState({});
+  const [activeGenres, setActiveGenres] = useState(new Set());
+  const [maybeLater, setMaybeLater] = useState(() => loadFromStorage("cc_discover_maybe_later", []));
+  const [superLikeFlash, setSuperLikeFlash] = useState(false);
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const isHorizontalSwipe = useRef(false);
+  const fetchingRef = useRef(false);
+  const pageRef = useRef(1);
+  const profileRef = useRef(null);
+  const keywordsRef = useRef(null);
+  const toastTimeout = useRef(null);
+  const swipingRef = useRef(false);
+  const activeGenresRef = useRef(activeGenres);
+  activeGenresRef.current = activeGenres;
+
+  const exclusionSet = useMemo(() => {
+    const ids = new Set();
+    savedIds.forEach((id) => ids.add(id));
+    watchedIds.forEach((id) => ids.add(id));
+    return ids;
+  }, [savedIds, watchedIds]);
+
+  const tasteProfile = useMemo(
+    () => buildTasteProfile(watchedMovies, watchedRatings),
+    [watchedMovies, watchedRatings]
+  );
+
+  useEffect(() => { saveToStorage("cc_discover_swipe_weights", swipeWeights); }, [swipeWeights]);
+  useEffect(() => { saveToStorage("cc_discover_seen", [...seenIds].slice(-500)); }, [seenIds]);
+  useEffect(() => { saveToStorage("cc_discover_maybe_later", maybeLater); }, [maybeLater]);
+
+  useEffect(() => {
+    if (keywordsRef.current || !tasteProfile.topRatedIds.length) return;
+    keywordsRef.current = true;
+    const fetchKeywords = async () => {
+      const allKw = {};
+      const results = await Promise.allSettled(
+        tasteProfile.topRatedIds.map((id) => getMovieKeywords(id))
+      );
+      results.forEach((r) => {
+        if (r.status === "fulfilled") {
+          r.value.forEach((kw) => {
+            allKw[kw.id] = (allKw[kw.id] || { ...kw, count: 0 });
+            allKw[kw.id].count++;
+          });
+        }
+      });
+      const topKw = Object.values(allKw)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+      profileRef.current = topKw;
+    };
+    fetchKeywords();
+  }, [tasteProfile.topRatedIds]);
+
+  const getMergedWeights = useCallback(() => {
+    const weights = {};
+    GENRE_FILTERS.forEach((g) => { weights[g.id] = 1; });
+    if (tasteProfile.hasData) {
+      const { genreAvg, genreCounts } = tasteProfile;
+      Object.entries(genreCounts).forEach(([label, count]) => {
+        const gid = GENRE_LABEL_TO_ID[label];
+        if (!gid) return;
+        const avg = genreAvg[label] || 50;
+        weights[gid] = (avg / 50) * Math.min(count, 10) / 3;
+      });
+    }
+    Object.entries(swipeWeights).forEach(([gid, val]) => {
+      const base = weights[gid] || 1;
+      weights[gid] = base * 0.7 + (val / 20) * 0.3;
+    });
+    return weights;
+  }, [tasteProfile, swipeWeights]);
+
+  const getDecadeDateRange = useCallback(() => {
+    const d = tasteProfile.preferredDecade;
+    if (!d) return {};
+    const startYear = parseInt(d);
+    if (!startYear) return {};
+    return {
+      "primary_release_date.gte": `${startYear}-01-01`,
+      "primary_release_date.lte": `${startYear + 9}-12-31`,
+    };
+  }, [tasteProfile.preferredDecade]);
+
+  const fetchMovies = useCallback(async (reset = false) => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    if (reset) setLoading(true);
+    try {
+      const chipGenres = activeGenresRef.current;
+      const weights = getMergedWeights();
+      const sorted = Object.entries(weights).sort(([, a], [, b]) => b - a);
+      const useRandom = Math.random() < 0.2;
+
+      let params = {
+        sort_by: "popularity.desc",
+        "vote_average.gte": "6.0",
+        "vote_count.gte": "50",
+      };
+
+      if (chipGenres.size > 0) {
+        params.with_genres = [...chipGenres].join(",");
+      } else if (useRandom) {
+        const topIds = new Set(sorted.slice(0, 3).map(([id]) => id));
+        const others = DISCOVER_GENRE_IDS.filter((id) => !topIds.has(String(id)));
+        const shuffled = others.sort(() => Math.random() - 0.5);
+        params.with_genres = shuffled.slice(0, 2).join(",");
+      } else {
+        const topGenreIds = tasteProfile.topGenreIds.length
+          ? tasteProfile.topGenreIds.slice(0, 3)
+          : sorted.slice(0, 3).map(([id]) => parseInt(id));
+        params.with_genres = topGenreIds.join(",");
+        if (Math.random() < 0.4) {
+          Object.assign(params, getDecadeDateRange());
+        }
+        if (profileRef.current?.length) {
+          params.with_keywords = profileRef.current.map((k) => k.id).join("|");
+        }
+      }
+
+      const page = reset ? 1 + Math.floor(Math.random() * 3) : pageRef.current;
+      const data = await discoverMovies(params, page);
+      pageRef.current = page + 1;
+
+      let newMovies = data.movies.filter(
+        (m) => !seenIds.has(m.id) && !exclusionSet.has(m.id) && m.poster_path
+      );
+      newMovies.sort(() => Math.random() - 0.5);
+
+      if (reset) {
+        setCards(newMovies);
+        setCurrentIndex(0);
+      } else {
+        setCards((prev) => [...prev, ...newMovies]);
+      }
+
+      newMovies.slice(0, 4).forEach((m) => {
+        if (!cardDetails[m.id]) {
+          getMovieDetails(m.id).then((d) => {
+            setCardDetails((prev) => ({ ...prev, [m.id]: { tagline: d.tagline || "" } }));
+          }).catch(() => {});
+        }
+      });
+    } catch (e) {
+      console.error("Discover fetch failed:", e);
+      if (reset) {
+        try {
+          const fallback = await getTrending();
+          const filtered = fallback.movies.filter(
+            (m) => !seenIds.has(m.id) && !exclusionSet.has(m.id) && m.poster_path
+          );
+          setCards(filtered);
+          setCurrentIndex(0);
+        } catch {}
+      }
+    } finally {
+      setLoading(false);
+      fetchingRef.current = false;
+    }
+  }, [getMergedWeights, seenIds, exclusionSet, tasteProfile, getDecadeDateRange, cardDetails]);
+
+  // Initial fetch
+  useEffect(() => {
+    const init = async () => {
+      if (!tasteProfile.hasData) {
+        fetchingRef.current = true;
+        setLoading(true);
+        try {
+          const [t, p] = await Promise.allSettled([getTrending(), getPopular()]);
+          const tMovies = t.status === "fulfilled" ? t.value.movies : [];
+          const pMovies = p.status === "fulfilled" ? p.value.movies : [];
+          const all = [...tMovies, ...pMovies];
+          const unique = [];
+          const seen = new Set();
+          all.forEach((m) => {
+            if (!seen.has(m.id) && m.poster_path && !exclusionSet.has(m.id)) {
+              seen.add(m.id);
+              unique.push(m);
+            }
+          });
+          unique.sort(() => Math.random() - 0.5);
+          setCards(unique);
+          setCurrentIndex(0);
+          unique.slice(0, 4).forEach((m) => {
+            getMovieDetails(m.id).then((d) => {
+              setCardDetails((prev) => ({ ...prev, [m.id]: { tagline: d.tagline || "" } }));
+            }).catch(() => {});
+          });
+        } catch (e) {
+          console.error("Initial fetch failed:", e);
+        } finally {
+          setLoading(false);
+          fetchingRef.current = false;
+        }
+      } else {
+        fetchMovies(true);
+      }
+    };
+    init();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Prefetch taglines for upcoming 3 cards
+  useEffect(() => {
+    [cards[currentIndex], cards[currentIndex + 1], cards[currentIndex + 2]].forEach((m) => {
+      if (m && !cardDetails[m.id]) {
+        getMovieDetails(m.id).then((d) => {
+          setCardDetails((prev) => ({ ...prev, [m.id]: { tagline: d.tagline || "" } }));
+        }).catch(() => {});
+      }
+    });
+  }, [currentIndex, cards, cardDetails]);
+
+  // Auto-fetch when running low
+  useEffect(() => {
+    if (cards.length - currentIndex < 5 && !fetchingRef.current && cards.length > 0) {
+      fetchMovies();
+    }
+  }, [currentIndex, cards.length, fetchMovies]);
+
+  const showToast = useCallback((msg, icon) => {
+    clearTimeout(toastTimeout.current);
+    setToast({ msg, icon: icon || "check" });
+    toastTimeout.current = setTimeout(() => setToast(null), 1800);
+  }, []);
+
+  // Toggle genre chip
+  const toggleGenreChip = useCallback((genreId) => {
+    setActiveGenres((prev) => {
+      const next = new Set(prev);
+      if (next.has(genreId)) next.delete(genreId);
+      else next.add(genreId);
+      return next;
+    });
+  }, []);
+
+  // Re-fetch when genre chips change
+  useEffect(() => {
+    if (!loading) {
+      pageRef.current = 1;
+      fetchMovies(true);
+    }
+  }, [activeGenres]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ensure "Must Watch" collection exists
+  const getMustWatchCollectionId = useCallback(() => {
+    const existing = collections.find((c) => c.name === "Must Watch");
+    return existing?.id || null;
+  }, [collections]);
+
+  const handleAction = useCallback((action) => {
+    if (swipingRef.current) return;
+    const movie = cards[currentIndex];
+    if (!movie) return;
+
+    swipingRef.current = true;
+    const dir = action === "skip" ? "left" : "right";
+    setSwipeDir(dir);
+
+    if (action === "skip") setShowStamp("nope");
+    else if (action === "super") setShowStamp("super");
+    else setShowStamp("like");
+
+    setTimeout(() => {
+      // Perform the action
+      if (action === "save") {
+        if (!savedIds.has(movie.id)) {
+          toggleSave(movie);
+        }
+        showToast("Added to watchlist");
+      } else if (action === "maybe") {
+        setMaybeLater((prev) => {
+          if (prev.some((m) => m.id === movie.id)) return prev;
+          return [{ ...movie, addedAt: Date.now() }, ...prev].slice(0, 50);
+        });
+        showToast("Saved for later", "clock");
+      } else if (action === "super") {
+        if (!savedIds.has(movie.id)) {
+          toggleSave(movie);
+        }
+        // Add to Must Watch collection
+        const mwId = getMustWatchCollectionId();
+        if (mwId) {
+          toggleMovieInCollection(mwId, movie);
+        }
+        showToast("Must Watch!", "star");
+        setSuperLikeFlash(true);
+        setTimeout(() => setSuperLikeFlash(false), 600);
+      }
+
+      // Adjust swipe weights
+      setSwipeWeights((prev) => {
+        const next = { ...prev };
+        const gf = GENRE_FILTERS.find((g) => g.label === movie.genre);
+        if (gf) {
+          if (action === "skip") next[gf.id] = (next[gf.id] || 0) - 3;
+          else if (action === "super") next[gf.id] = (next[gf.id] || 0) + 8;
+          else next[gf.id] = (next[gf.id] || 0) + 5;
+        }
+        return next;
+      });
+
+      setSeenIds((prev) => new Set(prev).add(movie.id));
+      setSessionCount((c) => c + 1);
+      setUndoHistory((prev) => [{ movie, action, index: currentIndex }, ...prev].slice(0, 5));
+      setCurrentIndex((i) => i + 1);
+      setSwipeDir(null);
+      setShowStamp(null);
+      setDragX(0);
+      swipingRef.current = false;
+
+      if ((sessionCount + 1) % 5 === 0 && tasteProfile.hasData) {
+        pageRef.current = 1 + Math.floor(Math.random() * 5);
+        fetchMovies();
+      }
+    }, 300);
+  }, [cards, currentIndex, savedIds, toggleSave, toggleMovieInCollection, getMustWatchCollectionId, sessionCount, fetchMovies, showToast, tasteProfile.hasData, maybeLater]);
+
+  const handleSwipe = useCallback((direction) => {
+    handleAction(direction === "right" ? "save" : "skip");
+  }, [handleAction]);
+
+  const handleUndo = useCallback(() => {
+    if (undoHistory.length === 0) return;
+    const { movie, action, index } = undoHistory[0];
+    if (action === "save" || action === "super") {
+      if (savedIds.has(movie.id)) toggleSave(movie);
+    }
+    if (action === "super") {
+      const mwId = getMustWatchCollectionId();
+      if (mwId) toggleMovieInCollection(mwId, movie);
+    }
+    if (action === "maybe") {
+      setMaybeLater((prev) => prev.filter((m) => m.id !== movie.id));
+    }
+    setSwipeWeights((prev) => {
+      const next = { ...prev };
+      const gf = GENRE_FILTERS.find((g) => g.label === movie.genre);
+      if (gf) {
+        if (action === "skip") next[gf.id] = (next[gf.id] || 0) + 3;
+        else if (action === "super") next[gf.id] = (next[gf.id] || 0) - 8;
+        else next[gf.id] = (next[gf.id] || 0) - 5;
+      }
+      return next;
+    });
+    setSeenIds((prev) => { const next = new Set(prev); next.delete(movie.id); return next; });
+    setSessionCount((c) => Math.max(0, c - 1));
+    setCurrentIndex(index);
+    setUndoHistory((prev) => prev.slice(1));
+  }, [undoHistory, savedIds, toggleSave, toggleMovieInCollection, getMustWatchCollectionId]);
+
+  // Touch handlers
+  const handleTouchStart = (e) => {
+    if (swipingRef.current) return;
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+    isHorizontalSwipe.current = false;
+    setIsDragging(true);
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isDragging || swipingRef.current) return;
+    const dx = e.touches[0].clientX - touchStartX.current;
+    const dy = e.touches[0].clientY - touchStartY.current;
+    if (!isHorizontalSwipe.current && Math.abs(dx) > 10) {
+      isHorizontalSwipe.current = Math.abs(dx) > Math.abs(dy);
+    }
+    if (isHorizontalSwipe.current) {
+      e.preventDefault();
+      setDragX(dx);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (swipingRef.current) return;
+    setIsDragging(false);
+    if (Math.abs(dragX) > 80) {
+      handleSwipe(dragX > 0 ? "right" : "left");
+    } else {
+      setDragX(0);
+    }
+  };
+
+  const handleMouseDown = (e) => {
+    if (swipingRef.current) return;
+    touchStartX.current = e.clientX;
+    setIsDragging(true);
+    e.preventDefault();
+  };
+
+  const handleMouseMove = useCallback((e) => {
+    if (!isDragging || swipingRef.current) return;
+    setDragX(e.clientX - touchStartX.current);
+  }, [isDragging]);
+
+  const handleMouseUp = useCallback(() => {
+    if (!isDragging || swipingRef.current) return;
+    setIsDragging(false);
+    if (Math.abs(dragX) > 80) {
+      handleSwipe(dragX > 0 ? "right" : "left");
+    } else {
+      setDragX(0);
+    }
+  }, [isDragging, dragX, handleSwipe]);
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+      return () => {
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
+
+  const currentMovie = cards[currentIndex];
+  const nextMovie = cards[currentIndex + 1];
+  const thirdMovie = cards[currentIndex + 2];
+  const rotation = Math.max(-12, Math.min(12, dragX * 0.08));
+  const opacity = Math.min(Math.abs(dragX) / 80, 1);
+  const tagline = currentMovie ? (cardDetails[currentMovie.id]?.tagline || "") : "";
+
+  const resetSession = () => {
+    setSeenIds(new Set());
+    setSessionCount(0);
+    setSwipeWeights({});
+    setCards([]);
+    setUndoHistory([]);
+    setCardDetails({});
+    setActiveGenres(new Set());
+    pageRef.current = 1;
+    keywordsRef.current = null;
+    profileRef.current = null;
+    saveToStorage("cc_discover_seen", []);
+    saveToStorage("cc_discover_swipe_weights", {});
+    setTimeout(() => {
+      if (tasteProfile.hasData) {
+        fetchMovies(true);
+      } else {
+        const init = async () => {
+          fetchingRef.current = true;
+          setLoading(true);
+          try {
+            const [t, p] = await Promise.allSettled([getTrending(), getPopular()]);
+            const all = [...(t.status === "fulfilled" ? t.value.movies : []), ...(p.status === "fulfilled" ? p.value.movies : [])];
+            const unique = [];
+            const seen = new Set();
+            all.forEach((m) => { if (!seen.has(m.id) && m.poster_path) { seen.add(m.id); unique.push(m); } });
+            unique.sort(() => Math.random() - 0.5);
+            setCards(unique);
+            setCurrentIndex(0);
+          } catch {} finally { setLoading(false); fetchingRef.current = false; }
+        };
+        init();
+      }
+    }, 50);
+  };
+
+  // Loading skeleton
+  if (loading && cards.length === 0) {
+    return (
+      <div className="discover-container">
+        <div className="discover-chips-row">
+          {DISCOVER_CHIPS.map((g) => (
+            <span key={g.id} className="discover-chip" style={{ opacity: 0.3 }}>{g.label}</span>
+          ))}
+        </div>
+        <div className="discover-stack">
+          <div className="discover-card discover-skeleton-card">
+            <div className="discover-skeleton-poster">
+              <div className="discover-skeleton-gradient" />
+              <div className="discover-skeleton-lines">
+                <div className="discover-skeleton-line discover-skeleton-title-line" />
+                <div className="discover-skeleton-line discover-skeleton-meta-line" />
+                <div className="discover-skeleton-pills-row">
+                  <div className="discover-skeleton-pill" />
+                  <div className="discover-skeleton-pill short" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="discover-actions">
+          <div className="discover-action-btn discover-skip-btn" style={{ opacity: 0.3 }}><SwipeXIcon /></div>
+          <div className="discover-action-btn discover-maybe-btn" style={{ opacity: 0.3 }}><ClockIcon /></div>
+          <div className="discover-action-btn discover-super-btn" style={{ opacity: 0.3 }}><StarIconSolid /></div>
+          <div className="discover-action-btn discover-like-btn" style={{ opacity: 0.3 }}><SwipeHeartIcon /></div>
+        </div>
+      </div>
+    );
+  }
+
+  // Empty / exhausted
+  if (!currentMovie && !loading) {
+    return (
+      <div className="discover-container">
+        <div className="discover-empty">
+          <div className="discover-empty-icon">
+            <DiscoverIcon />
+          </div>
+          <h3>We've explored every corner</h3>
+          <p>Reset to start fresh with new recommendations</p>
+          <button className="discover-reset-btn" onClick={resetSession}>Start Fresh</button>
+          {sessionCount > 0 && (
+            <div className="discover-session-stat">{sessionCount} movies discovered this session</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="discover-container">
+      {/* Top bar: undo + chips + counter */}
+      <div className="discover-top-bar">
+        <button
+          className={`discover-undo-btn ${undoHistory.length === 0 ? "disabled" : ""}`}
+          onClick={handleUndo}
+          disabled={undoHistory.length === 0}
+          title="Undo"
+        >
+          <UndoIcon />
+        </button>
+        <div className="discover-chips-scroll">
+          <div className="discover-chips-row">
+            {DISCOVER_CHIPS.map((g) => (
+              <button
+                key={g.id}
+                className={`discover-chip ${activeGenres.has(g.id) ? "active" : ""}`}
+                onClick={() => toggleGenreChip(g.id)}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <span className="discover-counter">{sessionCount}</span>
+      </div>
+
+      {/* Card stack with 3-card depth */}
+      <div className="discover-stack">
+        {/* Third card (deepest) */}
+        {thirdMovie && (
+          <div className="discover-card discover-card-third">
+            <div
+              className="discover-card-poster"
+              style={{ backgroundImage: `url(${IMG_BASE}/w780${thirdMovie.poster_path})` }}
+            />
+            <div className="discover-card-gradient" />
+          </div>
+        )}
+
+        {/* Second card (behind) */}
+        {nextMovie && (
+          <div className={`discover-card discover-card-next ${swipeDir ? "discover-card-promote" : ""}`}>
+            <div
+              className="discover-card-poster"
+              style={{ backgroundImage: `url(${IMG_BASE}/w780${nextMovie.poster_path})` }}
+            />
+            <div className="discover-card-gradient" />
+          </div>
+        )}
+
+        {/* Current card */}
+        {currentMovie && (
+          <div
+            className={`discover-card discover-card-active ${swipeDir ? `swipe-${swipeDir}` : ""}`}
+            style={{
+              transform: swipeDir ? undefined : `translateX(${dragX}px) rotate(${rotation}deg)`,
+              transition: isDragging ? "none" : "transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+            }}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onMouseDown={handleMouseDown}
+          >
+            <div
+              className="discover-card-poster"
+              style={{ backgroundImage: `url(${IMG_BASE}/w780${currentMovie.poster_path})` }}
+            />
+            <div className="discover-card-gradient" />
+
+            {/* Swipe stamps */}
+            <div className="discover-stamp discover-stamp-like" style={{ opacity: dragX > 20 ? opacity : 0 }}>SAVE</div>
+            <div className="discover-stamp discover-stamp-nope" style={{ opacity: dragX < -20 ? opacity : 0 }}>SKIP</div>
+            {showStamp === "like" && <div className="discover-stamp discover-stamp-like discover-stamp-flash">SAVE</div>}
+            {showStamp === "nope" && <div className="discover-stamp discover-stamp-nope discover-stamp-flash">SKIP</div>}
+            {showStamp === "super" && <div className="discover-stamp discover-stamp-super discover-stamp-flash">MUST SEE</div>}
+
+            {/* Glow effects */}
+            <div className="discover-glow discover-glow-right" style={{ opacity: dragX > 20 ? opacity * 0.5 : 0 }} />
+            <div className="discover-glow discover-glow-left" style={{ opacity: dragX < -20 ? opacity * 0.5 : 0 }} />
+
+            {/* Super like sparkle overlay */}
+            {superLikeFlash && <div className="discover-super-flash" />}
+
+            {/* Info button (top-right) */}
+            <button className="discover-info-float" onClick={() => setSelectedMovie(currentMovie)}>
+              <InfoIcon />
+            </button>
+
+            {/* Bottom info over gradient */}
+            <div className="discover-card-info">
+              <div className="discover-card-title">{currentMovie.title}</div>
+              <div className="discover-card-meta">
+                <span>{currentMovie.year}</span>
+                <span className="discover-meta-dot" />
+                <span className="discover-card-rating" style={{ color: getRatingColor(currentMovie.rating) }}>
+                  <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 13, height: 13, marginRight: 3, verticalAlign: -1 }}>
+                    <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" />
+                  </svg>
+                  {currentMovie.rating}
+                </span>
+              </div>
+              <div className="discover-card-pills">
+                <span
+                  className="discover-genre-pill"
+                  style={{ background: `${GENRE_COLORS[currentMovie.genre] || "#7A7878"}33`, color: GENRE_COLORS[currentMovie.genre] || "#7A7878" }}
+                >
+                  {currentMovie.genre}
+                </span>
+              </div>
+              {tagline && <div className="discover-card-tagline">{tagline}</div>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 4 Action buttons */}
+      <div className="discover-actions">
+        <button className="discover-action-btn discover-skip-btn" onClick={() => handleAction("skip")} aria-label="Skip">
+          <SwipeXIcon />
+        </button>
+        <button className="discover-action-btn discover-maybe-btn" onClick={() => handleAction("maybe")} aria-label="Maybe later">
+          <ClockIcon />
+        </button>
+        <button className="discover-action-btn discover-super-btn" onClick={() => handleAction("super")} aria-label="Super like">
+          <StarIconSolid />
+        </button>
+        <button className="discover-action-btn discover-like-btn" onClick={() => handleAction("save")} aria-label="Save to watchlist">
+          <SwipeHeartIcon />
+        </button>
+      </div>
+
+      {/* Toast */}
+      {toast && (
+        <div className={`discover-toast ${toast.icon === "star" ? "discover-toast-gold" : toast.icon === "clock" ? "discover-toast-yellow" : ""}`}>
+          {toast.icon === "star" ? <StarIconSolid /> : toast.icon === "clock" ? <ClockIcon /> : <CheckIcon />}
+          {toast.msg}
+        </div>
+      )}
+
+      {selectedMovie && (
+        <MovieModal
+          key={selectedMovie.id}
+          movie={selectedMovie}
+          onClose={() => setSelectedMovie(null)}
+          isSaved={savedIds.has(selectedMovie.id)}
+          onToggleSave={toggleSave}
+          onMovieSelect={setSelectedMovie}
+          savedIds={savedIds}
+          isWatched={watchedIds.has(selectedMovie.id)}
+          onToggleWatched={toggleWatched}
+          onStartDebrief={startDebrief}
+          collections={collections}
+          toggleMovieInCollection={toggleMovieInCollection}
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── Main App ──────────────────────────────────────────────────────────────────
 
-const MAIN_TAB_ORDER = { search: 0, saved: 1, journal: 2, chat: 3 };
+const MAIN_TAB_ORDER = { search: 0, saved: 1, discover: 2, journal: 3, chat: 4 };
+
+const IS_SHARED_VIEW = new URLSearchParams(window.location.search).has("shared");
 
 export default function App() {
+  if (IS_SHARED_VIEW) {
+    return <SharedWatchlistView />;
+  }
+  return <MainApp />;
+}
+
+function MainApp() {
   const [activeTab, _setActiveTab] = useState("search");
   const prevTabRef = useRef("search");
   const [tabDir, setTabDir] = useState(null);
@@ -2664,8 +3727,17 @@ export default function App() {
   const [debriefPayload, setDebriefPayload] = useState(null);
   const [collections, setCollections] = useState(() => {
     const stored = loadFromStorage("cc_collections", null);
-    if (stored) return stored;
-    return [{ id: "favourites", name: "Favourites", movieIds: [], isDefault: true }];
+    if (stored) {
+      // Ensure "Must Watch" collection exists
+      if (!stored.some((c) => c.name === "Must Watch")) {
+        return [...stored, { id: "must_watch", name: "Must Watch", movieIds: [], isDefault: true }];
+      }
+      return stored;
+    }
+    return [
+      { id: "favourites", name: "Favourites", movieIds: [], isDefault: true },
+      { id: "must_watch", name: "Must Watch", movieIds: [], isDefault: true },
+    ];
   });
   const [unlockedBadges, setUnlockedBadges] = useState(() => loadFromStorage("cc_badges", []));
   const [watchedDates, setWatchedDates] = useState(() => new Map(loadFromStorage("cc_watchedDates", [])));
@@ -2683,7 +3755,7 @@ export default function App() {
   const toggleTheme = () => setTheme((t) => t === "dark" ? "light" : "dark");
 
   const clearAllData = () => {
-    const keys = ["cc_savedIds", "cc_savedMovies", "cc_watchedIds", "cc_watchedMovies", "cc_watchedNotes", "cc_watchedRatings", "cc_tasteProfile", "cc_aiInsight", "cc_moodPlaylist", "cc_chats", "cc_activeChatId", "cc_collections", "cc_badges", "cc_watchedDates"];
+    const keys = ["cc_savedIds", "cc_savedMovies", "cc_watchedIds", "cc_watchedMovies", "cc_watchedNotes", "cc_watchedRatings", "cc_tasteProfile", "cc_aiInsight", "cc_moodPlaylist", "cc_chats", "cc_activeChatId", "cc_collections", "cc_badges", "cc_watchedDates", "cc_discover_swipe_weights", "cc_discover_seen", "cc_discover_maybe_later"];
     keys.forEach((k) => localStorage.removeItem(k));
     setSavedIds(new Set());
     setSavedMovies(new Map());
@@ -2692,7 +3764,10 @@ export default function App() {
     setWatchedNotes(new Map());
     setWatchedRatings(new Map());
     setTasteProfile("");
-    setCollections([{ id: "favourites", name: "Favourites", movieIds: [], isDefault: true }]);
+    setCollections([
+      { id: "favourites", name: "Favourites", movieIds: [], isDefault: true },
+      { id: "must_watch", name: "Must Watch", movieIds: [], isDefault: true },
+    ]);
     setUnlockedBadges([]);
     setWatchedDates(new Map());
     const newId = Date.now().toString();
@@ -2786,6 +3861,7 @@ export default function App() {
     setChats((prev) => [{
       id: chatId, title: movie.title, messages: [],
       movieContext: { title: movie.title, year: movie.year, genre: movie.genre, tmdbRating: movie.rating, synopsis: movie.synopsis },
+      posterPath: movie.poster_path || null,
     }, ...prev]);
     setActiveChatId(chatId);
     setActiveTab("chat");
@@ -2864,10 +3940,11 @@ export default function App() {
   useEffect(() => () => clearTimeout(badgeToastTimer.current), []);
 
   const tabs = [
-    { id: "search",  label: "Search",  icon: SearchIcon    },
-    { id: "saved",   label: "Watchlist", icon: BookmarkIcon  },
-    { id: "journal", label: "Journal", icon: FilmStripIcon },
-    { id: "chat",    label: "Chat",    icon: ChatIcon      },
+    { id: "search",   label: "Search",    icon: SearchIcon    },
+    { id: "saved",    label: "Watchlist",  icon: BookmarkIcon  },
+    { id: "discover", label: "Discover",   icon: DiscoverIcon  },
+    { id: "journal",  label: "Journal",    icon: FilmStripIcon },
+    { id: "chat",     label: "Chat",       icon: ChatIcon      },
   ];
 
   return (
@@ -2896,6 +3973,15 @@ export default function App() {
             renameCollection={renameCollection} deleteCollection={deleteCollection}
             toggleMovieInCollection={toggleMovieInCollection}
             onStartMoviePicker={startMoviePicker}
+          />
+        )}
+        {activeTab === "discover" && (
+          <DiscoverTab
+            savedIds={savedIds} toggleSave={toggleSave}
+            watchedIds={watchedIds} toggleWatched={toggleWatched}
+            startDebrief={startDebrief}
+            collections={collections} toggleMovieInCollection={toggleMovieInCollection}
+            watchedMovies={watchedMovies} watchedRatings={watchedRatings}
           />
         )}
         {activeTab === "journal" && (
