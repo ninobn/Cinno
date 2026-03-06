@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getMovieKeywords, IMG_BASE } from "./tmdb.js";
 
@@ -25,6 +25,21 @@ const PICKER_SUGGESTIONS = [
   "feeling adrenaline", "cozy night in", "date night picks", "something weird",
   "comfort rewatch", "mind-bending", "group of friends", "solo chill night",
   "need a good cry", "visually stunning", "hidden gem", "90s nostalgia",
+];
+
+const DEBRIEF_FOLLOWUPS = [
+  ["Was the ending satisfying?", "Best performance?", "Would you rewatch?"],
+  ["How does it compare?", "What stood out most?", "Any weak spots?"],
+  ["Favorite scene?", "How was the pacing?", "Worth recommending?"],
+  ["Did it surprise you?", "What about the soundtrack?", "Rate the directing"],
+  ["Which character stood out?", "Better than expected?", "Any plot holes?"],
+];
+
+const GENERAL_FOLLOWUPS = [
+  ["Recommend something similar", "Explain the plot", "Who directed it?"],
+  ["Any hidden gems?", "Best of the decade?", "Similar vibe movies"],
+  ["What else should I watch?", "Compare two movies", "Underrated picks"],
+  ["Tell me more", "Any controversies?", "Behind the scenes"],
 ];
 
 const DEBRIEF_OPENERS = [
@@ -319,6 +334,12 @@ const TrashIcon = () => (
 const ChevronLeftIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="15 18 9 12 15 6" />
+  </svg>
+);
+
+const ChevronDownIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 12 15 18 9" />
   </svg>
 );
 
@@ -1833,19 +1854,6 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
           <svg className="movie-picker-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 6 15 12 9 18" /></svg>
         </button>
 
-        {movies.length > 0 && (
-          <button className="movie-picker-card" onClick={() => setShowShareModal(true)}>
-            <div className="movie-picker-icon share-icon-bg">
-              <ShareIcon />
-            </div>
-            <div className="movie-picker-text">
-              <div className="movie-picker-title">Share Watchlist</div>
-              <div className="movie-picker-desc">Send your picks to a friend</div>
-            </div>
-            <svg className="movie-picker-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 6 15 12 9 18" /></svg>
-          </button>
-        )}
-
         <div className="collections-section">
           <div className="collections-header">
             <div className="collections-title">My Collections</div>
@@ -1873,7 +1881,12 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
           </div>
         ) : (
           <>
-            <div className="results-label">{movies.length} movie{movies.length !== 1 ? "s" : ""} in your watchlist</div>
+            <div className="watchlist-header-row">
+              <div className="results-label">{movies.length} movie{movies.length !== 1 ? "s" : ""} in your watchlist</div>
+              <button className="watchlist-share-btn" onClick={() => setShowShareModal(true)} title="Share watchlist">
+                <ShareIcon />
+              </button>
+            </div>
             <div className="movies-grid">
               {movies.map((movie) => (
                 <MovieTile
@@ -2585,16 +2598,29 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const textareaRef = useRef(null);
   const debriefHandledRef = useRef(null);
 
   const activeChat = chats.find((c) => c.id === activeChatId);
   const messages = activeChat ? activeChat.messages : [];
 
-  useEffect(() => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
   }, [messages, loading]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowScrollBtn(distFromBottom > 120);
+  }, []);
 
   const autoResize = () => {
     const ta = textareaRef.current;
@@ -2665,6 +2691,40 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
   const [suggestions] = useState(() => [...ALL_SUGGESTIONS].sort(() => Math.random() - 0.5).slice(0, 4));
   const [pickerHints] = useState(() => [...PICKER_SUGGESTIONS].sort(() => Math.random() - 0.5).slice(0, 4));
 
+  // Follow-up chips: pick a random set each time assistant replies
+  const followupChips = useMemo(() => {
+    if (loading || messages.length === 0 || input.trim()) return null;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.role !== "assistant") return null;
+    const pool = activeChat?.movieContext ? DEBRIEF_FOLLOWUPS : GENERAL_FOLLOWUPS;
+    return pool[messages.length % pool.length];
+  }, [messages, loading, input, activeChat?.movieContext]);
+
+  // Timestamp formatting
+  const formatTimestamp = useCallback((ts) => {
+    if (!ts) return null;
+    const d = new Date(ts);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+    const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (isToday) return `Today, ${time}`;
+    if (isYesterday) return `Yesterday, ${time}`;
+    return `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
+  }, []);
+
+  // Decide whether to show a timestamp before message index i
+  const shouldShowTimestamp = useCallback((msgs, i) => {
+    const msg = msgs[i];
+    if (!msg?.ts) return false;
+    if (i === 0) return true;
+    const prev = msgs[i - 1];
+    if (!prev?.ts) return true;
+    // Show if more than 2 minutes gap
+    return (msg.ts - prev.ts) > 120000;
+  }, []);
+
   const sendMessage = async (text) => {
     const userMsg = text || input.trim();
     if (!userMsg || loading) return;
@@ -2673,7 +2733,7 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
     setError("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
-    const newMessages = [...messages, { role: "user", content: userMsg }];
+    const newMessages = [...messages, { role: "user", content: userMsg, ts: Date.now() }];
     updateMessages(newMessages);
     const isFirstMessage = messages.length === 0;
     const TYPING_HINTS = [
@@ -2725,7 +2785,7 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
       if (data.error) throw new Error(data.error.message || data.error.type || "API error");
 
       const assistantText = data.content?.filter((b) => b.type === "text").map((b) => b.text).join("\n") || "I couldn't generate a response. Please try again.";
-      updateMessages([...newMessages, { role: "assistant", content: assistantText }]);
+      updateMessages([...newMessages, { role: "assistant", content: assistantText, ts: Date.now() }]);
 
       if (isFirstMessage && !activeChat?.movieContext && !activeChat?.pickerMode) generateTitle(userMsg, assistantText);
     } catch {
@@ -2790,65 +2850,76 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
       )}
 
       <div className="chat-main">
-        {activeChat?.posterPath && (
-          <img
-            key={activeChat.id}
-            className="chat-debrief-bg"
-            src={`${IMG_BASE}/w780${activeChat.posterPath}`}
-            alt=""
-            onError={(e) => { e.target.style.display = "none"; }}
-          />
-        )}
         <div className="chat-topbar">
           <button className="chat-menu-btn" onClick={() => setSidebarOpen(true)}><MenuIcon /></button>
           <span className="chat-topbar-title">{activeChat?.title || "New chat"}</span>
           <button className="chat-topbar-new" onClick={createNewChat} title="New chat">+</button>
         </div>
 
-        <div className="chat-messages">
-          {messages.length === 0 && !loading ? (
-            <div className="chat-welcome">
-              <div className="chat-avatar-lg"><BotIcon /></div>
-              <h2>Movie Companion</h2>
-              <p>Ask me anything about movies — recommendations, plot breakdowns, character analysis, or just chat about your favorites.</p>
-              <div className="chat-suggestions">
-                {suggestions.map((s) => (
-                  <button key={s} className="chat-suggestion" onClick={() => sendMessage(s)}>{s}</button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <>
-              {messages.map((msg, i) => (
-                <div key={i} className={`msg msg-${msg.role}`}>
-                  <div className="msg-avatar">
-                    {msg.role === "assistant" ? <BotIcon /> : <PersonIcon />}
-                  </div>
-                  <div className="msg-bubble">
-                    {msg.content.split("\n").map((line, j) => (
-                      <span key={j}>{line}{j < msg.content.split("\n").length - 1 && <br />}</span>
-                    ))}
-                  </div>
+        <div className="chat-messages-wrap">
+          <div className="chat-messages" ref={messagesContainerRef} onScroll={handleMessagesScroll}>
+            {messages.length === 0 && !loading ? (
+              <div className="chat-welcome">
+                <div className="chat-avatar-lg"><BotIcon /></div>
+                <h2>Movie Companion</h2>
+                <p>Ask me anything about movies — recommendations, plot breakdowns, character analysis, or just chat about your favorites.</p>
+                <div className="chat-suggestions">
+                  {suggestions.map((s) => (
+                    <button key={s} className="chat-suggestion" onClick={() => sendMessage(s)}>{s}</button>
+                  ))}
                 </div>
-              ))}
-              {loading && (
-                <div className="msg msg-assistant">
-                  <div className="msg-avatar"><BotIcon /></div>
-                  <div className="msg-bubble">
-                    <div className="msg-typing">
-                      {typingHint && <em className="msg-typing-hint">{typingHint}</em>}
-                      <span /><span /><span />
+              </div>
+            ) : (
+              <>
+                {messages.map((msg, i) => (
+                  <React.Fragment key={i}>
+                    {shouldShowTimestamp(messages, i) && (
+                      <div className="chat-timestamp">{formatTimestamp(msg.ts)}</div>
+                    )}
+                    <div className={`msg msg-${msg.role}`}>
+                      <div className="msg-avatar">
+                        {msg.role === "assistant" ? <BotIcon /> : <span className="msg-user-initial">N</span>}
+                      </div>
+                      <div className="msg-bubble">
+                        {msg.content.split("\n").map((line, j) => (
+                          <span key={j}>{line}{j < msg.content.split("\n").length - 1 && <br />}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </React.Fragment>
+                ))}
+                {loading && (
+                  <div className="msg msg-assistant">
+                    <div className="msg-avatar"><BotIcon /></div>
+                    <div className="msg-bubble">
+                      <div className="msg-typing">
+                        {typingHint && <em className="msg-typing-hint">{typingHint}</em>}
+                        <span /><span /><span />
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
-            </>
+                )}
+              </>
+            )}
+            {error && <div className="chat-error">{error}</div>}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {showScrollBtn && (
+            <button className="chat-scroll-bottom" onClick={scrollToBottom} title="Scroll to bottom">
+              <ChevronDownIcon />
+            </button>
           )}
-          {error && <div className="chat-error">{error}</div>}
-          <div ref={messagesEndRef} />
         </div>
 
         <div className="chat-input-container">
+          {followupChips && !input.trim() && (
+            <div className="chat-followup-chips">
+              {followupChips.map((chip) => (
+                <button key={chip} className="chat-followup-chip" onClick={() => sendMessage(chip)}>{chip}</button>
+              ))}
+            </div>
+          )}
           <div className="chat-input-bar">
             <textarea
               ref={textareaRef}
@@ -2985,15 +3056,17 @@ function buildTasteProfile(watchedMovies, watchedRatings) {
     .filter(Boolean);
   const topGenreIds = sortedGenres.slice(0, 3);
 
-  // Preferred decade
-  const preferredDecade = Object.entries(decadeCounts)
-    .sort(([, a], [, b]) => b - a)[0]?.[0] || null;
+  // Top 2 preferred decades
+  const preferredDecades = Object.entries(decadeCounts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 2)
+    .map(([d]) => d);
 
   // Top 5 rated movies for keyword fetching
   ratedMovies.sort((a, b) => b.rating - a.rating);
   const topRatedIds = ratedMovies.slice(0, 5).map((m) => m.id);
 
-  return { genreAvg, topGenreIds, preferredDecade, topRatedIds, hasData, genreCounts };
+  return { genreAvg, topGenreIds, preferredDecades, topRatedIds, hasData, genreCounts };
 }
 
 const DISCOVER_CHIPS = [
@@ -3083,24 +3156,33 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         const avg = genreAvg[label] || 50;
         weights[gid] = (avg / 50) * Math.min(count, 10) / 3;
       });
+      // 70/30 merge: only adjust genres that have swipe data
+      Object.entries(swipeWeights).forEach(([gid, val]) => {
+        const journalW = weights[gid] || 1;
+        const swipeW = Math.max(0.1, 1 + val / 10);
+        weights[gid] = journalW * 0.7 + swipeW * 0.3;
+      });
+    } else {
+      // No journal: swipe weights are sole signal, centered on 1.0
+      Object.entries(swipeWeights).forEach(([gid, val]) => {
+        weights[gid] = Math.max(0.1, 1 + val / 10);
+      });
     }
-    Object.entries(swipeWeights).forEach(([gid, val]) => {
-      const base = weights[gid] || 1;
-      weights[gid] = base * 0.7 + (val / 20) * 0.3;
-    });
     return weights;
   }, [tasteProfile, swipeWeights]);
 
   const getDecadeDateRange = useCallback(() => {
-    const d = tasteProfile.preferredDecade;
-    if (!d) return {};
+    const decades = tasteProfile.preferredDecades;
+    if (!decades?.length) return {};
+    // Randomly pick one of top 2 decades for variety
+    const d = decades[Math.floor(Math.random() * decades.length)];
     const startYear = parseInt(d);
     if (!startYear) return {};
     return {
       "primary_release_date.gte": `${startYear}-01-01`,
       "primary_release_date.lte": `${startYear + 9}-12-31`,
     };
-  }, [tasteProfile.preferredDecade]);
+  }, [tasteProfile.preferredDecades]);
 
   const fetchMovies = useCallback(async (reset = false) => {
     if (fetchingRef.current) return;
@@ -3182,7 +3264,8 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   // Initial fetch
   useEffect(() => {
     const init = async () => {
-      if (!tasteProfile.hasData) {
+      if (!tasteProfile.hasData && Object.keys(swipeWeights).length === 0) {
+        // No journal, no swipe history: show trending + popular
         fetchingRef.current = true;
         setLoading(true);
         try {
@@ -3213,6 +3296,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
           fetchingRef.current = false;
         }
       } else {
+        // Has journal data or swipe history: use smart fetch
         fetchMovies(true);
       }
     };
@@ -3328,7 +3412,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       setDragX(0);
       swipingRef.current = false;
 
-      if ((sessionCount + 1) % 5 === 0 && tasteProfile.hasData) {
+      if ((sessionCount + 1) % 5 === 0) {
         pageRef.current = 1 + Math.floor(Math.random() * 5);
         fetchMovies();
       }
@@ -3861,7 +3945,6 @@ function MainApp() {
     setChats((prev) => [{
       id: chatId, title: movie.title, messages: [],
       movieContext: { title: movie.title, year: movie.year, genre: movie.genre, tmdbRating: movie.rating, synopsis: movie.synopsis },
-      posterPath: movie.poster_path || null,
     }, ...prev]);
     setActiveChatId(chatId);
     setActiveTab("chat");
