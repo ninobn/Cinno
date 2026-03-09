@@ -4986,6 +4986,8 @@ body {
 
   /* Discover — desktop */
   .discover-stack { max-width: 380px; }
+  .discover-content { flex-direction: row; gap: 24px; }
+  .discover-radar { width: 140px; height: 140px; margin: 0; }
 }
 
 /* ── Discover Tab ──────────────────────────────────── */
@@ -4999,17 +5001,24 @@ body {
   -webkit-user-select: none;
   overflow: hidden;
   position: relative;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.18) 0%,
+    transparent 45%,
+    rgba(139, 58, 74, 0.03) 100%
+  );
 }
 
-/* ── Top Bar: Undo + Chips + Counter ── */
-.discover-top-bar {
+/* ── Header: Undo + Counter + Filter ── */
+.discover-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 12px;
   width: 100%;
-  padding: 6px 4px;
+  padding: 8px 4px;
   flex-shrink: 0;
-  z-index: 5;
+  z-index: 10;
 }
 
 .discover-undo-btn {
@@ -5043,70 +5052,148 @@ body {
   height: 14px;
 }
 
-.discover-chips-scroll {
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.discover-chips-scroll::-webkit-scrollbar { display: none; }
-
-.discover-chips-row {
-  display: flex;
-  gap: 6px;
-  white-space: nowrap;
-  padding: 2px 16px 2px 0;
-}
-
-.discover-chip {
-  padding: 5px 14px;
-  border-radius: 20px;
+.discover-session-count {
   font-size: 12px;
   font-weight: 600;
+  color: var(--text-muted);
   font-family: 'Plus Jakarta Sans', sans-serif;
+  white-space: nowrap;
+  flex-shrink: 0;
   letter-spacing: 0.2px;
+}
+
+/* ── Filter Icon Button ── */
+.discover-filter {
+  position: relative;
+}
+
+.discover-filter-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   border: 1.5px solid var(--border);
-  background: transparent;
+  background: var(--bg-card);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
-  flex-shrink: 0;
+  position: relative;
 }
 
-.discover-chip:hover {
+.discover-filter-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.discover-filter-btn:hover,
+.discover-filter-btn.active {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.discover-filter-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 1.5px solid var(--bg-card);
+}
+
+.discover-filter-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 14;
+}
+
+.discover-filter-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: max-content;
+  max-width: 320px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px;
+  z-index: 15;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.04);
+  animation: filterDropIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes filterDropIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.discover-filter-chip {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.discover-filter-chip:hover {
   border-color: var(--text-muted);
   color: var(--text-primary);
 }
 
-.discover-chip.active {
+.discover-filter-chip.active {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+  font-weight: 600;
 }
 
-.discover-counter {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-muted);
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  letter-spacing: 0.3px;
-  min-width: 20px;
-  text-align: right;
+/* ── Content Area: Radar + Card ── */
+.discover-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  min-height: 0;
+  justify-content: center;
+  width: 100%;
+  gap: 6px;
+}
+
+/* ── Taste Radar ── */
+.discover-radar {
+  width: 88px;
+  height: 88px;
   flex-shrink: 0;
+  opacity: 0.85;
+  transition: opacity 0.3s;
 }
 
-/* ── Card Stack — 3:4 poster ratio, centered ── */
+.discover-radar svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Card Stack — 3:4 poster ratio ── */
 .discover-stack {
   position: relative;
   width: 85vw;
   max-width: 380px;
   aspect-ratio: 3 / 4;
-  flex-shrink: 0;
-  margin: auto 0;
+  flex-shrink: 1;
+  min-height: 200px;
 }
 
 .discover-card {
@@ -5122,19 +5209,19 @@ body {
   z-index: 1;
 }
 
-/* Third card (deepest) */
+/* Third card (deepest) — 12px offset, scale 0.92 */
 .discover-card-third {
-  transform: scale(0.90) translateY(16px);
-  filter: brightness(0.4);
+  transform: scale(0.92) translateY(12px);
+  filter: brightness(0.45);
   z-index: 0;
   transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275),
               filter 0.35s ease;
 }
 
-/* Second card (behind current) */
+/* Second card (behind) — 6px offset, scale 0.96 */
 .discover-card-next {
-  transform: scale(0.95) translateY(8px);
-  filter: brightness(0.6);
+  transform: scale(0.96) translateY(6px);
+  filter: brightness(0.65);
   z-index: 1;
   transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275),
               filter 0.35s ease;
@@ -5398,20 +5485,37 @@ body {
   100% { transform: translateX(-140%) rotate(-12deg); opacity: 0; }
 }
 
-/* ── Action Buttons — 4 buttons below card ── */
+/* ── Action Buttons with Labels ── */
 .discover-actions {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   gap: 20px;
   padding: 10px 0 6px;
   flex-shrink: 0;
 }
 
+.discover-action-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.discover-action-label {
+  font-size: 10px;
+  font-weight: 500;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+}
+
 .discover-action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   cursor: pointer;
   transition: all 0.2s, transform 0.1s;
@@ -5421,84 +5525,61 @@ body {
   transform: scale(0.88);
 }
 
-/* Skip (X) button — 56px, red */
-.discover-skip-btn {
-  width: 56px;
-  height: 56px;
-  background: transparent;
-  border: 2.5px solid rgba(196, 90, 74, 0.45);
-  color: #C45A4A;
+.discover-action-btn svg {
+  width: 20px;
+  height: 20px;
 }
 
-.discover-skip-btn svg {
-  width: 24px;
-  height: 24px;
+/* Skip (X) — red */
+.discover-skip-btn {
+  background: transparent;
+  border: 2px solid rgba(196, 90, 74, 0.45);
+  color: #C45A4A;
 }
 
 .discover-skip-btn:hover {
   background: rgba(196, 90, 74, 0.18);
   border-color: #C45A4A;
-  box-shadow: 0 0 24px rgba(196, 90, 74, 0.2);
+  box-shadow: 0 0 20px rgba(196, 90, 74, 0.2);
 }
 
-/* Maybe Later (clock) button — 56px, yellow */
+/* Maybe Later (clock) — yellow */
 .discover-maybe-btn {
-  width: 56px;
-  height: 56px;
   background: transparent;
-  border: 2.5px solid rgba(200, 170, 80, 0.45);
+  border: 2px solid rgba(200, 170, 80, 0.45);
   color: #C8AA50;
-}
-
-.discover-maybe-btn svg {
-  width: 24px;
-  height: 24px;
 }
 
 .discover-maybe-btn:hover {
   background: rgba(200, 170, 80, 0.18);
   border-color: #C8AA50;
-  box-shadow: 0 0 24px rgba(200, 170, 80, 0.2);
+  box-shadow: 0 0 20px rgba(200, 170, 80, 0.2);
 }
 
-/* Super Like (star) button — 64px, gold, larger */
+/* Super Like (star) — gold */
 .discover-super-btn {
-  width: 64px;
-  height: 64px;
   background: transparent;
-  border: 2.5px solid rgba(212, 168, 67, 0.55);
+  border: 2px solid rgba(212, 168, 67, 0.55);
   color: #D4A843;
-}
-
-.discover-super-btn svg {
-  width: 28px;
-  height: 28px;
 }
 
 .discover-super-btn:hover {
   background: rgba(212, 168, 67, 0.18);
   border-color: #D4A843;
-  box-shadow: 0 0 28px rgba(212, 168, 67, 0.3);
+  box-shadow: 0 0 20px rgba(212, 168, 67, 0.3);
 }
 
-/* Like (heart) button — 56px, green */
+/* Like (heart) — green */
 .discover-like-btn {
-  width: 56px;
-  height: 56px;
   background: transparent;
-  border: 2.5px solid rgba(107, 143, 113, 0.45);
+  border: 2px solid rgba(107, 143, 113, 0.45);
   color: #6B8F71;
-}
-
-.discover-like-btn svg {
-  width: 24px;
-  height: 24px;
 }
 
 .discover-like-btn:hover {
   background: rgba(107, 143, 113, 0.18);
   border-color: #6B8F71;
-  box-shadow: 0 0 24px rgba(107, 143, 113, 0.2);
+  box-shadow: 0 0 20px rgba(107, 143, 113, 0.2);
 }
 
 /* ── Toast ──────────────────────────── */
@@ -5706,6 +5787,15 @@ body {
 }
 
 /* ── Light Theme ──────────────────── */
+[data-theme="light"] .discover-container {
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.04) 0%,
+    transparent 45%,
+    rgba(139, 58, 74, 0.02) 100%
+  );
+}
+
 [data-theme="light"] .discover-card-active {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
 }
@@ -5746,12 +5836,22 @@ body {
   background: var(--bg-card);
 }
 
-[data-theme="light"] .discover-chip {
+[data-theme="light"] .discover-filter-btn {
   border-color: rgba(0, 0, 0, 0.12);
-  color: var(--text-secondary);
+  background: var(--bg-card);
 }
 
-[data-theme="light"] .discover-chip.active {
+[data-theme="light"] .discover-filter-dropdown {
+  background: var(--bg-card);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0,0,0,0.05);
+}
+
+[data-theme="light"] .discover-filter-chip {
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"] .discover-filter-chip.active {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
@@ -5782,4 +5882,8 @@ body {
     90deg, transparent 0%, rgba(0,0,0,0.03) 40%,
     rgba(0,0,0,0.06) 50%, rgba(0,0,0,0.03) 60%, transparent 100%
   );
+}
+
+[data-theme="light"] .discover-radar polygon[fill*="139"] {
+  fill: rgba(139, 58, 74, 0.12);
 }

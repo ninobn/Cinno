@@ -349,6 +349,12 @@ const CheckIcon = () => (
   </svg>
 );
 
+const FilterIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="4" y1="6" x2="20" y2="6" /><line x1="7" y1="12" x2="17" y2="12" /><line x1="10" y1="18" x2="14" y2="18" />
+  </svg>
+);
+
 const PlusIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
     <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -3091,7 +3097,9 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   const [toast, setToast] = useState(null);
   const [cardDetails, setCardDetails] = useState({});
   const [activeGenres, setActiveGenres] = useState(new Set());
+  const [filterOpen, setFilterOpen] = useState(false);
   const [maybeLater, setMaybeLater] = useState(() => loadFromStorage("cc_discover_maybe_later", []));
+  const [swipeHistory, setSwipeHistory] = useState(() => loadFromStorage("cc_discover_swipe_history", []));
   const [superLikeFlash, setSuperLikeFlash] = useState(false);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
@@ -3104,6 +3112,10 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   const swipingRef = useRef(false);
   const activeGenresRef = useRef(activeGenres);
   activeGenresRef.current = activeGenres;
+  const swipeHistoryRef = useRef(swipeHistory);
+  swipeHistoryRef.current = swipeHistory;
+  const cardDetailsRef = useRef(cardDetails);
+  cardDetailsRef.current = cardDetails;
 
   const exclusionSet = useMemo(() => {
     const ids = new Set();
@@ -3120,6 +3132,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   useEffect(() => { saveToStorage("cc_discover_swipe_weights", swipeWeights); }, [swipeWeights]);
   useEffect(() => { saveToStorage("cc_discover_seen", [...seenIds].slice(-500)); }, [seenIds]);
   useEffect(() => { saveToStorage("cc_discover_maybe_later", maybeLater); }, [maybeLater]);
+  useEffect(() => { saveToStorage("cc_discover_swipe_history", swipeHistory); }, [swipeHistory]);
 
   useEffect(() => {
     if (keywordsRef.current || !tasteProfile.topRatedIds.length) return;
@@ -3178,8 +3191,9 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     const d = decades[Math.floor(Math.random() * decades.length)];
     const startYear = parseInt(d);
     if (!startYear) return {};
+    // Widen window: go back 15 years from decade start for more variety
     return {
-      "primary_release_date.gte": `${startYear}-01-01`,
+      "primary_release_date.gte": `${startYear - 15}-01-01`,
       "primary_release_date.lte": `${startYear + 9}-12-31`,
     };
   }, [tasteProfile.preferredDecades]);
@@ -3192,22 +3206,32 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       const chipGenres = activeGenresRef.current;
       const weights = getMergedWeights();
       const sorted = Object.entries(weights).sort(([, a], [, b]) => b - a);
-      const useRandom = Math.random() < 0.2;
+      const useRandom = Math.random() < 0.1;
+
+      // Picky user detection: if >70% left swipes in last 20, raise quality floor
+      const recentSwipes = swipeHistoryRef.current.slice(-20);
+      const leftCount = recentSwipes.filter((s) => s === "left").length;
+      const isPickyUser = recentSwipes.length >= 10 && leftCount / recentSwipes.length > 0.7;
 
       let params = {
-        sort_by: "popularity.desc",
-        "vote_average.gte": "6.0",
-        "vote_count.gte": "50",
+        "vote_average.gte": isPickyUser ? "7.0" : "6.8",
+        "vote_count.gte": isPickyUser ? "500" : "200",
+        with_original_language: "en",
       };
 
       if (chipGenres.size > 0) {
+        params.sort_by = "vote_average.desc";
         params.with_genres = [...chipGenres].join(",");
       } else if (useRandom) {
+        // Random genre picks: use popularity sort but still enforce quality filters
+        params.sort_by = "popularity.desc";
         const topIds = new Set(sorted.slice(0, 3).map(([id]) => id));
         const others = DISCOVER_GENRE_IDS.filter((id) => !topIds.has(String(id)));
         const shuffled = others.sort(() => Math.random() - 0.5);
         params.with_genres = shuffled.slice(0, 2).join(",");
       } else {
+        // Main batch: sort by rating for quality over trending
+        params.sort_by = "vote_average.desc";
         const topGenreIds = tasteProfile.topGenreIds.length
           ? tasteProfile.topGenreIds.slice(0, 3)
           : sorted.slice(0, 3).map(([id]) => parseInt(id));
@@ -3225,7 +3249,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       pageRef.current = page + 1;
 
       let newMovies = data.movies.filter(
-        (m) => !seenIds.has(m.id) && !exclusionSet.has(m.id) && m.poster_path
+        (m) => (reset || !seenIds.has(m.id)) && !exclusionSet.has(m.id) && m.poster_path
       );
       newMovies.sort(() => Math.random() - 0.5);
 
@@ -3236,8 +3260,9 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         setCards((prev) => [...prev, ...newMovies]);
       }
 
+      const detailsSnap = cardDetailsRef.current;
       newMovies.slice(0, 4).forEach((m) => {
-        if (!cardDetails[m.id]) {
+        if (!detailsSnap[m.id]) {
           getMovieDetails(m.id).then((d) => {
             setCardDetails((prev) => ({ ...prev, [m.id]: { tagline: d.tagline || "" } }));
           }).catch(() => {});
@@ -3249,7 +3274,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         try {
           const fallback = await getTrending();
           const filtered = fallback.movies.filter(
-            (m) => !seenIds.has(m.id) && !exclusionSet.has(m.id) && m.poster_path
+            (m) => !exclusionSet.has(m.id) && m.poster_path
           );
           setCards(filtered);
           setCurrentIndex(0);
@@ -3259,7 +3284,10 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       setLoading(false);
       fetchingRef.current = false;
     }
-  }, [getMergedWeights, seenIds, exclusionSet, tasteProfile, getDecadeDateRange, cardDetails]);
+  }, [getMergedWeights, seenIds, exclusionSet, tasteProfile, getDecadeDateRange]); // cardDetails accessed via ref
+
+  const fetchMoviesRef = useRef(fetchMovies);
+  fetchMoviesRef.current = fetchMovies;
 
   // Initial fetch
   useEffect(() => {
@@ -3314,12 +3342,12 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     });
   }, [currentIndex, cards, cardDetails]);
 
-  // Auto-fetch when running low
+  // Auto-fetch when running low — uses ref to avoid cascading refetches
   useEffect(() => {
     if (cards.length - currentIndex < 5 && !fetchingRef.current && cards.length > 0) {
-      fetchMovies();
+      fetchMoviesRef.current();
     }
-  }, [currentIndex, cards.length, fetchMovies]);
+  }, [currentIndex, cards.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const showToast = useCallback((msg, icon) => {
     clearTimeout(toastTimeout.current);
@@ -3404,6 +3432,12 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       });
 
       setSeenIds((prev) => new Set(prev).add(movie.id));
+      // Track swipe direction for picky user detection
+      if (action === "skip") {
+        setSwipeHistory((prev) => [...prev, "left"].slice(-20));
+      } else if (action === "save" || action === "super") {
+        setSwipeHistory((prev) => [...prev, "right"].slice(-20));
+      }
       setSessionCount((c) => c + 1);
       setUndoHistory((prev) => [{ movie, action, index: currentIndex }, ...prev].slice(0, 5));
       setCurrentIndex((i) => i + 1);
@@ -3414,10 +3448,10 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
 
       if ((sessionCount + 1) % 5 === 0) {
         pageRef.current = 1 + Math.floor(Math.random() * 5);
-        fetchMovies();
+        fetchMoviesRef.current();
       }
     }, 300);
-  }, [cards, currentIndex, savedIds, toggleSave, toggleMovieInCollection, getMustWatchCollectionId, sessionCount, fetchMovies, showToast, tasteProfile.hasData, maybeLater]);
+  }, [cards, currentIndex, savedIds, toggleSave, toggleMovieInCollection, getMustWatchCollectionId, sessionCount, showToast, tasteProfile.hasData, maybeLater]);
 
   const handleSwipe = useCallback((direction) => {
     handleAction(direction === "right" ? "save" : "skip");
@@ -3524,22 +3558,67 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   const opacity = Math.min(Math.abs(dragX) / 80, 1);
   const tagline = currentMovie ? (cardDetails[currentMovie.id]?.tagline || "") : "";
 
+  // Taste Radar: compute SVG data from swipe weights
+  const radarData = useMemo(() => {
+    const genrePool = DISCOVER_CHIPS.map(g => ({
+      id: g.id, label: g.label, weight: swipeWeights[g.id] || 0
+    }));
+    genrePool.sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight));
+    const axes = genrePool.slice(0, 5);
+    const hasData = axes.some(a => a.weight !== 0);
+    if (!hasData) return null;
+    const n = axes.length, cx = 50, cy = 50, r = 34;
+    const maxW = Math.max(...axes.map(a => Math.abs(a.weight)), 5);
+    const points = axes.map((a, i) => {
+      const angle = (2 * Math.PI * i / n) - Math.PI / 2;
+      const norm = Math.max(0.15, Math.min(1, 0.3 + (a.weight / maxW) * 0.7));
+      return {
+        label: a.label, norm,
+        x: cx + r * norm * Math.cos(angle),
+        y: cy + r * norm * Math.sin(angle),
+        lx: cx + (r + 12) * Math.cos(angle),
+        ly: cy + (r + 12) * Math.sin(angle),
+        ax: cx + r * Math.cos(angle),
+        ay: cy + r * Math.sin(angle),
+      };
+    });
+    const rings = [0.33, 0.66, 1].map(s =>
+      Array.from({ length: n }, (_, j) => {
+        const a = (2 * Math.PI * j / n) - Math.PI / 2;
+        return `${cx + r * s * Math.cos(a)},${cy + r * s * Math.sin(a)}`;
+      }).join(" ")
+    );
+    return { points, rings };
+  }, [swipeWeights]);
+
   const resetSession = () => {
+    console.log("[Discover] resetSession fired");
+    // Clear all session state
     setSeenIds(new Set());
     setSessionCount(0);
+    setCurrentIndex(0);
     setSwipeWeights({});
+    setSwipeHistory([]);
     setCards([]);
     setUndoHistory([]);
     setCardDetails({});
     setActiveGenres(new Set());
+    setFilterOpen(false);
     pageRef.current = 1;
+    fetchingRef.current = false;
+    swipingRef.current = false;
     keywordsRef.current = null;
     profileRef.current = null;
+    // Clear localStorage
     saveToStorage("cc_discover_seen", []);
     saveToStorage("cc_discover_swipe_weights", {});
+    saveToStorage("cc_discover_swipe_history", []);
+    // Show confirmation toast
+    showToast("Fresh start", "check");
+    // Fetch new batch — use ref to get latest fetchMovies (avoids stale seenIds closure)
     setTimeout(() => {
       if (tasteProfile.hasData) {
-        fetchMovies(true);
+        fetchMoviesRef.current(true);
       } else {
         const init = async () => {
           fetchingRef.current = true;
@@ -3549,7 +3628,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
             const all = [...(t.status === "fulfilled" ? t.value.movies : []), ...(p.status === "fulfilled" ? p.value.movies : [])];
             const unique = [];
             const seen = new Set();
-            all.forEach((m) => { if (!seen.has(m.id) && m.poster_path) { seen.add(m.id); unique.push(m); } });
+            all.forEach((m) => { if (!seen.has(m.id) && m.poster_path && !exclusionSet.has(m.id)) { seen.add(m.id); unique.push(m); } });
             unique.sort(() => Math.random() - 0.5);
             setCards(unique);
             setCurrentIndex(0);
@@ -3564,31 +3643,47 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   if (loading && cards.length === 0) {
     return (
       <div className="discover-container">
-        <div className="discover-chips-row">
-          {DISCOVER_CHIPS.map((g) => (
-            <span key={g.id} className="discover-chip" style={{ opacity: 0.3 }}>{g.label}</span>
-          ))}
+        <div className="discover-header">
+          <div className="discover-undo-btn disabled"><UndoIcon /></div>
+          <span className="discover-session-count" style={{ opacity: 0.3 }}>0 discovered</span>
+          <div className="discover-filter">
+            <div className="discover-filter-btn" style={{ opacity: 0.3 }}><FilterIcon /></div>
+          </div>
         </div>
-        <div className="discover-stack">
-          <div className="discover-card discover-skeleton-card">
-            <div className="discover-skeleton-poster">
-              <div className="discover-skeleton-gradient" />
-              <div className="discover-skeleton-lines">
-                <div className="discover-skeleton-line discover-skeleton-title-line" />
-                <div className="discover-skeleton-line discover-skeleton-meta-line" />
-                <div className="discover-skeleton-pills-row">
-                  <div className="discover-skeleton-pill" />
-                  <div className="discover-skeleton-pill short" />
+        <div className="discover-content">
+          <div className="discover-stack">
+            <div className="discover-card discover-skeleton-card">
+              <div className="discover-skeleton-poster">
+                <div className="discover-skeleton-gradient" />
+                <div className="discover-skeleton-lines">
+                  <div className="discover-skeleton-line discover-skeleton-title-line" />
+                  <div className="discover-skeleton-line discover-skeleton-meta-line" />
+                  <div className="discover-skeleton-pills-row">
+                    <div className="discover-skeleton-pill" />
+                    <div className="discover-skeleton-pill short" />
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
         <div className="discover-actions">
-          <div className="discover-action-btn discover-skip-btn" style={{ opacity: 0.3 }}><SwipeXIcon /></div>
-          <div className="discover-action-btn discover-maybe-btn" style={{ opacity: 0.3 }}><ClockIcon /></div>
-          <div className="discover-action-btn discover-super-btn" style={{ opacity: 0.3 }}><StarIconSolid /></div>
-          <div className="discover-action-btn discover-like-btn" style={{ opacity: 0.3 }}><SwipeHeartIcon /></div>
+          <div className="discover-action-group">
+            <div className="discover-action-btn discover-skip-btn" style={{ opacity: 0.3 }}><SwipeXIcon /></div>
+            <span className="discover-action-label" style={{ opacity: 0.3 }}>Skip</span>
+          </div>
+          <div className="discover-action-group">
+            <div className="discover-action-btn discover-maybe-btn" style={{ opacity: 0.3 }}><ClockIcon /></div>
+            <span className="discover-action-label" style={{ opacity: 0.3 }}>Later</span>
+          </div>
+          <div className="discover-action-group">
+            <div className="discover-action-btn discover-super-btn" style={{ opacity: 0.3 }}><StarIconSolid /></div>
+            <span className="discover-action-label" style={{ opacity: 0.3 }}>Must See</span>
+          </div>
+          <div className="discover-action-group">
+            <div className="discover-action-btn discover-like-btn" style={{ opacity: 0.3 }}><SwipeHeartIcon /></div>
+            <span className="discover-action-label" style={{ opacity: 0.3 }}>Save</span>
+          </div>
         </div>
       </div>
     );
@@ -3615,8 +3710,8 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
 
   return (
     <div className="discover-container">
-      {/* Top bar: undo + chips + counter */}
-      <div className="discover-top-bar">
+      {/* Header: undo + counter + filter icon */}
+      <div className="discover-header">
         <button
           className={`discover-undo-btn ${undoHistory.length === 0 ? "disabled" : ""}`}
           onClick={handleUndo}
@@ -3625,128 +3720,157 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         >
           <UndoIcon />
         </button>
-        <div className="discover-chips-scroll">
-          <div className="discover-chips-row">
-            {DISCOVER_CHIPS.map((g) => (
-              <button
-                key={g.id}
-                className={`discover-chip ${activeGenres.has(g.id) ? "active" : ""}`}
-                onClick={() => toggleGenreChip(g.id)}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
+        <span className="discover-session-count">{sessionCount} discovered</span>
+        <div className="discover-filter">
+          <button className={`discover-filter-btn ${filterOpen ? "active" : ""}`} onClick={() => setFilterOpen(f => !f)} title="Filter genres">
+            <FilterIcon />
+            {activeGenres.size > 0 && <span className="discover-filter-dot" />}
+          </button>
+          {filterOpen && (
+            <>
+              <div className="discover-filter-backdrop" onClick={() => setFilterOpen(false)} />
+              <div className="discover-filter-dropdown">
+                {DISCOVER_CHIPS.map(g => (
+                  <button
+                    key={g.id}
+                    className={`discover-filter-chip ${activeGenres.has(g.id) ? "active" : ""}`}
+                    onClick={() => toggleGenreChip(g.id)}
+                  >
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
-        <span className="discover-counter">{sessionCount}</span>
       </div>
 
-      {/* Card stack with 3-card depth */}
-      <div className="discover-stack">
-        {/* Third card (deepest) */}
-        {thirdMovie && (
-          <div className="discover-card discover-card-third">
-            <div
-              className="discover-card-poster"
-              style={{ backgroundImage: `url(${IMG_BASE}/w780${thirdMovie.poster_path})` }}
-            />
-            <div className="discover-card-gradient" />
+      {/* Content: radar + card stack */}
+      <div className="discover-content">
+        {/* Taste Radar */}
+        {radarData && (
+          <div className="discover-radar">
+            <svg viewBox="0 0 100 100">
+              {radarData.rings.map((pts, i) => (
+                <polygon key={i} points={pts} fill="none" stroke="var(--border)" strokeWidth="0.5" opacity={0.3 + i * 0.15} />
+              ))}
+              {radarData.points.map((p, i) => (
+                <line key={i} x1={50} y1={50} x2={p.ax} y2={p.ay} stroke="var(--border)" strokeWidth="0.4" opacity="0.25" />
+              ))}
+              <polygon
+                points={radarData.points.map(p => `${p.x},${p.y}`).join(" ")}
+                fill="rgba(139, 58, 74, 0.18)"
+                stroke="var(--accent)"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+              />
+              {radarData.points.map((p, i) => (
+                <circle key={i} cx={p.x} cy={p.y} r="2" fill="var(--accent)" opacity="0.9" />
+              ))}
+              {radarData.points.map((p, i) => (
+                <text key={i} x={p.lx} y={p.ly} textAnchor="middle" dominantBaseline="middle"
+                  fill="var(--text-muted)" fontSize="5.5" fontFamily="'Plus Jakarta Sans', sans-serif" fontWeight="500">
+                  {p.label}
+                </text>
+              ))}
+            </svg>
           </div>
         )}
 
-        {/* Second card (behind) */}
-        {nextMovie && (
-          <div className={`discover-card discover-card-next ${swipeDir ? "discover-card-promote" : ""}`}>
-            <div
-              className="discover-card-poster"
-              style={{ backgroundImage: `url(${IMG_BASE}/w780${nextMovie.poster_path})` }}
-            />
-            <div className="discover-card-gradient" />
-          </div>
-        )}
-
-        {/* Current card */}
-        {currentMovie && (
-          <div
-            className={`discover-card discover-card-active ${swipeDir ? `swipe-${swipeDir}` : ""}`}
-            style={{
-              transform: swipeDir ? undefined : `translateX(${dragX}px) rotate(${rotation}deg)`,
-              transition: isDragging ? "none" : "transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
-            }}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onMouseDown={handleMouseDown}
-          >
-            <div
-              className="discover-card-poster"
-              style={{ backgroundImage: `url(${IMG_BASE}/w780${currentMovie.poster_path})` }}
-            />
-            <div className="discover-card-gradient" />
-
-            {/* Swipe stamps */}
-            <div className="discover-stamp discover-stamp-like" style={{ opacity: dragX > 20 ? opacity : 0 }}>SAVE</div>
-            <div className="discover-stamp discover-stamp-nope" style={{ opacity: dragX < -20 ? opacity : 0 }}>SKIP</div>
-            {showStamp === "like" && <div className="discover-stamp discover-stamp-like discover-stamp-flash">SAVE</div>}
-            {showStamp === "nope" && <div className="discover-stamp discover-stamp-nope discover-stamp-flash">SKIP</div>}
-            {showStamp === "super" && <div className="discover-stamp discover-stamp-super discover-stamp-flash">MUST SEE</div>}
-
-            {/* Glow effects */}
-            <div className="discover-glow discover-glow-right" style={{ opacity: dragX > 20 ? opacity * 0.5 : 0 }} />
-            <div className="discover-glow discover-glow-left" style={{ opacity: dragX < -20 ? opacity * 0.5 : 0 }} />
-
-            {/* Super like sparkle overlay */}
-            {superLikeFlash && <div className="discover-super-flash" />}
-
-            {/* Info button (top-right) */}
-            <button className="discover-info-float" onClick={() => setSelectedMovie(currentMovie)}>
-              <InfoIcon />
-            </button>
-
-            {/* Bottom info over gradient */}
-            <div className="discover-card-info">
-              <div className="discover-card-title">{currentMovie.title}</div>
-              <div className="discover-card-meta">
-                <span>{currentMovie.year}</span>
-                <span className="discover-meta-dot" />
-                <span className="discover-card-rating" style={{ color: getRatingColor(currentMovie.rating) }}>
-                  <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 13, height: 13, marginRight: 3, verticalAlign: -1 }}>
-                    <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" />
-                  </svg>
-                  {currentMovie.rating}
-                </span>
-              </div>
-              <div className="discover-card-pills">
-                <span
-                  className="discover-genre-pill"
-                  style={{ background: `${GENRE_COLORS[currentMovie.genre] || "#7A7878"}33`, color: GENRE_COLORS[currentMovie.genre] || "#7A7878" }}
-                >
-                  {currentMovie.genre}
-                </span>
-              </div>
-              {tagline && <div className="discover-card-tagline">{tagline}</div>}
+        {/* Card stack */}
+        <div className="discover-stack">
+          {thirdMovie && (
+            <div className="discover-card discover-card-third">
+              <div className="discover-card-poster" style={{ backgroundImage: `url(${IMG_BASE}/w780${thirdMovie.poster_path})` }} />
+              <div className="discover-card-gradient" />
             </div>
-          </div>
-        )}
+          )}
+          {nextMovie && (
+            <div className={`discover-card discover-card-next ${swipeDir ? "discover-card-promote" : ""}`}>
+              <div className="discover-card-poster" style={{ backgroundImage: `url(${IMG_BASE}/w780${nextMovie.poster_path})` }} />
+              <div className="discover-card-gradient" />
+            </div>
+          )}
+          {currentMovie && (
+            <div
+              className={`discover-card discover-card-active ${swipeDir ? `swipe-${swipeDir}` : ""}`}
+              style={{
+                transform: swipeDir ? undefined : `translateX(${dragX}px) rotate(${rotation}deg)`,
+                transition: isDragging ? "none" : "transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+              }}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              onMouseDown={handleMouseDown}
+            >
+              <div className="discover-card-poster" style={{ backgroundImage: `url(${IMG_BASE}/w780${currentMovie.poster_path})` }} />
+              <div className="discover-card-gradient" />
+              <div className="discover-stamp discover-stamp-like" style={{ opacity: dragX > 20 ? opacity : 0 }}>SAVE</div>
+              <div className="discover-stamp discover-stamp-nope" style={{ opacity: dragX < -20 ? opacity : 0 }}>SKIP</div>
+              {showStamp === "like" && <div className="discover-stamp discover-stamp-like discover-stamp-flash">SAVE</div>}
+              {showStamp === "nope" && <div className="discover-stamp discover-stamp-nope discover-stamp-flash">SKIP</div>}
+              {showStamp === "super" && <div className="discover-stamp discover-stamp-super discover-stamp-flash">MUST SEE</div>}
+              <div className="discover-glow discover-glow-right" style={{ opacity: dragX > 20 ? opacity * 0.5 : 0 }} />
+              <div className="discover-glow discover-glow-left" style={{ opacity: dragX < -20 ? opacity * 0.5 : 0 }} />
+              {superLikeFlash && <div className="discover-super-flash" />}
+              <button className="discover-info-float" onClick={() => setSelectedMovie(currentMovie)}>
+                <InfoIcon />
+              </button>
+              <div className="discover-card-info">
+                <div className="discover-card-title">{currentMovie.title}</div>
+                <div className="discover-card-meta">
+                  <span>{currentMovie.year}</span>
+                  <span className="discover-meta-dot" />
+                  <span className="discover-card-rating" style={{ color: getRatingColor(currentMovie.rating) }}>
+                    <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 13, height: 13, marginRight: 3, verticalAlign: -1 }}>
+                      <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" />
+                    </svg>
+                    {currentMovie.rating}
+                  </span>
+                </div>
+                <div className="discover-card-pills">
+                  <span
+                    className="discover-genre-pill"
+                    style={{ background: `${GENRE_COLORS[currentMovie.genre] || "#7A7878"}33`, color: GENRE_COLORS[currentMovie.genre] || "#7A7878" }}
+                  >
+                    {currentMovie.genre}
+                  </span>
+                </div>
+                {tagline && <div className="discover-card-tagline">{tagline}</div>}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* 4 Action buttons */}
+      {/* Action buttons with labels */}
       <div className="discover-actions">
-        <button className="discover-action-btn discover-skip-btn" onClick={() => handleAction("skip")} aria-label="Skip">
-          <SwipeXIcon />
-        </button>
-        <button className="discover-action-btn discover-maybe-btn" onClick={() => handleAction("maybe")} aria-label="Maybe later">
-          <ClockIcon />
-        </button>
-        <button className="discover-action-btn discover-super-btn" onClick={() => handleAction("super")} aria-label="Super like">
-          <StarIconSolid />
-        </button>
-        <button className="discover-action-btn discover-like-btn" onClick={() => handleAction("save")} aria-label="Save to watchlist">
-          <SwipeHeartIcon />
-        </button>
+        <div className="discover-action-group">
+          <button className="discover-action-btn discover-skip-btn" onClick={() => handleAction("skip")} aria-label="Skip">
+            <SwipeXIcon />
+          </button>
+          <span className="discover-action-label">Skip</span>
+        </div>
+        <div className="discover-action-group">
+          <button className="discover-action-btn discover-maybe-btn" onClick={() => handleAction("maybe")} aria-label="Maybe later">
+            <ClockIcon />
+          </button>
+          <span className="discover-action-label">Later</span>
+        </div>
+        <div className="discover-action-group">
+          <button className="discover-action-btn discover-super-btn" onClick={() => handleAction("super")} aria-label="Super like">
+            <StarIconSolid />
+          </button>
+          <span className="discover-action-label">Must See</span>
+        </div>
+        <div className="discover-action-group">
+          <button className="discover-action-btn discover-like-btn" onClick={() => handleAction("save")} aria-label="Save to watchlist">
+            <SwipeHeartIcon />
+          </button>
+          <span className="discover-action-label">Save</span>
+        </div>
       </div>
 
-      {/* Toast */}
       {toast && (
         <div className={`discover-toast ${toast.icon === "star" ? "discover-toast-gold" : toast.icon === "clock" ? "discover-toast-yellow" : ""}`}>
           {toast.icon === "star" ? <StarIconSolid /> : toast.icon === "clock" ? <ClockIcon /> : <CheckIcon />}
@@ -3839,7 +3963,7 @@ function MainApp() {
   const toggleTheme = () => setTheme((t) => t === "dark" ? "light" : "dark");
 
   const clearAllData = () => {
-    const keys = ["cc_savedIds", "cc_savedMovies", "cc_watchedIds", "cc_watchedMovies", "cc_watchedNotes", "cc_watchedRatings", "cc_tasteProfile", "cc_aiInsight", "cc_moodPlaylist", "cc_chats", "cc_activeChatId", "cc_collections", "cc_badges", "cc_watchedDates", "cc_discover_swipe_weights", "cc_discover_seen", "cc_discover_maybe_later"];
+    const keys = ["cc_savedIds", "cc_savedMovies", "cc_watchedIds", "cc_watchedMovies", "cc_watchedNotes", "cc_watchedRatings", "cc_tasteProfile", "cc_aiInsight", "cc_moodPlaylist", "cc_chats", "cc_activeChatId", "cc_collections", "cc_badges", "cc_watchedDates", "cc_discover_swipe_weights", "cc_discover_seen", "cc_discover_maybe_later", "cc_discover_swipe_history"];
     keys.forEach((k) => localStorage.removeItem(k));
     setSavedIds(new Set());
     setSavedMovies(new Map());
