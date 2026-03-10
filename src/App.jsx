@@ -451,52 +451,79 @@ const BadgeIconCollector = () => (
   </svg>
 );
 
-// ─── Badge Definitions ──────────────────────────────────────────────────────────
+// ─── Badge Definitions (Tiered) ─────────────────────────────────────────────────
 const ALL_GENRES = Object.keys(GENRE_COLORS).filter((g) => g !== "Film");
 
+const TIER_COLORS = {
+  bronze: "#B87333",
+  silver: "#A8A8A8",
+  gold:   "#D4A843",
+};
+
 const BADGE_DEFS = [
-  { id: "first_watch",    title: "First Watch",     desc: "Watch your first movie",              target: 1,   icon: BadgeIconFirstWatch },
-  { id: "critic",         title: "Critic",           desc: "Rate 10 movies",                     target: 10,  icon: BadgeIconCritic },
-  { id: "horror_fan",     title: "Horror Fan",       desc: "Watch 5 horror movies",              target: 5,   icon: BadgeIconHorror },
-  { id: "century_club",   title: "Century Club",     desc: "Watch 100 movies",                   target: 100, icon: BadgeIconCentury },
-  { id: "perfectionist",  title: "Perfectionist",    desc: "Give a perfect 100 rating",          target: 1,   icon: BadgeIconPerfectionist },
-  { id: "genre_explorer", title: "Genre Explorer",   desc: "Watch a movie from every genre",     target: ALL_GENRES.length, icon: BadgeIconExplorer },
-  { id: "binge_watcher",  title: "Binge Watcher",    desc: "Watch 3 movies in one day",          target: 3,   icon: BadgeIconBinge },
-  { id: "collector",      title: "Collector",         desc: "Create 5 collections",               target: 5,   icon: BadgeIconCollector },
+  { id: "first_watch",    title: "First Watch",   desc: "Movies watched",          tiers: [1, 5, 10],   icon: BadgeIconFirstWatch },
+  { id: "critic",         title: "Critic",         desc: "Movies rated",            tiers: [5, 25, 100], icon: BadgeIconCritic },
+  { id: "horror_fan",     title: "Horror Fan",     desc: "Horror movies watched",   tiers: [3, 10, 25],  icon: BadgeIconHorror },
+  { id: "binge_watcher",  title: "Binge Watcher",  desc: "Movies in one day",       tiers: [2, 3, 5],    icon: BadgeIconBinge },
+  { id: "collector",      title: "Collector",       desc: "Collections created",     tiers: [2, 5, 10],   icon: BadgeIconCollector },
+  { id: "genre_explorer", title: "Explorer",        desc: "Genres watched",          tiers: [3, 6, 10],   icon: BadgeIconExplorer },
 ];
 
 function computeBadgeProgress(badgeId, { watchedMovies, watchedRatings, collections, watchedDates }) {
   switch (badgeId) {
-    case "first_watch":    return Math.min(watchedMovies.size, 1);
-    case "critic":         return Math.min(watchedRatings.size, 10);
+    case "first_watch":    return watchedMovies.size;
+    case "critic":         return watchedRatings.size;
     case "horror_fan": {
       let count = 0;
       watchedMovies.forEach((m) => { if (m.genre === "Horror") count++; });
-      return Math.min(count, 5);
-    }
-    case "century_club":   return Math.min(watchedMovies.size, 100);
-    case "perfectionist": {
-      let has = false;
-      watchedRatings.forEach((r) => { if (r === 100) has = true; });
-      return has ? 1 : 0;
-    }
-    case "genre_explorer": {
-      const seen = new Set();
-      watchedMovies.forEach((m) => { if (m.genre && m.genre !== "Film") seen.add(m.genre); });
-      return Math.min(seen.size, ALL_GENRES.length);
+      return count;
     }
     case "binge_watcher": {
       const dayCounts = {};
       watchedDates.forEach((dateStr) => { dayCounts[dateStr] = (dayCounts[dateStr] || 0) + 1; });
-      const maxInDay = Object.values(dayCounts).reduce((mx, v) => Math.max(mx, v), 0);
-      return Math.min(maxInDay, 3);
+      return Object.values(dayCounts).reduce((mx, v) => Math.max(mx, v), 0);
     }
     case "collector": {
-      const userCollections = collections.filter((c) => !c.isDefault);
-      return Math.min(userCollections.length, 5);
+      return collections.filter((c) => !c.isDefault).length;
+    }
+    case "genre_explorer": {
+      const seen = new Set();
+      watchedMovies.forEach((m) => { if (m.genre && m.genre !== "Film") seen.add(m.genre); });
+      return seen.size;
     }
     default: return 0;
   }
+}
+
+// Returns: 0 = none, 1 = bronze, 2 = silver, 3 = gold
+function getBadgeTier(progress, tiers) {
+  if (progress >= tiers[2]) return 3;
+  if (progress >= tiers[1]) return 2;
+  if (progress >= tiers[0]) return 1;
+  return 0;
+}
+
+const TIER_NAMES = ["", "Bronze", "Silver", "Gold"];
+
+const MASTERY_LEVELS = [
+  { min: 0,  label: "Novice" },
+  { min: 5,  label: "Fan" },
+  { min: 10, label: "Enthusiast" },
+  { min: 20, label: "Master" },
+];
+
+function getMasteryLevel(count) {
+  for (let i = MASTERY_LEVELS.length - 1; i >= 0; i--) {
+    if (count >= MASTERY_LEVELS[i].min) return MASTERY_LEVELS[i];
+  }
+  return MASTERY_LEVELS[0];
+}
+
+function getMasteryMax(count) {
+  if (count >= 20) return 20;
+  if (count >= 10) return 20;
+  if (count >= 5) return 10;
+  return 5;
 }
 
 // ─── Shared Components ─────────────────────────────────────────────────────────
@@ -2193,39 +2220,84 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
         </div>
       )}
 
-      {/* ── Achievements ── */}
+      {/* ── Achievements (Tiered) ── */}
       {(() => {
         const badgeCtx = { watchedMovies, watchedRatings, collections: collections || [], watchedDates: watchedDates || new Map() };
-        const unlocked = (unlockedBadges || []).length;
-        const total = BADGE_DEFS.length;
+        const totalTiers = BADGE_DEFS.length * 3;
+        let earnedTiers = 0;
+        BADGE_DEFS.forEach((b) => { earnedTiers += getBadgeTier(computeBadgeProgress(b.id, badgeCtx), b.tiers); });
         return (
           <div className="stats-card full achievements-section">
             <div className="achievements-inline-header">
               <div className="stats-card-label">Achievements</div>
-              <div className="achievements-count">{unlocked} of {total} unlocked</div>
+              <div className="achievements-count">{earnedTiers} of {totalTiers} tiers</div>
             </div>
             <div className="achievements-inline-bar">
-              <div className="achievements-inline-bar-fill" style={{ width: `${(unlocked / total) * 100}%` }} />
+              <div className="achievements-inline-bar-fill" style={{ width: `${(earnedTiers / totalTiers) * 100}%` }} />
             </div>
             <div className="badge-grid-inline">
               {BADGE_DEFS.map((badge) => {
-                const isUnlocked = (unlockedBadges || []).includes(badge.id);
                 const progress = computeBadgeProgress(badge.id, badgeCtx);
-                const pct = Math.min((progress / badge.target) * 100, 100);
+                const tier = getBadgeTier(progress, badge.tiers);
+                const tierColor = tier > 0 ? TIER_COLORS[["bronze", "silver", "gold"][tier - 1]] : null;
+                const nextTier = Math.min(tier + 1, 3);
+                const nextTarget = badge.tiers[nextTier - 1];
+                const prevTarget = tier > 0 ? badge.tiers[tier - 1] : 0;
+                const pct = tier >= 3 ? 100 : Math.min(((progress - prevTarget) / (nextTarget - prevTarget)) * 100, 100);
                 const Icon = badge.icon;
                 return (
-                  <div key={badge.id} className={`badge-inline ${isUnlocked ? "unlocked" : "locked"}`}>
-                    <div className="badge-inline-icon">
-                      {!isUnlocked && <div className="badge-inline-lock"><LockIcon /></div>}
+                  <div key={badge.id} className={`badge-inline ${tier > 0 ? "unlocked" : "locked"}`}>
+                    <div className="badge-inline-icon" style={tierColor ? { color: tierColor } : undefined}>
+                      {tier > 0 && (
+                        <div className="badge-tier-ring" style={{ borderColor: tierColor, boxShadow: tier === 3 ? `0 0 8px ${tierColor}44` : "none" }} />
+                      )}
+                      {tier === 0 && <div className="badge-inline-lock"><LockIcon /></div>}
                       <Icon />
                     </div>
                     <div className="badge-inline-name">{badge.title}</div>
+                    {tier > 0 && <div className="badge-tier-label" style={{ color: tierColor }}>{TIER_NAMES[tier]}</div>}
                     <div className="badge-inline-progress">
                       <div className="badge-inline-track">
-                        <div className="badge-inline-fill" style={{ width: `${pct}%` }} />
+                        <div className="badge-inline-fill" style={{ width: `${pct}%`, background: tierColor || undefined }} />
                       </div>
-                      <span className="badge-inline-frac">{progress}/{badge.target}</span>
+                      <span className="badge-inline-frac">{progress}/{tier >= 3 ? badge.tiers[2] : nextTarget}</span>
                     </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Genre Mastery ── */}
+      {watchedMovies.size > 0 && (() => {
+        const genreCounts = {};
+        watchedMovies.forEach((m) => {
+          const g = m.genre || "Film";
+          if (g !== "Film") genreCounts[g] = (genreCounts[g] || 0) + 1;
+        });
+        const sorted = Object.entries(genreCounts).sort(([, a], [, b]) => b - a);
+        if (sorted.length === 0) return null;
+        return (
+          <div className="stats-card full genre-mastery-section">
+            <div className="stats-card-label">Genre Mastery</div>
+            <div className="genre-mastery-list">
+              {sorted.map(([genre, count]) => {
+                const mastery = getMasteryLevel(count);
+                const max = getMasteryMax(count);
+                const pct = Math.min((count / max) * 100, 100);
+                const isMaster = mastery.label === "Master";
+                return (
+                  <div key={genre} className="genre-mastery-row">
+                    <div className={`genre-mastery-name ${isMaster ? "master" : ""}`}>{genre}</div>
+                    <div className="genre-mastery-bar-wrap">
+                      <div className="genre-mastery-track">
+                        <div className="genre-mastery-fill" style={{ width: `${pct}%`, background: isMaster ? TIER_COLORS.gold : `${GENRE_COLORS[genre] || "var(--accent)"}` }} />
+                      </div>
+                      <span className="genre-mastery-label">{mastery.label}</span>
+                    </div>
+                    <span className="genre-mastery-count">{count}</span>
                   </div>
                 );
               })}
@@ -2950,11 +3022,14 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
 function BadgeToast({ badge, visible }) {
   if (!badge) return null;
   const Icon = badge.icon;
+  const tierNum = badge.tierNum || 1;
+  const tierName = TIER_NAMES[tierNum] || "Bronze";
+  const tierColor = TIER_COLORS[["bronze", "silver", "gold"][tierNum - 1]] || TIER_COLORS.bronze;
   return createPortal(
     <div className={`badge-toast ${visible ? "show" : "hide"}`}>
-      <div className="badge-toast-icon"><Icon /></div>
+      <div className="badge-toast-icon" style={{ color: tierColor, borderColor: tierColor }}><Icon /></div>
       <div className="badge-toast-content">
-        <div className="badge-toast-label">Badge Unlocked</div>
+        <div className="badge-toast-label" style={{ color: tierColor }}>{tierName} Unlocked</div>
         <div className="badge-toast-title">{badge.title}</div>
       </div>
     </div>,
@@ -4023,14 +4098,29 @@ function MainApp() {
     const ctx = { watchedMovies, watchedRatings, collections, watchedDates };
     const newlyUnlocked = [];
     BADGE_DEFS.forEach((badge) => {
-      if (unlockedBadges.includes(badge.id)) return;
       const progress = computeBadgeProgress(badge.id, ctx);
-      if (progress >= badge.target) newlyUnlocked.push(badge.id);
+      badge.tiers.forEach((threshold, i) => {
+        const tierId = `${badge.id}_t${i + 1}`;
+        if (progress >= threshold && !unlockedBadges.includes(tierId)) {
+          newlyUnlocked.push(tierId);
+        }
+      });
     });
     if (newlyUnlocked.length > 0) {
       setUnlockedBadges((prev) => [...prev, ...newlyUnlocked]);
-      const toShow = newlyUnlocked.map((id) => BADGE_DEFS.find((b) => b.id === id)).filter(Boolean);
-      badgeToastQueue.current.push(...toShow);
+      // Show toast for highest new tier per badge only
+      const toastBadges = new Map();
+      newlyUnlocked.forEach((tierId) => {
+        const badgeId = tierId.replace(/_t\d+$/, "");
+        const tierNum = parseInt(tierId.slice(-1));
+        if (!toastBadges.has(badgeId) || tierNum > toastBadges.get(badgeId)) {
+          toastBadges.set(badgeId, tierNum);
+        }
+      });
+      toastBadges.forEach((tierNum, badgeId) => {
+        const badge = BADGE_DEFS.find((b) => b.id === badgeId);
+        if (badge) badgeToastQueue.current.push({ ...badge, tierNum });
+      });
       if (!badgeToastTimer.current) showNextToast();
     }
   }, [watchedMovies, watchedRatings, collections, watchedDates, unlockedBadges, showNextToast]);
