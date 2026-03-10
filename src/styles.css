@@ -4987,7 +4987,6 @@ body {
   /* Discover — desktop */
   .discover-stack { max-width: 380px; }
   .discover-content { flex-direction: row; gap: 24px; }
-  .discover-radar { width: 140px; height: 140px; margin: 0; }
 }
 
 /* ── Discover Tab ──────────────────────────────────── */
@@ -5172,20 +5171,6 @@ body {
   gap: 6px;
 }
 
-/* ── Taste Radar ── */
-.discover-radar {
-  width: 88px;
-  height: 88px;
-  flex-shrink: 0;
-  opacity: 0.85;
-  transition: opacity 0.3s;
-}
-
-.discover-radar svg {
-  width: 100%;
-  height: 100%;
-}
-
 /* ── Card Stack — 3:4 poster ratio ── */
 .discover-stack {
   position: relative;
@@ -5297,13 +5282,6 @@ body {
   transform: rotate(18deg);
 }
 
-.discover-stamp-super {
-  left: 50%;
-  transform: translateX(-50%) rotate(-6deg);
-  color: #D4A843;
-  border-color: #D4A843;
-  text-shadow: 0 0 20px rgba(212, 168, 67, 0.3);
-}
 
 .discover-stamp-flash {
   animation: stampFlash 0.3s ease-out forwards;
@@ -5332,23 +5310,6 @@ body {
 
 .discover-glow-left {
   background: linear-gradient(-105deg, rgba(196, 90, 74, 0.5) 0%, transparent 45%);
-}
-
-/* ── Super Like Sparkle Flash ── */
-.discover-super-flash {
-  position: absolute;
-  inset: 0;
-  border-radius: 20px;
-  pointer-events: none;
-  z-index: 6;
-  background: radial-gradient(circle at center, rgba(212, 168, 67, 0.4) 0%, rgba(212, 168, 67, 0.1) 40%, transparent 70%);
-  animation: superSparkle 0.6s ease-out forwards;
-}
-
-@keyframes superSparkle {
-  0% { opacity: 0; transform: scale(0.8); }
-  30% { opacity: 1; transform: scale(1.05); }
-  100% { opacity: 0; transform: scale(1.2); }
 }
 
 /* ── Info float button (top-right of card) ── */
@@ -5556,19 +5517,6 @@ body {
   box-shadow: 0 0 20px rgba(200, 170, 80, 0.2);
 }
 
-/* Super Like (star) — gold */
-.discover-super-btn {
-  background: transparent;
-  border: 2px solid rgba(212, 168, 67, 0.55);
-  color: #D4A843;
-}
-
-.discover-super-btn:hover {
-  background: rgba(212, 168, 67, 0.18);
-  border-color: #D4A843;
-  box-shadow: 0 0 20px rgba(212, 168, 67, 0.3);
-}
-
 /* Like (heart) — green */
 .discover-like-btn {
   background: transparent;
@@ -5580,6 +5528,113 @@ body {
   background: rgba(107, 143, 113, 0.18);
   border-color: #6B8F71;
   box-shadow: 0 0 20px rgba(107, 143, 113, 0.2);
+}
+
+/* Watched (eye) — purple */
+.discover-watched-btn {
+  background: transparent;
+  border: 2px solid rgba(130, 100, 180, 0.45);
+  color: #8264B4;
+}
+
+.discover-watched-btn:hover {
+  background: rgba(130, 100, 180, 0.18);
+  border-color: #8264B4;
+  box-shadow: 0 0 20px rgba(130, 100, 180, 0.2);
+}
+
+/* ── Watched Mini Modal ── */
+.discover-watched-modal {
+  position: absolute;
+  bottom: 110px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 40px);
+  max-width: 340px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px 20px;
+  z-index: 20;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  animation: modalScaleUp 0.2s ease-out;
+}
+
+.discover-watched-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.discover-watched-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.discover-watched-val {
+  font-size: 22px;
+  font-weight: 700;
+  min-width: 32px;
+  text-align: center;
+}
+
+.discover-watched-range {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+}
+
+.discover-watched-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: none;
+}
+
+.discover-watched-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.discover-watched-cancel {
+  flex: 1;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.discover-watched-save {
+  flex: 2;
+  padding: 8px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.discover-watched-save:active {
+  opacity: 0.85;
 }
 
 /* ── Toast ──────────────────────────── */
@@ -5608,10 +5663,6 @@ body {
   width: 14px;
   height: 14px;
   color: #6B8F71;
-}
-
-.discover-toast-gold svg {
-  color: #D4A843;
 }
 
 .discover-toast-yellow svg {
@@ -5812,9 +5863,6 @@ body {
   background: rgba(200, 170, 80, 0.05);
 }
 
-[data-theme="light"] .discover-super-btn {
-  background: rgba(212, 168, 67, 0.05);
-}
 
 [data-theme="light"] .discover-skip-btn:hover {
   background: rgba(196, 90, 74, 0.12);
@@ -5824,13 +5872,18 @@ body {
   background: rgba(107, 143, 113, 0.12);
 }
 
+[data-theme="light"] .discover-watched-btn {
+  background: rgba(130, 100, 180, 0.05);
+}
+
+[data-theme="light"] .discover-watched-btn:hover {
+  background: rgba(130, 100, 180, 0.12);
+}
+
 [data-theme="light"] .discover-maybe-btn:hover {
   background: rgba(200, 170, 80, 0.12);
 }
 
-[data-theme="light"] .discover-super-btn:hover {
-  background: rgba(212, 168, 67, 0.12);
-}
 
 [data-theme="light"] .discover-undo-btn {
   background: var(--bg-card);
@@ -5884,6 +5937,3 @@ body {
   );
 }
 
-[data-theme="light"] .discover-radar polygon[fill*="139"] {
-  fill: rgba(139, 58, 74, 0.12);
-}

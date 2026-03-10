@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getMovieKeywords, IMG_BASE } from "./tmdb.js";
+import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getMovieKeywords, tmdbToMovie, IMG_BASE } from "./tmdb.js";
 
 const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
 
@@ -3081,13 +3081,14 @@ const DISCOVER_CHIPS = [
   { id: 10749, label: "Romance" }, { id: 16, label: "Animation" },
 ];
 
-function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, watchedMovies, watchedRatings }) {
-  const [cards, setCards] = useState([]);
+function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, watchedMovies, watchedRatings, setWatchedRating }) {
+  // ─── STEP 1: STATE ───
+  const [movies, setMovies] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [sessionCount, setSessionCount] = useState(0);
-  const [swipeWeights, setSwipeWeights] = useState(() => loadFromStorage("cc_discover_swipe_weights", {}));
-  const [seenIds, setSeenIds] = useState(() => new Set(loadFromStorage("cc_discover_seen", [])));
+  const [swipeCount, setSwipeCount] = useState(0);
+  const [genreBoosts, setGenreBoosts] = useState({});
+  const [genrePenalties, setGenrePenalties] = useState({});
   const [swipeDir, setSwipeDir] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragX, setDragX] = useState(0);
@@ -3099,24 +3100,23 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   const [activeGenres, setActiveGenres] = useState(new Set());
   const [filterOpen, setFilterOpen] = useState(false);
   const [maybeLater, setMaybeLater] = useState(() => loadFromStorage("cc_discover_maybe_later", []));
-  const [swipeHistory, setSwipeHistory] = useState(() => loadFromStorage("cc_discover_swipe_history", []));
-  const [superLikeFlash, setSuperLikeFlash] = useState(false);
+  const [watchedModal, setWatchedModal] = useState(null);
+  const [watchedSlider, setWatchedSlider] = useState(75);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const isHorizontalSwipe = useRef(false);
   const fetchingRef = useRef(false);
-  const pageRef = useRef(1);
-  const profileRef = useRef(null);
-  const keywordsRef = useRef(null);
+  const fetchedPagesRef = useRef(new Set());
   const toastTimeout = useRef(null);
   const swipingRef = useRef(false);
   const activeGenresRef = useRef(activeGenres);
   activeGenresRef.current = activeGenres;
-  const swipeHistoryRef = useRef(swipeHistory);
-  swipeHistoryRef.current = swipeHistory;
-  const cardDetailsRef = useRef(cardDetails);
-  cardDetailsRef.current = cardDetails;
+  const genreBoostsRef = useRef(genreBoosts);
+  genreBoostsRef.current = genreBoosts;
+  const genrePenaltiesRef = useRef(genrePenalties);
+  genrePenaltiesRef.current = genrePenalties;
 
+  // Exclusion set: movies already in watchlist or journal
   const exclusionSet = useMemo(() => {
     const ids = new Set();
     savedIds.forEach((id) => ids.add(id));
@@ -3124,159 +3124,170 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     return ids;
   }, [savedIds, watchedIds]);
 
+  // Taste profile from journal data
   const tasteProfile = useMemo(
     () => buildTasteProfile(watchedMovies, watchedRatings),
     [watchedMovies, watchedRatings]
   );
 
-  useEffect(() => { saveToStorage("cc_discover_swipe_weights", swipeWeights); }, [swipeWeights]);
-  useEffect(() => { saveToStorage("cc_discover_seen", [...seenIds].slice(-500)); }, [seenIds]);
+  // Only persist maybeLater to localStorage
   useEffect(() => { saveToStorage("cc_discover_maybe_later", maybeLater); }, [maybeLater]);
-  useEffect(() => { saveToStorage("cc_discover_swipe_history", swipeHistory); }, [swipeHistory]);
 
-  useEffect(() => {
-    if (keywordsRef.current || !tasteProfile.topRatedIds.length) return;
-    keywordsRef.current = true;
-    const fetchKeywords = async () => {
-      const allKw = {};
-      const results = await Promise.allSettled(
-        tasteProfile.topRatedIds.map((id) => getMovieKeywords(id))
-      );
-      results.forEach((r) => {
-        if (r.status === "fulfilled") {
-          r.value.forEach((kw) => {
-            allKw[kw.id] = (allKw[kw.id] || { ...kw, count: 0 });
-            allKw[kw.id].count++;
-          });
-        }
-      });
-      const topKw = Object.values(allKw)
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5);
-      profileRef.current = topKw;
-    };
-    fetchKeywords();
-  }, [tasteProfile.topRatedIds]);
+  // ─── STEP 2 & 4: FETCH LOGIC ───
 
-  const getMergedWeights = useCallback(() => {
-    const weights = {};
-    GENRE_FILTERS.forEach((g) => { weights[g.id] = 1; });
+  // Pick a random page 1-500 not already fetched this session
+  const getRandomPage = useCallback(() => {
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const page = Math.floor(Math.random() * 500) + 1;
+      if (!fetchedPagesRef.current.has(page)) return page;
+    }
+    return Math.floor(Math.random() * 500) + 1;
+  }, []);
+
+  // Compute effective top 3 genre IDs by merging journal scores with swipe boosts/penalties
+  const getEffectiveGenres = useCallback(() => {
+    const chipGenres = activeGenresRef.current;
+    if (chipGenres.size > 0) {
+      return { genreIds: [...chipGenres], isChipFilter: true };
+    }
+
+    // Build base scores from journal
+    const scores = {};
+    GENRE_FILTERS.forEach((g) => { scores[g.id] = 0; });
+
     if (tasteProfile.hasData) {
-      const { genreAvg, genreCounts } = tasteProfile;
-      Object.entries(genreCounts).forEach(([label, count]) => {
+      Object.entries(tasteProfile.genreCounts).forEach(([label, count]) => {
         const gid = GENRE_LABEL_TO_ID[label];
         if (!gid) return;
-        const avg = genreAvg[label] || 50;
-        weights[gid] = (avg / 50) * Math.min(count, 10) / 3;
-      });
-      // 70/30 merge: only adjust genres that have swipe data
-      Object.entries(swipeWeights).forEach(([gid, val]) => {
-        const journalW = weights[gid] || 1;
-        const swipeW = Math.max(0.1, 1 + val / 10);
-        weights[gid] = journalW * 0.7 + swipeW * 0.3;
-      });
-    } else {
-      // No journal: swipe weights are sole signal, centered on 1.0
-      Object.entries(swipeWeights).forEach(([gid, val]) => {
-        weights[gid] = Math.max(0.1, 1 + val / 10);
+        const avg = tasteProfile.genreAvg[label] || 50;
+        scores[gid] = (avg / 50) * Math.min(count, 10);
       });
     }
-    return weights;
-  }, [tasteProfile, swipeWeights]);
 
-  const getDecadeDateRange = useCallback(() => {
-    const decades = tasteProfile.preferredDecades;
-    if (!decades?.length) return {};
-    // Randomly pick one of top 2 decades for variety
-    const d = decades[Math.floor(Math.random() * decades.length)];
-    const startYear = parseInt(d);
-    if (!startYear) return {};
-    // Widen window: go back 15 years from decade start for more variety
-    return {
-      "primary_release_date.gte": `${startYear - 15}-01-01`,
-      "primary_release_date.lte": `${startYear + 9}-12-31`,
-    };
-  }, [tasteProfile.preferredDecades]);
+    // Apply swipe boosts and penalties
+    const boosts = genreBoostsRef.current;
+    const penalties = genrePenaltiesRef.current;
+    Object.entries(boosts).forEach(([gid, val]) => {
+      scores[gid] = (scores[gid] || 0) + val;
+    });
+    Object.entries(penalties).forEach(([gid, val]) => {
+      scores[gid] = (scores[gid] || 0) - val;
+    });
+
+    const sorted = Object.entries(scores)
+      .sort(([, a], [, b]) => b - a)
+      .filter(([, s]) => s > 0);
+
+    const topIds = sorted.slice(0, 3).map(([id]) => parseInt(id));
+    return { genreIds: topIds, isChipFilter: false };
+  }, [tasteProfile]);
 
   const fetchMovies = useCallback(async (reset = false) => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
-    if (reset) setLoading(true);
+    if (reset) {
+      setLoading(true);
+      fetchedPagesRef.current.clear();
+    }
+
     try {
-      const chipGenres = activeGenresRef.current;
-      const weights = getMergedWeights();
-      const sorted = Object.entries(weights).sort(([, a], [, b]) => b - a);
-      const useRandom = Math.random() < 0.1;
+      const { genreIds, isChipFilter } = getEffectiveGenres();
+      const hasProfile = genreIds.length > 0 || tasteProfile.hasData;
 
-      // Picky user detection: if >70% left swipes in last 20, raise quality floor
-      const recentSwipes = swipeHistoryRef.current.slice(-20);
-      const leftCount = recentSwipes.filter((s) => s === "left").length;
-      const isPickyUser = recentSwipes.length >= 10 && leftCount / recentSwipes.length > 0.7;
-
-      let params = {
-        "vote_average.gte": isPickyUser ? "7.0" : "6.8",
-        "vote_count.gte": isPickyUser ? "500" : "200",
-        with_original_language: "en",
-      };
-
-      if (chipGenres.size > 0) {
-        params.sort_by = "vote_average.desc";
-        params.with_genres = [...chipGenres].join(",");
-      } else if (useRandom) {
-        // Random genre picks: use popularity sort but still enforce quality filters
-        params.sort_by = "popularity.desc";
-        const topIds = new Set(sorted.slice(0, 3).map(([id]) => id));
-        const others = DISCOVER_GENRE_IDS.filter((id) => !topIds.has(String(id)));
-        const shuffled = others.sort(() => Math.random() - 0.5);
-        params.with_genres = shuffled.slice(0, 2).join(",");
-      } else {
-        // Main batch: sort by rating for quality over trending
-        params.sort_by = "vote_average.desc";
-        const topGenreIds = tasteProfile.topGenreIds.length
-          ? tasteProfile.topGenreIds.slice(0, 3)
-          : sorted.slice(0, 3).map(([id]) => parseInt(id));
-        params.with_genres = topGenreIds.join(",");
-        if (Math.random() < 0.4) {
-          Object.assign(params, getDecadeDateRange());
+      // No profile at all: use trending + popular
+      if (!hasProfile && !isChipFilter) {
+        const [t, p] = await Promise.allSettled([getTrending(), getPopular()]);
+        const tMovies = t.status === "fulfilled" ? t.value.movies : [];
+        const pMovies = p.status === "fulfilled" ? p.value.movies : [];
+        const all = [...tMovies, ...pMovies];
+        const unique = [];
+        const usedIds = new Set();
+        all.forEach((m) => {
+          if (!usedIds.has(m.id) && m.poster_path && !exclusionSet.has(m.id)) {
+            usedIds.add(m.id);
+            unique.push(m);
+          }
+        });
+        unique.sort(() => Math.random() - 0.5);
+        if (reset) {
+          setMovies(unique);
+          setCurrentIndex(0);
+        } else {
+          setMovies((prev) => [...prev, ...unique]);
         }
-        if (profileRef.current?.length) {
-          params.with_keywords = profileRef.current.map((k) => k.id).join("|");
-        }
-      }
-
-      const page = reset ? 1 + Math.floor(Math.random() * 3) : pageRef.current;
-      const data = await discoverMovies(params, page);
-      pageRef.current = page + 1;
-
-      let newMovies = data.movies.filter(
-        (m) => (reset || !seenIds.has(m.id)) && !exclusionSet.has(m.id) && m.poster_path
-      );
-      newMovies.sort(() => Math.random() - 0.5);
-
-      if (reset) {
-        setCards(newMovies);
-        setCurrentIndex(0);
-      } else {
-        setCards((prev) => [...prev, ...newMovies]);
-      }
-
-      const detailsSnap = cardDetailsRef.current;
-      newMovies.slice(0, 4).forEach((m) => {
-        if (!detailsSnap[m.id]) {
+        unique.slice(0, 4).forEach((m) => {
           getMovieDetails(m.id).then((d) => {
             setCardDetails((prev) => ({ ...prev, [m.id]: { tagline: d.tagline || "" } }));
           }).catch(() => {});
-        }
+        });
+        return;
+      }
+
+      // Build TMDB discover params
+      const useVariety = Math.random() < 0.1;
+      let params = {
+        "vote_average.gte": "6.5",
+        "vote_count.gte": "100",
+        with_original_language: "en",
+        sort_by: "popularity.desc",
+      };
+
+      if (isChipFilter) {
+        params.with_genres = genreIds.join(",");
+      } else if (useVariety) {
+        // 10% variety: random genre NOT in top 3
+        const topSet = new Set(genreIds.map(String));
+        const others = DISCOVER_GENRE_IDS.filter((id) => !topSet.has(String(id)));
+        const randomGenre = others[Math.floor(Math.random() * others.length)];
+        params.with_genres = String(randomGenre);
+      } else {
+        params.with_genres = genreIds.join(",");
+      }
+
+      // Retry up to 3 pages if filtering yields 0 results
+      let newMovies = [];
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const page = getRandomPage();
+        fetchedPagesRef.current.add(page);
+
+        console.log(`[Discover] Fetch attempt ${attempt + 1}/3, page ${page}, params:`, JSON.stringify(params));
+
+        const data = await discoverMovies(params, page);
+        console.log(`[Discover] TMDB returned ${data.movies.length} movies (totalPages: ${data.totalPages})`);
+
+        newMovies = data.movies.filter(
+          (m) => !exclusionSet.has(m.id) && m.poster_path
+        );
+        console.log(`[Discover] After exclusion filter: ${newMovies.length} movies`);
+
+        if (newMovies.length > 0) break;
+      }
+
+      newMovies.sort(() => Math.random() - 0.5);
+
+      if (reset) {
+        setMovies(newMovies);
+        setCurrentIndex(0);
+      } else {
+        // APPEND only, never replace
+        setMovies((prev) => [...prev, ...newMovies]);
+      }
+
+      // Prefetch taglines for first 4
+      newMovies.slice(0, 4).forEach((m) => {
+        getMovieDetails(m.id).then((d) => {
+          setCardDetails((prev) => ({ ...prev, [m.id]: { tagline: d.tagline || "" } }));
+        }).catch(() => {});
       });
     } catch (e) {
-      console.error("Discover fetch failed:", e);
+      console.error("[Discover] Fetch failed:", e);
       if (reset) {
         try {
           const fallback = await getTrending();
           const filtered = fallback.movies.filter(
             (m) => !exclusionSet.has(m.id) && m.poster_path
           );
-          setCards(filtered);
+          setMovies(filtered);
           setCurrentIndex(0);
         } catch {}
       }
@@ -3284,70 +3295,33 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       setLoading(false);
       fetchingRef.current = false;
     }
-  }, [getMergedWeights, seenIds, exclusionSet, tasteProfile, getDecadeDateRange]); // cardDetails accessed via ref
+  }, [getEffectiveGenres, exclusionSet, tasteProfile, getRandomPage]);
 
   const fetchMoviesRef = useRef(fetchMovies);
   fetchMoviesRef.current = fetchMovies;
 
-  // Initial fetch
+  // ─── Initial fetch on mount ───
   useEffect(() => {
-    const init = async () => {
-      if (!tasteProfile.hasData && Object.keys(swipeWeights).length === 0) {
-        // No journal, no swipe history: show trending + popular
-        fetchingRef.current = true;
-        setLoading(true);
-        try {
-          const [t, p] = await Promise.allSettled([getTrending(), getPopular()]);
-          const tMovies = t.status === "fulfilled" ? t.value.movies : [];
-          const pMovies = p.status === "fulfilled" ? p.value.movies : [];
-          const all = [...tMovies, ...pMovies];
-          const unique = [];
-          const seen = new Set();
-          all.forEach((m) => {
-            if (!seen.has(m.id) && m.poster_path && !exclusionSet.has(m.id)) {
-              seen.add(m.id);
-              unique.push(m);
-            }
-          });
-          unique.sort(() => Math.random() - 0.5);
-          setCards(unique);
-          setCurrentIndex(0);
-          unique.slice(0, 4).forEach((m) => {
-            getMovieDetails(m.id).then((d) => {
-              setCardDetails((prev) => ({ ...prev, [m.id]: { tagline: d.tagline || "" } }));
-            }).catch(() => {});
-          });
-        } catch (e) {
-          console.error("Initial fetch failed:", e);
-        } finally {
-          setLoading(false);
-          fetchingRef.current = false;
-        }
-      } else {
-        // Has journal data or swipe history: use smart fetch
-        fetchMovies(true);
-      }
-    };
-    init();
+    fetchMovies(true);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Prefetch taglines for upcoming 3 cards
   useEffect(() => {
-    [cards[currentIndex], cards[currentIndex + 1], cards[currentIndex + 2]].forEach((m) => {
+    [movies[currentIndex], movies[currentIndex + 1], movies[currentIndex + 2]].forEach((m) => {
       if (m && !cardDetails[m.id]) {
         getMovieDetails(m.id).then((d) => {
           setCardDetails((prev) => ({ ...prev, [m.id]: { tagline: d.tagline || "" } }));
         }).catch(() => {});
       }
     });
-  }, [currentIndex, cards, cardDetails]);
+  }, [currentIndex, movies, cardDetails]);
 
-  // Auto-fetch when running low — uses ref to avoid cascading refetches
+  // ─── STEP 3 & 4: Auto-fetch when running low (< 5 cards ahead) ───
   useEffect(() => {
-    if (cards.length - currentIndex < 5 && !fetchingRef.current && cards.length > 0) {
+    if (movies.length > 0 && movies.length - currentIndex < 5 && !fetchingRef.current) {
       fetchMoviesRef.current();
     }
-  }, [currentIndex, cards.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentIndex, movies.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const showToast = useCallback((msg, icon) => {
     clearTimeout(toastTimeout.current);
@@ -3365,39 +3339,29 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     });
   }, []);
 
-  // Re-fetch when genre chips change
-  useEffect(() => {
-    if (!loading) {
-      pageRef.current = 1;
-      fetchMovies(true);
-    }
-  }, [activeGenres]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Ensure "Must Watch" collection exists
-  const getMustWatchCollectionId = useCallback(() => {
-    const existing = collections.find((c) => c.name === "Must Watch");
-    return existing?.id || null;
-  }, [collections]);
-
+  // ─── SWIPE ACTION ───
   const handleAction = useCallback((action) => {
     if (swipingRef.current) return;
-    const movie = cards[currentIndex];
+    const movie = movies[currentIndex];
     if (!movie) return;
+
+    // "watched" opens the rating modal instead of swiping
+    if (action === "watched") {
+      setWatchedModal(movie);
+      setWatchedSlider(75);
+      return;
+    }
 
     swipingRef.current = true;
     const dir = action === "skip" ? "left" : "right";
     setSwipeDir(dir);
 
     if (action === "skip") setShowStamp("nope");
-    else if (action === "super") setShowStamp("super");
     else setShowStamp("like");
 
     setTimeout(() => {
-      // Perform the action
       if (action === "save") {
-        if (!savedIds.has(movie.id)) {
-          toggleSave(movie);
-        }
+        if (!savedIds.has(movie.id)) toggleSave(movie);
         showToast("Added to watchlist");
       } else if (action === "maybe") {
         setMaybeLater((prev) => {
@@ -3405,53 +3369,38 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
           return [{ ...movie, addedAt: Date.now() }, ...prev].slice(0, 50);
         });
         showToast("Saved for later", "clock");
-      } else if (action === "super") {
-        if (!savedIds.has(movie.id)) {
-          toggleSave(movie);
-        }
-        // Add to Must Watch collection
-        const mwId = getMustWatchCollectionId();
-        if (mwId) {
-          toggleMovieInCollection(mwId, movie);
-        }
-        showToast("Must Watch!", "star");
-        setSuperLikeFlash(true);
-        setTimeout(() => setSuperLikeFlash(false), 600);
       }
 
-      // Adjust swipe weights
-      setSwipeWeights((prev) => {
-        const next = { ...prev };
-        const gf = GENRE_FILTERS.find((g) => g.label === movie.genre);
-        if (gf) {
-          if (action === "skip") next[gf.id] = (next[gf.id] || 0) - 3;
-          else if (action === "super") next[gf.id] = (next[gf.id] || 0) + 8;
-          else next[gf.id] = (next[gf.id] || 0) + 5;
+      // Update genre boosts/penalties
+      const gf = GENRE_FILTERS.find((g) => g.label === movie.genre);
+      if (gf) {
+        if (action === "skip") {
+          setGenrePenalties((prev) => ({ ...prev, [gf.id]: (prev[gf.id] || 0) + 3 }));
+        } else if (action === "save") {
+          setGenreBoosts((prev) => ({ ...prev, [gf.id]: (prev[gf.id] || 0) + 5 }));
         }
-        return next;
-      });
-
-      setSeenIds((prev) => new Set(prev).add(movie.id));
-      // Track swipe direction for picky user detection
-      if (action === "skip") {
-        setSwipeHistory((prev) => [...prev, "left"].slice(-20));
-      } else if (action === "save" || action === "super") {
-        setSwipeHistory((prev) => [...prev, "right"].slice(-20));
       }
-      setSessionCount((c) => c + 1);
+
+      setSwipeCount((c) => c + 1);
       setUndoHistory((prev) => [{ movie, action, index: currentIndex }, ...prev].slice(0, 5));
       setCurrentIndex((i) => i + 1);
       setSwipeDir(null);
       setShowStamp(null);
       setDragX(0);
       swipingRef.current = false;
-
-      if ((sessionCount + 1) % 5 === 0) {
-        pageRef.current = 1 + Math.floor(Math.random() * 5);
-        fetchMoviesRef.current();
-      }
     }, 300);
-  }, [cards, currentIndex, savedIds, toggleSave, toggleMovieInCollection, getMustWatchCollectionId, sessionCount, showToast, tasteProfile.hasData, maybeLater]);
+  }, [movies, currentIndex, savedIds, toggleSave, showToast]);
+
+  // Save from the "Already Watched" mini modal
+  const handleWatchedSave = useCallback(() => {
+    if (!watchedModal) return;
+    toggleWatched(watchedModal);
+    setWatchedRating(watchedModal.id, watchedSlider);
+    showToast("Saved to journal");
+    setWatchedModal(null);
+    setSwipeCount((c) => c + 1);
+    setCurrentIndex((i) => i + 1);
+  }, [watchedModal, watchedSlider, toggleWatched, setWatchedRating, showToast]);
 
   const handleSwipe = useCallback((direction) => {
     handleAction(direction === "right" ? "save" : "skip");
@@ -3460,31 +3409,24 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   const handleUndo = useCallback(() => {
     if (undoHistory.length === 0) return;
     const { movie, action, index } = undoHistory[0];
-    if (action === "save" || action === "super") {
+    if (action === "save") {
       if (savedIds.has(movie.id)) toggleSave(movie);
-    }
-    if (action === "super") {
-      const mwId = getMustWatchCollectionId();
-      if (mwId) toggleMovieInCollection(mwId, movie);
     }
     if (action === "maybe") {
       setMaybeLater((prev) => prev.filter((m) => m.id !== movie.id));
     }
-    setSwipeWeights((prev) => {
-      const next = { ...prev };
-      const gf = GENRE_FILTERS.find((g) => g.label === movie.genre);
-      if (gf) {
-        if (action === "skip") next[gf.id] = (next[gf.id] || 0) + 3;
-        else if (action === "super") next[gf.id] = (next[gf.id] || 0) - 8;
-        else next[gf.id] = (next[gf.id] || 0) - 5;
+    const gf = GENRE_FILTERS.find((g) => g.label === movie.genre);
+    if (gf) {
+      if (action === "skip") {
+        setGenrePenalties((prev) => ({ ...prev, [gf.id]: Math.max(0, (prev[gf.id] || 0) - 3) }));
+      } else if (action === "save") {
+        setGenreBoosts((prev) => ({ ...prev, [gf.id]: Math.max(0, (prev[gf.id] || 0) - 5) }));
       }
-      return next;
-    });
-    setSeenIds((prev) => { const next = new Set(prev); next.delete(movie.id); return next; });
-    setSessionCount((c) => Math.max(0, c - 1));
+    }
+    setSwipeCount((c) => Math.max(0, c - 1));
     setCurrentIndex(index);
     setUndoHistory((prev) => prev.slice(1));
-  }, [undoHistory, savedIds, toggleSave, toggleMovieInCollection, getMustWatchCollectionId]);
+  }, [undoHistory, savedIds, toggleSave]);
 
   // Touch handlers
   const handleTouchStart = (e) => {
@@ -3551,96 +3493,37 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  const currentMovie = cards[currentIndex];
-  const nextMovie = cards[currentIndex + 1];
-  const thirdMovie = cards[currentIndex + 2];
+  const currentMovie = movies[currentIndex];
+  const nextMovie = movies[currentIndex + 1];
+  const thirdMovie = movies[currentIndex + 2];
   const rotation = Math.max(-12, Math.min(12, dragX * 0.08));
   const opacity = Math.min(Math.abs(dragX) / 80, 1);
   const tagline = currentMovie ? (cardDetails[currentMovie.id]?.tagline || "") : "";
 
-  // Taste Radar: compute SVG data from swipe weights
-  const radarData = useMemo(() => {
-    const genrePool = DISCOVER_CHIPS.map(g => ({
-      id: g.id, label: g.label, weight: swipeWeights[g.id] || 0
-    }));
-    genrePool.sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight));
-    const axes = genrePool.slice(0, 5);
-    const hasData = axes.some(a => a.weight !== 0);
-    if (!hasData) return null;
-    const n = axes.length, cx = 50, cy = 50, r = 34;
-    const maxW = Math.max(...axes.map(a => Math.abs(a.weight)), 5);
-    const points = axes.map((a, i) => {
-      const angle = (2 * Math.PI * i / n) - Math.PI / 2;
-      const norm = Math.max(0.15, Math.min(1, 0.3 + (a.weight / maxW) * 0.7));
-      return {
-        label: a.label, norm,
-        x: cx + r * norm * Math.cos(angle),
-        y: cy + r * norm * Math.sin(angle),
-        lx: cx + (r + 12) * Math.cos(angle),
-        ly: cy + (r + 12) * Math.sin(angle),
-        ax: cx + r * Math.cos(angle),
-        ay: cy + r * Math.sin(angle),
-      };
-    });
-    const rings = [0.33, 0.66, 1].map(s =>
-      Array.from({ length: n }, (_, j) => {
-        const a = (2 * Math.PI * j / n) - Math.PI / 2;
-        return `${cx + r * s * Math.cos(a)},${cy + r * s * Math.sin(a)}`;
-      }).join(" ")
-    );
-    return { points, rings };
-  }, [swipeWeights]);
-
-  const resetSession = () => {
-    console.log("[Discover] resetSession fired");
-    // Clear all session state
-    setSeenIds(new Set());
-    setSessionCount(0);
-    setCurrentIndex(0);
-    setSwipeWeights({});
-    setSwipeHistory([]);
-    setCards([]);
-    setUndoHistory([]);
-    setCardDetails({});
-    setActiveGenres(new Set());
-    setFilterOpen(false);
-    pageRef.current = 1;
-    fetchingRef.current = false;
-    swipingRef.current = false;
-    keywordsRef.current = null;
-    profileRef.current = null;
-    // Clear localStorage
-    saveToStorage("cc_discover_seen", []);
-    saveToStorage("cc_discover_swipe_weights", {});
-    saveToStorage("cc_discover_swipe_history", []);
-    // Show confirmation toast
-    showToast("Fresh start", "check");
-    // Fetch new batch — use ref to get latest fetchMovies (avoids stale seenIds closure)
-    setTimeout(() => {
-      if (tasteProfile.hasData) {
-        fetchMoviesRef.current(true);
-      } else {
-        const init = async () => {
-          fetchingRef.current = true;
-          setLoading(true);
-          try {
-            const [t, p] = await Promise.allSettled([getTrending(), getPopular()]);
-            const all = [...(t.status === "fulfilled" ? t.value.movies : []), ...(p.status === "fulfilled" ? p.value.movies : [])];
-            const unique = [];
-            const seen = new Set();
-            all.forEach((m) => { if (!seen.has(m.id) && m.poster_path && !exclusionSet.has(m.id)) { seen.add(m.id); unique.push(m); } });
-            unique.sort(() => Math.random() - 0.5);
-            setCards(unique);
-            setCurrentIndex(0);
-          } catch {} finally { setLoading(false); fetchingRef.current = false; }
-        };
-        init();
+  // ─── SHUFFLE: self-contained fetch, zero dependencies on other state/refs ───
+  const handleShuffle = async () => {
+    setLoading(true);
+    const page = Math.floor(Math.random() * 100) + 1;
+    const apiKey = import.meta.env.VITE_TMDB_API_KEY;
+    const url = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&vote_average.gte=6.5&vote_count.gte=100&with_original_language=en&sort_by=popularity.desc&page=${page}`;
+    console.log("[Discover] Shuffle → page", page);
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.results && data.results.length > 0) {
+        const mapped = data.results.filter((m) => m.poster_path).map(tmdbToMovie);
+        setMovies(mapped);
+        setCurrentIndex(0);
       }
-    }, 50);
+    } catch (e) {
+      console.error("Shuffle failed", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Loading skeleton
-  if (loading && cards.length === 0) {
+  if (loading && movies.length === 0) {
     return (
       <div className="discover-container">
         <div className="discover-header">
@@ -3677,12 +3560,16 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
             <span className="discover-action-label" style={{ opacity: 0.3 }}>Later</span>
           </div>
           <div className="discover-action-group">
-            <div className="discover-action-btn discover-super-btn" style={{ opacity: 0.3 }}><StarIconSolid /></div>
-            <span className="discover-action-label" style={{ opacity: 0.3 }}>Must See</span>
-          </div>
-          <div className="discover-action-group">
             <div className="discover-action-btn discover-like-btn" style={{ opacity: 0.3 }}><SwipeHeartIcon /></div>
             <span className="discover-action-label" style={{ opacity: 0.3 }}>Save</span>
+          </div>
+          <div className="discover-action-group">
+            <div className="discover-action-btn discover-watched-btn" style={{ opacity: 0.3 }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 22, height: 22 }}>
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
+              </svg>
+            </div>
+            <span className="discover-action-label" style={{ opacity: 0.3 }}>Watched</span>
           </div>
         </div>
       </div>
@@ -3698,10 +3585,17 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
             <DiscoverIcon />
           </div>
           <h3>We've explored every corner</h3>
-          <p>Reset to start fresh with new recommendations</p>
-          <button className="discover-reset-btn" onClick={resetSession}>Start Fresh</button>
-          {sessionCount > 0 && (
-            <div className="discover-session-stat">{sessionCount} movies discovered this session</div>
+          <p>Shuffle to load a fresh batch of movies</p>
+          <button className="discover-reset-btn" onClick={handleShuffle}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18, marginRight: 6, verticalAlign: -3 }}>
+              <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" />
+              <polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" />
+              <line x1="4" y1="4" x2="9" y2="9" />
+            </svg>
+            Shuffle
+          </button>
+          {swipeCount > 0 && (
+            <div className="discover-session-stat">{swipeCount} movies discovered this session</div>
           )}
         </div>
       </div>
@@ -3720,7 +3614,14 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         >
           <UndoIcon />
         </button>
-        <span className="discover-session-count">{sessionCount} discovered</span>
+        <span className="discover-session-count">{swipeCount} discovered</span>
+        <button className="discover-undo-btn" onClick={handleShuffle} title="Shuffle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>
+            <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" />
+            <polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" />
+            <line x1="4" y1="4" x2="9" y2="9" />
+          </svg>
+        </button>
         <div className="discover-filter">
           <button className={`discover-filter-btn ${filterOpen ? "active" : ""}`} onClick={() => setFilterOpen(f => !f)} title="Filter genres">
             <FilterIcon />
@@ -3745,38 +3646,8 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         </div>
       </div>
 
-      {/* Content: radar + card stack */}
+      {/* Content: card stack */}
       <div className="discover-content">
-        {/* Taste Radar */}
-        {radarData && (
-          <div className="discover-radar">
-            <svg viewBox="0 0 100 100">
-              {radarData.rings.map((pts, i) => (
-                <polygon key={i} points={pts} fill="none" stroke="var(--border)" strokeWidth="0.5" opacity={0.3 + i * 0.15} />
-              ))}
-              {radarData.points.map((p, i) => (
-                <line key={i} x1={50} y1={50} x2={p.ax} y2={p.ay} stroke="var(--border)" strokeWidth="0.4" opacity="0.25" />
-              ))}
-              <polygon
-                points={radarData.points.map(p => `${p.x},${p.y}`).join(" ")}
-                fill="rgba(139, 58, 74, 0.18)"
-                stroke="var(--accent)"
-                strokeWidth="1.2"
-                strokeLinejoin="round"
-              />
-              {radarData.points.map((p, i) => (
-                <circle key={i} cx={p.x} cy={p.y} r="2" fill="var(--accent)" opacity="0.9" />
-              ))}
-              {radarData.points.map((p, i) => (
-                <text key={i} x={p.lx} y={p.ly} textAnchor="middle" dominantBaseline="middle"
-                  fill="var(--text-muted)" fontSize="5.5" fontFamily="'Plus Jakarta Sans', sans-serif" fontWeight="500">
-                  {p.label}
-                </text>
-              ))}
-            </svg>
-          </div>
-        )}
-
         {/* Card stack */}
         <div className="discover-stack">
           {thirdMovie && (
@@ -3809,10 +3680,8 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
               <div className="discover-stamp discover-stamp-nope" style={{ opacity: dragX < -20 ? opacity : 0 }}>SKIP</div>
               {showStamp === "like" && <div className="discover-stamp discover-stamp-like discover-stamp-flash">SAVE</div>}
               {showStamp === "nope" && <div className="discover-stamp discover-stamp-nope discover-stamp-flash">SKIP</div>}
-              {showStamp === "super" && <div className="discover-stamp discover-stamp-super discover-stamp-flash">MUST SEE</div>}
               <div className="discover-glow discover-glow-right" style={{ opacity: dragX > 20 ? opacity * 0.5 : 0 }} />
               <div className="discover-glow discover-glow-left" style={{ opacity: dragX < -20 ? opacity * 0.5 : 0 }} />
-              {superLikeFlash && <div className="discover-super-flash" />}
               <button className="discover-info-float" onClick={() => setSelectedMovie(currentMovie)}>
                 <InfoIcon />
               </button>
@@ -3843,7 +3712,26 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         </div>
       </div>
 
-      {/* Action buttons with labels */}
+      {/* Watched mini modal */}
+      {watchedModal && (
+        <div className="discover-watched-modal">
+          <div className="discover-watched-title">{watchedModal.title}</div>
+          <div className="discover-watched-slider-row">
+            <span className="discover-watched-val" style={{ color: getRatingColor((watchedSlider / 10).toFixed(1)) }}>{watchedSlider}</span>
+            <input
+              type="range" min="1" max="100" value={watchedSlider}
+              onChange={(e) => setWatchedSlider(Number(e.target.value))}
+              className="discover-watched-range"
+            />
+          </div>
+          <div className="discover-watched-btns">
+            <button className="discover-watched-cancel" onClick={() => setWatchedModal(null)}>Cancel</button>
+            <button className="discover-watched-save" onClick={handleWatchedSave}>Save to Journal</button>
+          </div>
+        </div>
+      )}
+
+      {/* Action buttons */}
       <div className="discover-actions">
         <div className="discover-action-group">
           <button className="discover-action-btn discover-skip-btn" onClick={() => handleAction("skip")} aria-label="Skip">
@@ -3858,22 +3746,25 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
           <span className="discover-action-label">Later</span>
         </div>
         <div className="discover-action-group">
-          <button className="discover-action-btn discover-super-btn" onClick={() => handleAction("super")} aria-label="Super like">
-            <StarIconSolid />
-          </button>
-          <span className="discover-action-label">Must See</span>
-        </div>
-        <div className="discover-action-group">
           <button className="discover-action-btn discover-like-btn" onClick={() => handleAction("save")} aria-label="Save to watchlist">
             <SwipeHeartIcon />
           </button>
           <span className="discover-action-label">Save</span>
         </div>
+        <div className="discover-action-group">
+          <button className="discover-action-btn discover-watched-btn" onClick={() => handleAction("watched")} aria-label="Already watched">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 22, height: 22 }}>
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
+          <span className="discover-action-label">Watched</span>
+        </div>
       </div>
 
       {toast && (
-        <div className={`discover-toast ${toast.icon === "star" ? "discover-toast-gold" : toast.icon === "clock" ? "discover-toast-yellow" : ""}`}>
-          {toast.icon === "star" ? <StarIconSolid /> : toast.icon === "clock" ? <ClockIcon /> : <CheckIcon />}
+        <div className={`discover-toast ${toast.icon === "clock" ? "discover-toast-yellow" : ""}`}>
+          {toast.icon === "clock" ? <ClockIcon /> : <CheckIcon />}
           {toast.msg}
         </div>
       )}
@@ -4189,6 +4080,7 @@ function MainApp() {
             startDebrief={startDebrief}
             collections={collections} toggleMovieInCollection={toggleMovieInCollection}
             watchedMovies={watchedMovies} watchedRatings={watchedRatings}
+            setWatchedRating={setWatchedRating}
           />
         )}
         {activeTab === "journal" && (
