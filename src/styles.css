@@ -6016,3 +6016,335 @@ body {
   );
 }
 
+/* ── Milestone Celebration ─────────────────────── */
+.milestone-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: milestoneOverlayIn 0.3s ease forwards;
+}
+
+.milestone-canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.milestone-card {
+  position: relative;
+  z-index: 1;
+  background: var(--bg-elevated);
+  border-radius: 20px;
+  padding: 32px 36px;
+  text-align: center;
+  max-width: 300px;
+  width: 85%;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(139, 58, 74, 0.15);
+  animation: milestoneCardIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  cursor: pointer;
+}
+
+.milestone-label {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: #C4A84E;
+  margin-bottom: 8px;
+}
+
+.milestone-number {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 52px;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1;
+  margin-bottom: 10px;
+  background: linear-gradient(135deg, #F0EBE3 0%, #C4A84E 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.milestone-message {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+@keyframes milestoneOverlayIn {
+  0% { background: transparent; }
+  100% { background: rgba(0, 0, 0, 0.4); }
+}
+
+@keyframes milestoneCardIn {
+  0% { opacity: 0; transform: scale(0.8) translateY(20px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Light theme */
+[data-theme="light"] .milestone-card {
+  background: #FFFFFF;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(139, 58, 74, 0.1);
+}
+
+[data-theme="light"] .milestone-number {
+  background: linear-gradient(135deg, #2A2630 0%, #8B3A4A 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+[data-theme="light"] .milestone-overlay {
+  animation-name: milestoneOverlayInLight;
+}
+
+@keyframes milestoneOverlayInLight {
+  0% { background: transparent; }
+  100% { background: rgba(0, 0, 0, 0.2); }
+}
+
+/* ── Sort Dropdown ──────────────────────────────── */
+.sort-dropdown {
+  position: relative;
+  z-index: 30;
+}
+
+.sort-dropdown-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.sort-dropdown-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.sort-dropdown-label {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sort-dropdown-chevron {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.sort-dropdown-chevron.open {
+  transform: rotate(180deg);
+}
+
+.sort-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 210px;
+  background: var(--bg-elevated);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  padding: 4px;
+  animation: sortDropdownIn 0.15s ease forwards;
+  overflow: hidden;
+}
+
+@keyframes sortDropdownIn {
+  0% { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.sort-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.1s;
+  text-align: left;
+}
+
+.sort-dropdown-item:hover {
+  background: var(--accent-dim);
+  color: var(--text-primary);
+}
+
+.sort-dropdown-item.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sort-dropdown-check {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+/* ── Journal Sort Header ────────────────────────── */
+.journal-sort-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.journal-sort-header .results-label {
+  margin-bottom: 0;
+}
+
+/* ── Journal Genre Groups ───────────────────────── */
+.journal-genre-group {
+  margin-bottom: 16px;
+}
+
+.journal-genre-header {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 4px 0 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+/* ── Journal Search Bar ─────────────────────────── */
+.journal-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: 10px;
+  padding: 0 12px;
+  height: 38px;
+  margin-bottom: 10px;
+  transition: box-shadow 0.2s;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+
+.journal-search-bar:focus-within {
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px var(--accent-dim);
+}
+
+.journal-search-bar .search-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.journal-search-bar .search-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.journal-search-bar input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.journal-search-bar input::placeholder {
+  color: var(--text-muted);
+}
+
+.journal-search-bar .search-clear {
+  padding: 4px;
+  font-size: 13px;
+}
+
+.journal-no-results {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  padding: 32px 0;
+}
+
+[data-theme="light"] .journal-search-bar {
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+/* ── Light Theme ────────────────────────────────── */
+[data-theme="light"] .sort-dropdown-btn {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .sort-dropdown-menu {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .sort-dropdown-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* ── Global Toast ──────────────────────────────── */
+.global-toast {
+  position: fixed;
+  bottom: calc(var(--tab-height) + 16px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 150;
+  padding: 10px 22px;
+  border-radius: 20px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  animation: globalToastIn 0.25s ease forwards, globalToastOut 0.3s ease 2.2s forwards;
+}
+
+@keyframes globalToastIn {
+  0% { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes globalToastOut {
+  0% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(6px); }
+}
+
+@media (min-width: 768px) {
+  .global-toast {
+    bottom: 24px;
+  }
+}

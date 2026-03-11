@@ -95,6 +95,15 @@ const EMPTY_WATCHLIST = [
   { icon: "🪹", title: "Empty nest", desc: "This list needs some movies to call home." },
 ];
 
+const MILESTONE_THRESHOLDS = [10, 25, 50, 100, 250];
+const MILESTONE_MESSAGES = {
+  10: "You're building a real collection!",
+  25: "A quarter-century of cinema logged!",
+  50: "Half a hundred films deep!",
+  100: "Triple digits — a true cinephile!",
+  250: "Legendary status achieved!",
+};
+
 function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -480,7 +489,7 @@ function computeBadgeProgress(badgeId, { watchedMovies, watchedRatings, collecti
     }
     case "binge_watcher": {
       const dayCounts = {};
-      watchedDates.forEach((dateStr) => { dayCounts[dateStr] = (dayCounts[dateStr] || 0) + 1; });
+      watchedDates.forEach((dateStr) => { const day = dateStr.slice(0, 10); dayCounts[day] = (dayCounts[day] || 0) + 1; });
       return Object.values(dayCounts).reduce((mx, v) => Math.max(mx, v), 0);
     }
     case "collector": {
@@ -889,7 +898,7 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
   );
 }
 
-function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggleSave, onToggleWatched, rating, onSetRating, onStartDebrief }) {
+function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggleSave, onToggleWatched, rating, onSetRating, onStartDebrief, showToast }) {
   const genreColor = GENRE_COLORS[movie.genre] || "#7A7878";
   const ratingColor = getRatingColor(movie.rating);
   const [tab, setTab] = useState("overview");
@@ -978,6 +987,7 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
                 max="100"
                 value={rating ?? 50}
                 onChange={(e) => onSetRating(movie.id, Number(e.target.value))}
+                onPointerUp={() => showToast && showToast("Rating updated")}
               />
             </div>
             {rating && (
@@ -1484,7 +1494,7 @@ const LinkIcon = () => (
 
 // ─── Share Watchlist Modal ──────────────────────────────────────────────────────
 
-function ShareWatchlistModal({ onClose, savedMovies }) {
+function ShareWatchlistModal({ onClose, savedMovies, showToast }) {
   const [copied, setCopied] = useState(false);
 
   const ids = Array.from(savedMovies.keys());
@@ -1499,6 +1509,7 @@ function ShareWatchlistModal({ onClose, savedMovies }) {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      if (showToast) showToast("Copied to clipboard");
     } catch {
       const input = document.createElement("textarea");
       input.value = shareUrl;
@@ -1508,6 +1519,7 @@ function ShareWatchlistModal({ onClose, savedMovies }) {
       document.body.removeChild(input);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      if (showToast) showToast("Copied to clipboard");
     }
   };
 
@@ -1838,7 +1850,7 @@ function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, w
   );
 }
 
-function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief, collections, createCollection, renameCollection, deleteCollection, toggleMovieInCollection, onStartMoviePicker }) {
+function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief, collections, createCollection, renameCollection, deleteCollection, toggleMovieInCollection, onStartMoviePicker, showToast }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [emptyMsg] = useState(() => pickRandom(EMPTY_WATCHLIST));
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -1960,6 +1972,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
         <ShareWatchlistModal
           onClose={() => setShowShareModal(false)}
           savedMovies={savedMovies}
+          showToast={showToast}
         />
       )}
     </>
@@ -2213,7 +2226,7 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
                 <div className="recent-activity-poster">
                   <PosterImage posterPath={item.movie.poster_path} title={item.movie.title} />
                 </div>
-                <div className="recent-activity-date">{new Date(item.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+                <div className="recent-activity-date">{new Date(item.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
               </div>
             ))}
           </div>
@@ -2371,10 +2384,19 @@ const INSIGHT_PROMPTS = {
 
 const AI_INSIGHTS_ENABLED = false;
 
-function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections }) {
+function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections, showToast }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [view, setView] = useState("journal");
-  const [rankSort, setRankSort] = useState("rating");
+  const [journalSearch, setJournalSearch] = useState("");
+  const [rankSort, setRankSort] = useState(() => {
+    const stored = loadFromStorage("cc_rankSort", "rating_desc");
+    return RANK_SORT_OPTIONS.some((o) => o.value === stored) ? stored : "rating_desc";
+  });
+  const [journalSort, setJournalSort] = useState(() => {
+    const stored = loadFromStorage("cc_journalSort", "date_desc");
+    return JOURNAL_SORT_OPTIONS.some((o) => o.value === stored) ? stored : "date_desc";
+  });
+  const [runtimeCache, setRuntimeCache] = useState(() => loadFromStorage("cc_runtimeCache", {}));
   const [insightLoading, setInsightLoading] = useState(false);
   const [insight, setInsight] = useState(() =>
     AI_INSIGHTS_ENABLED ? null : { type: "movie_twin", text: "You watch like Christopher Nolan — big ideas wrapped in blockbuster packaging." }
@@ -2387,28 +2409,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
     () => Array.from(watchedMovies.values()).map((m, i) => ({ ...m, _idx: i })),
     [watchedMovies]
   );
-
-  const rankedMovies = useMemo(() => {
-    const rated = movies.filter((m) => watchedRatings.has(m.id));
-    if (rankSort === "date") {
-      return [...rated].sort((a, b) => {
-        const da = watchedDates?.get(a.id) || "";
-        const db = watchedDates?.get(b.id) || "";
-        return db.localeCompare(da);
-      });
-    }
-    return [...rated].sort((a, b) => watchedRatings.get(b.id) - watchedRatings.get(a.id));
-  }, [movies, watchedRatings, watchedDates, rankSort]);
-
-  const rankingStats = useMemo(() => {
-    if (rankedMovies.length === 0) return null;
-    const total = rankedMovies.length;
-    const avg = Math.round(rankedMovies.reduce((s, m) => s + watchedRatings.get(m.id), 0) / total);
-    const genreCounts = {};
-    rankedMovies.forEach((m) => { genreCounts[m.genre] = (genreCounts[m.genre] || 0) + 1; });
-    const topGenre = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
-    return { total, avg, topGenre };
-  }, [rankedMovies, watchedRatings]);
 
   const handleToggleWatched = (movie) => {
     toggleWatched(movie);
@@ -2464,6 +2464,99 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
     if (movies.length < 3) return;
     fetchInsight();
   }, [movies.length >= 3 ? "ready" : "waiting"]);
+
+  // Persist sort preferences
+  useEffect(() => { saveToStorage("cc_rankSort", rankSort); }, [rankSort]);
+  useEffect(() => { saveToStorage("cc_journalSort", journalSort); }, [journalSort]);
+  useEffect(() => { saveToStorage("cc_runtimeCache", runtimeCache); }, [runtimeCache]);
+
+  // Fetch runtimes when runtime sort is active
+  const runtimeFetchedRef = useRef(false);
+  useEffect(() => {
+    const needsRuntime = rankSort === "runtime_desc" || journalSort === "runtime_desc";
+    if (!needsRuntime || movies.length === 0) return;
+    const missing = movies.filter((m) => !(m.id in runtimeCache));
+    if (missing.length === 0 || runtimeFetchedRef.current) return;
+    runtimeFetchedRef.current = true;
+    let cancelled = false;
+    (async () => {
+      const batch = {};
+      for (const m of missing) {
+        try {
+          const details = await getMovieDetails(m.id);
+          if (cancelled) return;
+          if (details?.runtime) batch[m.id] = details.runtime;
+        } catch {}
+      }
+      if (!cancelled && Object.keys(batch).length > 0) {
+        setRuntimeCache((prev) => ({ ...prev, ...batch }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [rankSort, journalSort, movies, runtimeCache]);
+
+  // Reset fetch guard when sort changes away from runtime
+  useEffect(() => {
+    if (rankSort !== "runtime_desc" && journalSort !== "runtime_desc") {
+      runtimeFetchedRef.current = false;
+    }
+  }, [rankSort, journalSort]);
+
+  // Sort helper
+  const sortMovies = useCallback((list, sortKey) => {
+    const sorted = [...list];
+    switch (sortKey) {
+      case "rating_desc":
+        return sorted.sort((a, b) => (watchedRatings.get(b.id) ?? -1) - (watchedRatings.get(a.id) ?? -1));
+      case "tmdb_desc":
+        return sorted.sort((a, b) => parseFloat(b.rating || 0) - parseFloat(a.rating || 0));
+      case "tmdb_asc":
+        return sorted.sort((a, b) => parseFloat(a.rating || 0) - parseFloat(b.rating || 0));
+      case "year_desc":
+        return sorted.sort((a, b) => (b.year || "").localeCompare(a.year || ""));
+      case "year_asc":
+        return sorted.sort((a, b) => (a.year || "").localeCompare(b.year || ""));
+      case "date_desc":
+        return sorted.sort((a, b) => (watchedDates?.get(b.id) || "").localeCompare(watchedDates?.get(a.id) || ""));
+      case "date_asc":
+        return sorted.sort((a, b) => (watchedDates?.get(a.id) || "").localeCompare(watchedDates?.get(b.id) || ""));
+      case "runtime_desc":
+        return sorted.sort((a, b) => (runtimeCache[b.id] || 0) - (runtimeCache[a.id] || 0));
+      case "alpha_asc":
+        return sorted.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+      case "genre_group":
+        return sorted.sort((a, b) => (a.genre || "").localeCompare(b.genre || "") || (a.title || "").localeCompare(b.title || ""));
+      default:
+        return sorted;
+    }
+  }, [watchedRatings, watchedDates, runtimeCache]);
+
+  // Sorted lists
+  const rankedMovies = useMemo(() => {
+    const rated = movies.filter((m) => watchedRatings.has(m.id));
+    return sortMovies(rated, rankSort);
+  }, [movies, watchedRatings, rankSort, sortMovies]);
+
+  const sortedJournalMovies = useMemo(
+    () => sortMovies(movies, journalSort),
+    [movies, journalSort, sortMovies]
+  );
+
+  const filteredJournalMovies = useMemo(() => {
+    if (!journalSearch.trim()) return sortedJournalMovies;
+    const q = journalSearch.trim().toLowerCase();
+    return sortedJournalMovies.filter((m) => (m.title || "").toLowerCase().includes(q));
+  }, [sortedJournalMovies, journalSearch]);
+
+  const rankingStats = useMemo(() => {
+    if (rankedMovies.length === 0) return null;
+    const total = rankedMovies.length;
+    const avg = Math.round(rankedMovies.reduce((s, m) => s + (watchedRatings.get(m.id) || 0), 0) / total);
+    const genreCounts = {};
+    rankedMovies.forEach((m) => { genreCounts[m.genre || "Other"] = (genreCounts[m.genre || "Other"] || 0) + 1; });
+    const topGenre = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
+    return { total, avg, topGenre };
+  }, [rankedMovies, watchedRatings]);
 
   return (
     <>
@@ -2529,18 +2622,63 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                   ) : null}
                 </div>
 
-                <div className="results-label">{movies.length} watched movie{movies.length !== 1 ? "s" : ""}</div>
-                <div className="movies-grid">
-                  {movies.map((movie) => (
-                    <MovieTile
-                      key={movie.id}
-                      movie={movie}
-                      isSaved={savedIds.has(movie.id)}
-                      onToggleSave={toggleSave}
-                      onClick={() => setSelectedMovie(movie)}
-                    />
-                  ))}
+                <div className="journal-search-bar">
+                  <span className="search-icon"><SearchIcon /></span>
+                  <input
+                    type="text"
+                    placeholder="Search your movies..."
+                    value={journalSearch}
+                    onChange={(e) => setJournalSearch(e.target.value)}
+                  />
+                  {journalSearch && (
+                    <button className="search-clear" onClick={() => setJournalSearch("")}>✕</button>
+                  )}
                 </div>
+
+                <div className="journal-sort-header">
+                  <div className="results-label">{filteredJournalMovies.length} watched movie{filteredJournalMovies.length !== 1 ? "s" : ""}</div>
+                  <SortDropdown options={JOURNAL_SORT_OPTIONS} value={journalSort} onChange={setJournalSort} />
+                </div>
+                {filteredJournalMovies.length === 0 && journalSearch.trim() ? (
+                  <div className="journal-no-results">No movies found</div>
+                ) : journalSort === "genre_group" ? (
+                  (() => {
+                    const groups = {};
+                    filteredJournalMovies.forEach((m) => {
+                      const g = m.genre || "Other";
+                      if (!groups[g]) groups[g] = [];
+                      groups[g].push(m);
+                    });
+                    return Object.entries(groups).map(([genre, gMovies]) => (
+                      <div key={genre} className="journal-genre-group">
+                        <div className="journal-genre-header" style={{ color: GENRE_COLORS[genre] || "var(--text-secondary)" }}>{genre}</div>
+                        <div className="movies-grid">
+                          {gMovies.map((movie) => (
+                            <MovieTile
+                              key={movie.id}
+                              movie={movie}
+                              isSaved={savedIds.has(movie.id)}
+                              onToggleSave={toggleSave}
+                              onClick={() => setSelectedMovie(movie)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ));
+                  })()
+                ) : (
+                  <div className="movies-grid">
+                    {filteredJournalMovies.map((movie) => (
+                      <MovieTile
+                        key={movie.id}
+                        movie={movie}
+                        isSaved={savedIds.has(movie.id)}
+                        onToggleSave={toggleSave}
+                        onClick={() => setSelectedMovie(movie)}
+                      />
+                    ))}
+                  </div>
+                )}
               </>
             )}
 
@@ -2559,11 +2697,10 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                     )}
 
                     <div className="rank-sort-row">
-                      <button className={`rank-sort-btn${rankSort === "rating" ? " active" : ""}`} onClick={() => setRankSort("rating")}>By rating</button>
-                      <button className={`rank-sort-btn${rankSort === "date" ? " active" : ""}`} onClick={() => setRankSort("date")}>By date</button>
+                      <SortDropdown options={RANK_SORT_OPTIONS} value={rankSort} onChange={setRankSort} />
                     </div>
 
-                    {rankSort === "rating" && rankedMovies.length >= 3 && (
+                    {rankSort === "rating_desc" && rankedMovies.length >= 3 && (
                       <div className="podium">
                         <div className="podium-slot second" onClick={() => setSelectedMovie(rankedMovies[1])}>
                           <div className="podium-rank">2</div>
@@ -2593,8 +2730,8 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                     )}
 
                     <div className="rankings-list">
-                      {(rankSort === "rating" ? rankedMovies.slice(rankedMovies.length >= 3 ? 3 : 0) : rankedMovies).map((movie, i) => {
-                        const rank = rankSort === "rating" ? i + 4 : i + 1;
+                      {(rankSort === "rating_desc" && rankedMovies.length >= 3 ? rankedMovies.slice(3) : rankedMovies).map((movie, i) => {
+                        const rank = rankSort === "rating_desc" && rankedMovies.length >= 3 ? i + 4 : i + 1;
                         return (
                           <div key={movie.id} className="ranking-item" onClick={() => setSelectedMovie(movie)} style={{ animationDelay: `${i * 30}ms` }}>
                             <span className="ranking-num">#{rank}</span>
@@ -2660,6 +2797,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
           rating={watchedRatings.get(selectedMovie.id) ?? null}
           onSetRating={setWatchedRating}
           onStartDebrief={startDebrief}
+          showToast={showToast}
         />
       )}
     </>
@@ -3019,6 +3157,14 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
 
 // ─── Settings Modal ────────────────────────────────────────────────────────────
 
+function GlobalToast({ message }) {
+  if (!message) return null;
+  return createPortal(
+    <div className="global-toast" key={message}>{message}</div>,
+    document.body
+  );
+}
+
 function BadgeToast({ badge, visible }) {
   if (!badge) return null;
   const Icon = badge.icon;
@@ -3034,6 +3180,158 @@ function BadgeToast({ badge, visible }) {
       </div>
     </div>,
     document.body
+  );
+}
+
+function MilestoneCelebration({ milestone, onDismiss }) {
+  const canvasRef = useRef(null);
+  const animRef = useRef(null);
+
+  useEffect(() => {
+    if (!milestone) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const colors = ["#8B3A4A", "#A34A5A", "#C4A84E", "#D4B85E", "#F0EBE3", "#E8DDD0"];
+    const particles = [];
+    for (let i = 0; i < 80; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: -10 - Math.random() * canvas.height * 0.4,
+        w: 3 + Math.random() * 5,
+        h: 6 + Math.random() * 10,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        vx: (Math.random() - 0.5) * 2,
+        vy: 1.5 + Math.random() * 3,
+        rot: Math.random() * Math.PI * 2,
+        rotV: (Math.random() - 0.5) * 0.12,
+        opacity: 0.7 + Math.random() * 0.3,
+      });
+    }
+
+    const start = performance.now();
+    const duration = 3000;
+
+    function draw(now) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const fade = progress > 0.7 ? 1 - (progress - 0.7) / 0.3 : 1;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = fade;
+
+      particles.forEach((p) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.04;
+        p.rot += p.rotV;
+
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.opacity * fade;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      });
+
+      if (progress < 1) {
+        animRef.current = requestAnimationFrame(draw);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+
+    animRef.current = requestAnimationFrame(draw);
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, [milestone]);
+
+  useEffect(() => {
+    if (!milestone) return;
+    const timer = setTimeout(onDismiss, 4000);
+    return () => clearTimeout(timer);
+  }, [milestone, onDismiss]);
+
+  if (!milestone) return null;
+
+  return createPortal(
+    <div className="milestone-overlay" onClick={onDismiss}>
+      <canvas ref={canvasRef} className="milestone-canvas" />
+      <div className="milestone-card">
+        <div className="milestone-label">Milestone!</div>
+        <div className="milestone-number">{milestone}</div>
+        <div className="milestone-message">
+          {milestone} movies watched — {MILESTONE_MESSAGES[milestone]}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+const RANK_SORT_OPTIONS = [
+  { value: "rating_desc", label: "My ranking (high to low)" },
+  { value: "tmdb_desc", label: "TMDB rating (high to low)" },
+  { value: "tmdb_asc", label: "TMDB rating (low to high)" },
+  { value: "year_desc", label: "Release year (newest)" },
+  { value: "year_asc", label: "Release year (oldest)" },
+  { value: "date_desc", label: "Date watched (recent)" },
+  { value: "runtime_desc", label: "Runtime (longest)" },
+  { value: "alpha_asc", label: "Alphabetical (A-Z)" },
+];
+
+const JOURNAL_SORT_OPTIONS = [
+  { value: "date_desc", label: "Date watched (recent)" },
+  { value: "date_asc", label: "Date watched (oldest)" },
+  { value: "tmdb_desc", label: "TMDB rating (high to low)" },
+  { value: "year_desc", label: "Release year (newest)" },
+  { value: "year_asc", label: "Release year (oldest)" },
+  { value: "runtime_desc", label: "Runtime (longest)" },
+  { value: "alpha_asc", label: "Alphabetical (A-Z)" },
+  { value: "genre_group", label: "Genre (grouped)" },
+];
+
+function SortDropdown({ options, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const activeLabel = options.find((o) => o.value === value)?.label || "";
+
+  return (
+    <div className="sort-dropdown" ref={ref}>
+      <button className="sort-dropdown-btn" onClick={() => setOpen(!open)}>
+        <span className="sort-dropdown-label">{activeLabel}</span>
+        <svg className={`sort-dropdown-chevron${open ? " open" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+      </button>
+      {open && (
+        <div className="sort-dropdown-menu">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              className={`sort-dropdown-item${opt.value === value ? " active" : ""}`}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+            >
+              <span>{opt.label}</span>
+              {opt.value === value && (
+                <svg className="sort-dropdown-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -3156,7 +3454,7 @@ const DISCOVER_CHIPS = [
   { id: 10749, label: "Romance" }, { id: 16, label: "Animation" },
 ];
 
-function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, watchedMovies, watchedRatings, setWatchedRating }) {
+function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, watchedMovies, watchedRatings, setWatchedRating, showToast }) {
   // ─── STEP 1: STATE ───
   const [movies, setMovies] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -3170,7 +3468,6 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [undoHistory, setUndoHistory] = useState([]);
   const [showStamp, setShowStamp] = useState(null);
-  const [toast, setToast] = useState(null);
   const [cardDetails, setCardDetails] = useState({});
   const [activeGenres, setActiveGenres] = useState(new Set());
   const [filterOpen, setFilterOpen] = useState(false);
@@ -3182,7 +3479,6 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   const isHorizontalSwipe = useRef(false);
   const fetchingRef = useRef(false);
   const fetchedPagesRef = useRef(new Set());
-  const toastTimeout = useRef(null);
   const swipingRef = useRef(false);
   const activeGenresRef = useRef(activeGenres);
   activeGenresRef.current = activeGenres;
@@ -3398,11 +3694,6 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     }
   }, [currentIndex, movies.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const showToast = useCallback((msg, icon) => {
-    clearTimeout(toastTimeout.current);
-    setToast({ msg, icon: icon || "check" });
-    toastTimeout.current = setTimeout(() => setToast(null), 1800);
-  }, []);
 
   // Toggle genre chip
   const toggleGenreChip = useCallback((genreId) => {
@@ -3437,13 +3728,14 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     setTimeout(() => {
       if (action === "save") {
         if (!savedIds.has(movie.id)) toggleSave(movie);
-        showToast("Added to watchlist");
       } else if (action === "maybe") {
         setMaybeLater((prev) => {
           if (prev.some((m) => m.id === movie.id)) return prev;
           return [{ ...movie, addedAt: Date.now() }, ...prev].slice(0, 50);
         });
-        showToast("Saved for later", "clock");
+        showToast("Saved for later");
+      } else if (action === "skip") {
+        showToast("Movie skipped");
       }
 
       // Update genre boosts/penalties
@@ -3471,11 +3763,10 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     if (!watchedModal) return;
     toggleWatched(watchedModal);
     setWatchedRating(watchedModal.id, watchedSlider);
-    showToast("Saved to journal");
     setWatchedModal(null);
     setSwipeCount((c) => c + 1);
     setCurrentIndex((i) => i + 1);
-  }, [watchedModal, watchedSlider, toggleWatched, setWatchedRating, showToast]);
+  }, [watchedModal, watchedSlider, toggleWatched, setWatchedRating]);
 
   const handleSwipe = useCallback((direction) => {
     handleAction(direction === "right" ? "save" : "skip");
@@ -3837,13 +4128,6 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         </div>
       </div>
 
-      {toast && (
-        <div className={`discover-toast ${toast.icon === "clock" ? "discover-toast-yellow" : ""}`}>
-          {toast.icon === "clock" ? <ClockIcon /> : <CheckIcon />}
-          {toast.msg}
-        </div>
-      )}
-
       {selectedMovie && (
         <MovieModal
           key={selectedMovie.id}
@@ -3916,6 +4200,15 @@ function MainApp() {
   const [unlockedBadges, setUnlockedBadges] = useState(() => loadFromStorage("cc_badges", []));
   const [watchedDates, setWatchedDates] = useState(() => new Map(loadFromStorage("cc_watchedDates", [])));
   const [badgeToast, setBadgeToast] = useState(null);
+  const [activeMilestone, setActiveMilestone] = useState(null);
+  const prevWatchedCount = useRef(watchedIds.size);
+  const [globalToast, setGlobalToast] = useState(null);
+  const globalToastTimer = useRef(null);
+  const showToast = useCallback((msg) => {
+    clearTimeout(globalToastTimer.current);
+    setGlobalToast(msg);
+    globalToastTimer.current = setTimeout(() => setGlobalToast(null), 2500);
+  }, []);
 
   const defaultChatId = "default";
   const [chats, setChats] = useState(() => loadFromStorage("cc_chats", [{ id: defaultChatId, title: "New chat", messages: [] }]));
@@ -3929,7 +4222,7 @@ function MainApp() {
   const toggleTheme = () => setTheme((t) => t === "dark" ? "light" : "dark");
 
   const clearAllData = () => {
-    const keys = ["cc_savedIds", "cc_savedMovies", "cc_watchedIds", "cc_watchedMovies", "cc_watchedNotes", "cc_watchedRatings", "cc_tasteProfile", "cc_aiInsight", "cc_moodPlaylist", "cc_chats", "cc_activeChatId", "cc_collections", "cc_badges", "cc_watchedDates", "cc_discover_swipe_weights", "cc_discover_seen", "cc_discover_maybe_later", "cc_discover_swipe_history"];
+    const keys = ["cc_savedIds", "cc_savedMovies", "cc_watchedIds", "cc_watchedMovies", "cc_watchedNotes", "cc_watchedRatings", "cc_tasteProfile", "cc_aiInsight", "cc_moodPlaylist", "cc_chats", "cc_activeChatId", "cc_collections", "cc_badges", "cc_watchedDates", "cc_discover_swipe_weights", "cc_discover_seen", "cc_discover_maybe_later", "cc_discover_swipe_history", "cc_shownMilestones", "cc_rankSort", "cc_journalSort", "cc_runtimeCache"];
     keys.forEach((k) => localStorage.removeItem(k));
     setSavedIds(new Set());
     setSavedMovies(new Map());
@@ -3951,6 +4244,7 @@ function MainApp() {
 
   const toggleSave = (movie) => {
     const id = movie.id;
+    const wasSaved = savedIds.has(id);
     setSavedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
@@ -3961,6 +4255,7 @@ function MainApp() {
       if (next.has(id)) next.delete(id); else next.set(id, movie);
       return next;
     });
+    showToast(wasSaved ? "Removed from watchlist" : "Added to watchlist");
   };
 
   const toggleWatched = (movie) => {
@@ -3977,8 +4272,8 @@ function MainApp() {
       return next;
     });
     if (!wasWatched) {
-      const today = new Date().toISOString().slice(0, 10);
-      setWatchedDates((prev) => new Map(prev).set(id, today));
+      setWatchedDates((prev) => new Map(prev).set(id, new Date().toISOString()));
+      showToast("Saved to journal");
     } else {
       setWatchedDates((prev) => { const next = new Map(prev); next.delete(id); return next; });
     }
@@ -4019,11 +4314,17 @@ function MainApp() {
       }
       return prev;
     });
+    let added = false;
     setCollections((prev) => prev.map((c) => {
       if (c.id !== collectionId) return c;
       const has = c.movieIds.includes(movie.id);
+      added = !has;
       return { ...c, movieIds: has ? c.movieIds.filter((id) => id !== movie.id) : [...c.movieIds, movie.id] };
     }));
+    if (added) {
+      const col = collections.find((c) => c.id === collectionId);
+      showToast(`Added to ${col?.name || "collection"}`);
+    }
   };
 
   const startDebrief = (movie) => {
@@ -4127,6 +4428,21 @@ function MainApp() {
 
   useEffect(() => () => clearTimeout(badgeToastTimer.current), []);
 
+  // ── Milestone celebration check ────────────────────────────
+  useEffect(() => {
+    const count = watchedIds.size;
+    const prev = prevWatchedCount.current;
+    prevWatchedCount.current = count;
+    // Only trigger when count increased (new movie added)
+    if (count <= prev) return;
+    const hit = MILESTONE_THRESHOLDS.find((t) => t === count);
+    if (!hit) return;
+    const shown = loadFromStorage("cc_shownMilestones", []);
+    if (shown.includes(hit)) return;
+    saveToStorage("cc_shownMilestones", [...shown, hit]);
+    setActiveMilestone(hit);
+  }, [watchedIds]);
+
   const tabs = [
     { id: "search",   label: "Search",    icon: SearchIcon    },
     { id: "saved",    label: "Watchlist",  icon: BookmarkIcon  },
@@ -4161,6 +4477,7 @@ function MainApp() {
             renameCollection={renameCollection} deleteCollection={deleteCollection}
             toggleMovieInCollection={toggleMovieInCollection}
             onStartMoviePicker={startMoviePicker}
+            showToast={showToast}
           />
         )}
         {activeTab === "discover" && (
@@ -4171,6 +4488,7 @@ function MainApp() {
             collections={collections} toggleMovieInCollection={toggleMovieInCollection}
             watchedMovies={watchedMovies} watchedRatings={watchedRatings}
             setWatchedRating={setWatchedRating}
+            showToast={showToast}
           />
         )}
         {activeTab === "journal" && (
@@ -4190,6 +4508,7 @@ function MainApp() {
             startDebrief={startDebrief}
             unlockedBadges={unlockedBadges}
             collections={collections}
+            showToast={showToast}
           />
         )}
         {activeTab === "chat" && (
@@ -4221,6 +4540,8 @@ function MainApp() {
       )}
 
       <BadgeToast badge={badgeToast} visible={!!badgeToast} />
+      <MilestoneCelebration milestone={activeMilestone} onDismiss={() => setActiveMilestone(null)} />
+      <GlobalToast message={globalToast} />
     </div>
   );
 }
