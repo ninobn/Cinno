@@ -1077,6 +1077,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
   const touchStartY = useRef(0);
   const contentRef = useRef(null);
   const pulling = useRef(false);
+  const [heroIndex, setHeroIndex] = useState(0);
 
   const toggleGenre = (id) => {
     setSelectedGenres((prev) =>
@@ -1118,23 +1119,35 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
 
   const fetchAllSections = useCallback(() => {
     setTrendingLoading(true); setTrendingError(false);
-    getTrending(1)
+    const p1 = getTrending(1)
       .then((r) => { setTrendingMovies(r.movies.slice(0, 20)); setTrendingLoading(false); })
       .catch(() => { setTrendingLoading(false); setTrendingError(true); });
 
     setGemsLoading(true); setGemsError(false);
-    getHiddenGems(1)
+    const p2 = getHiddenGems(1)
       .then((r) => { setGemsMovies(r.movies.slice(0, 20)); setGemsLoading(false); })
       .catch(() => { setGemsLoading(false); setGemsError(true); });
 
     setTopRatedLoading(true); setTopRatedError(false);
-    getTopRated(1)
+    const p3 = getTopRated(1)
       .then((r) => { setTopRatedMovies(r.movies.slice(0, 20)); setTopRatedLoading(false); })
       .catch(() => { setTopRatedLoading(false); setTopRatedError(true); });
+
+    return Promise.all([p1, p2, p3]);
   }, []);
 
   // Fetch browse sections on mount
   useEffect(() => { fetchAllSections(); }, [fetchAllSections]);
+
+  // Auto-rotate hero banner every 8 seconds
+  useEffect(() => {
+    if (trendingMovies.length === 0) return;
+    const count = Math.min(trendingMovies.length, 5);
+    const timer = setInterval(() => {
+      setHeroIndex((prev) => (prev + 1) % count);
+    }, 8000);
+    return () => clearInterval(timer);
+  }, [trendingMovies]);
 
   // Re-fetch genre browse when genre selection changes
   useEffect(() => {
@@ -1185,7 +1198,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
     : "";
   const showSections = !isSearching && !isGenreFiltered;
 
-  const pullThreshold = 64;
+  const pullThreshold = 60;
 
   const onTouchStart = (e) => {
     if (contentRef.current && contentRef.current.scrollTop === 0 && !isSearching) {
@@ -1205,17 +1218,25 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
     }
   };
 
-  const onTouchEnd = () => {
+  const onTouchEnd = async () => {
     if (!pulling.current) return;
     pulling.current = false;
     if (pullDistance >= pullThreshold && !refreshing) {
       setRefreshing(true);
       setPullDistance(pullThreshold * 0.6);
-      fetchAllSections();
-      setTimeout(() => { setRefreshing(false); setPullDistance(0); }, 800);
+      await fetchAllSections();
+      setRefreshing(false);
+      setPullDistance(0);
     } else {
       setPullDistance(0);
     }
+  };
+
+  const handleDesktopRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    await fetchAllSections();
+    setRefreshing(false);
   };
 
   return (
@@ -1376,56 +1397,100 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
           </>
         )}
 
-        {/* ── Browse sections (horizontal scroll rows) ── */}
+        {/* ── Hero Banner + Browse Sections ── */}
         {showSections && (
           <>
-            {/* Everyone's Watching */}
-            <div className="section-label">Everyone's Watching</div>
-            {trendingLoading ? (
-              <div className="scroll-row"><div className="scroll-row-inner">{Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton-tile scroll-tile" />)}</div></div>
-            ) : trendingError ? (
-              <div className="error-card compact">
-                <div className="error-card-title">Couldn't load this section</div>
-              </div>
-            ) : (
-              <ScrollRow>
-                {trendingMovies.map((movie, i) => (
-                  <MovieTile
-                    key={movie.id}
-                    movie={{ ...movie, _idx: i }}
-                    isSaved={savedIds.has(movie.id)}
-                    onToggleSave={toggleSave}
-                    onClick={() => setSelectedMovie(movie)}
-                    className="scroll-tile"
-                  />
+            {/* Hero Banner */}
+            {!trendingLoading && trendingMovies.length > 0 && (
+              <div className="hero-banner">
+                {trendingMovies.slice(0, 5).map((movie, i) => (
+                  <div key={movie.id} className={`hero-slide ${i === heroIndex ? 'active' : ''}`}>
+                    {movie.backdrop_path && (
+                      <img src={`${IMG_BASE}/w1280${movie.backdrop_path}`} alt="" className="hero-slide-bg" />
+                    )}
+                    <div className="hero-gradient" />
+                    <div className="hero-content">
+                      <h2 className="hero-title">{movie.title.toUpperCase()}</h2>
+                      <p className="hero-subtitle">{movie.genre} · {movie.year}</p>
+                      <div className="hero-actions">
+                        <button className="hero-btn hero-btn-play" onClick={(e) => { e.stopPropagation(); setSelectedMovie(movie); }}>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21" /></svg>
+                          Play
+                        </button>
+                        <button className="hero-btn hero-btn-info" onClick={(e) => { e.stopPropagation(); setSelectedMovie(movie); }}>
+                          More Info
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 ))}
-              </ScrollRow>
+                <div className="hero-dots">
+                  {trendingMovies.slice(0, 5).map((_, i) => (
+                    <button key={i} className={`hero-dot ${i === heroIndex ? 'active' : ''}`} onClick={() => setHeroIndex(i)} />
+                  ))}
+                </div>
+              </div>
             )}
 
-            {/* Hidden Gems */}
-            <div className="section-label" style={{ marginTop: 24 }}>Hidden Gems</div>
-            {gemsLoading ? (
-              <div className="scroll-row"><div className="scroll-row-inner">{Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton-tile scroll-tile" />)}</div></div>
-            ) : gemsError ? (
-              <div className="error-card compact">
-                <div className="error-card-title">Couldn't load this section</div>
+            {/* Two-column sections grid */}
+            <div className="browse-sections-grid">
+              <div className="browse-section">
+                <div className="section-label">Everyone's Watching
+                  <button className="desktop-refresh-btn" onClick={handleDesktopRefresh} disabled={refreshing} title="Refresh">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={refreshing ? "spinning" : ""}>
+                      <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
+                      <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+                    </svg>
+                  </button>
+                </div>
+                {trendingLoading ? (
+                  <div className="scroll-row"><div className="scroll-row-inner">{Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton-tile scroll-tile" />)}</div></div>
+                ) : trendingError ? (
+                  <div className="error-card compact">
+                    <div className="error-card-title">Couldn't load this section</div>
+                  </div>
+                ) : (
+                  <ScrollRow>
+                    {trendingMovies.map((movie, i) => (
+                      <MovieTile
+                        key={movie.id}
+                        movie={{ ...movie, _idx: i }}
+                        isSaved={savedIds.has(movie.id)}
+                        onToggleSave={toggleSave}
+                        onClick={() => setSelectedMovie(movie)}
+                        className="scroll-tile"
+                      />
+                    ))}
+                  </ScrollRow>
+                )}
               </div>
-            ) : (
-              <ScrollRow>
-                {gemsMovies.map((movie, i) => (
-                  <MovieTile
-                    key={movie.id}
-                    movie={{ ...movie, _idx: i }}
-                    isSaved={savedIds.has(movie.id)}
-                    onToggleSave={toggleSave}
-                    onClick={() => setSelectedMovie(movie)}
-                    className="scroll-tile"
-                  />
-                ))}
-              </ScrollRow>
-            )}
 
-            {/* All-Time Greats */}
+              <div className="browse-section">
+                <div className="section-label">Hidden Gems</div>
+                {gemsLoading ? (
+                  <div className="scroll-row"><div className="scroll-row-inner">{Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton-tile scroll-tile" />)}</div></div>
+                ) : gemsError ? (
+                  <div className="error-card compact">
+                    <div className="error-card-title">Couldn't load this section</div>
+                  </div>
+                ) : (
+                  <ScrollRow>
+                    {gemsMovies.map((movie, i) => (
+                      <MovieTile
+                        key={movie.id}
+                        movie={{ ...movie, _idx: i }}
+                        isSaved={savedIds.has(movie.id)}
+                        onToggleSave={toggleSave}
+                        onClick={() => setSelectedMovie(movie)}
+                        className="scroll-tile"
+                      />
+                    ))}
+                  </ScrollRow>
+                )}
+              </div>
+            </div>
+
+            {/* All-Time Greats — full width */}
             <div className="section-label" style={{ marginTop: 24 }}>All-Time Greats</div>
             {topRatedLoading ? (
               <div className="scroll-row"><div className="scroll-row-inner">{Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton-tile scroll-tile" />)}</div></div>
