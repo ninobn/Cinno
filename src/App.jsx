@@ -1413,11 +1413,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                       <h2 className="hero-title">{movie.title.toUpperCase()}</h2>
                       <p className="hero-subtitle">{movie.genre} · {movie.year}</p>
                       <div className="hero-actions">
-                        <button className="hero-btn hero-btn-play" onClick={(e) => { e.stopPropagation(); setSelectedMovie(movie); }}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21" /></svg>
-                          Play
-                        </button>
-                        <button className="hero-btn hero-btn-info" onClick={(e) => { e.stopPropagation(); setSelectedMovie(movie); }}>
+                        <button className="hero-btn hero-btn-details" onClick={(e) => { e.stopPropagation(); setSelectedMovie(movie); }}>
                           More Info
                         </button>
                       </div>
@@ -4338,7 +4334,16 @@ function MainApp() {
     });
     if (!wasWatched) {
       setWatchedDates((prev) => new Map(prev).set(id, new Date().toISOString()));
-      showToast("Saved to journal");
+      // Remove from watchlist and all collections when marking as watched
+      const wasSaved = savedIds.has(id);
+      if (wasSaved) {
+        setSavedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+        setSavedMovies((prev) => { const next = new Map(prev); next.delete(id); return next; });
+      }
+      setCollections((prev) => prev.map((c) =>
+        c.movieIds.includes(id) ? { ...c, movieIds: c.movieIds.filter((mid) => mid !== id) } : c
+      ));
+      showToast("Moved to journal");
     } else {
       setWatchedDates((prev) => { const next = new Map(prev); next.delete(id); return next; });
     }
