@@ -376,6 +376,20 @@ const PencilIcon = () => (
   </svg>
 );
 
+const GridIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+  </svg>
+);
+
+const ListIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+    <line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" />
+  </svg>
+);
+
 const TrophyIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M6 9H4a2 2 0 01-2-2V5a2 2 0 012-2h2" /><path d="M18 9h2a2 2 0 002-2V5a2 2 0 00-2-2h-2" />
@@ -666,13 +680,12 @@ function ScrollRow({ children }) {
 }
 
 function MovieTile({ movie, onClick, isSaved, onToggleSave, className }) {
-  const ratingColor = getRatingColor(movie.rating);
   const genreColor = GENRE_COLORS[movie.genre] || "#7A7878";
   return (
     <div className={`movie-tile ${className || ""}`} onClick={onClick} style={{ animationDelay: `${(movie._idx || 0) * 25}ms` }}>
       <div className="movie-poster">
         <PosterImage posterPath={movie.poster_path} title={movie.title} />
-        <span className="movie-poster-rating" style={{ color: ratingColor }}>★ {movie.rating}</span>
+        <span className="movie-poster-rating">★ {movie.rating}</span>
       </div>
       <button
         className={`save-btn ${isSaved ? "saved" : ""}`}
@@ -1078,6 +1091,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
   const contentRef = useRef(null);
   const pulling = useRef(false);
   const [heroIndex, setHeroIndex] = useState(0);
+  const [heroMovies, setHeroMovies] = useState([]);
 
   const toggleGenre = (id) => {
     setSelectedGenres((prev) =>
@@ -1139,15 +1153,26 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
   // Fetch browse sections on mount
   useEffect(() => { fetchAllSections(); }, [fetchAllSections]);
 
-  // Auto-rotate hero banner every 8 seconds
+  // Shuffle trending movies for hero banner on load
   useEffect(() => {
     if (trendingMovies.length === 0) return;
-    const count = Math.min(trendingMovies.length, 5);
+    const shuffled = [...trendingMovies];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    setHeroMovies(shuffled);
+    setHeroIndex(0);
+  }, [trendingMovies]);
+
+  // Auto-rotate hero banner every 8 seconds
+  useEffect(() => {
+    if (heroMovies.length === 0) return;
     const timer = setInterval(() => {
-      setHeroIndex((prev) => (prev + 1) % count);
+      setHeroIndex((prev) => (prev + 1) % heroMovies.length);
     }, 8000);
     return () => clearInterval(timer);
-  }, [trendingMovies]);
+  }, [heroMovies]);
 
   // Re-fetch genre browse when genre selection changes
   useEffect(() => {
@@ -1401,9 +1426,9 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
         {showSections && (
           <>
             {/* Hero Banner */}
-            {!trendingLoading && trendingMovies.length > 0 && (
+            {!trendingLoading && heroMovies.length > 0 && (
               <div className="hero-banner">
-                {trendingMovies.slice(0, 5).map((movie, i) => (
+                {heroMovies.map((movie, i) => (
                   <div key={movie.id} className={`hero-slide ${i === heroIndex ? 'active' : ''}`}>
                     {movie.backdrop_path && (
                       <img src={`${IMG_BASE}/w1280${movie.backdrop_path}`} alt="" className="hero-slide-bg" />
@@ -1421,7 +1446,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                   </div>
                 ))}
                 <div className="hero-dots">
-                  {trendingMovies.slice(0, 5).map((_, i) => (
+                  {heroMovies.map((_, i) => (
                     <button key={i} className={`hero-dot ${i === heroIndex ? 'active' : ''}`} onClick={() => setHeroIndex(i)} />
                   ))}
                 </div>
@@ -1785,7 +1810,7 @@ function CreateCollectionModal({ onClose, onCreate }) {
   );
 }
 
-function CollectionCard({ collection, savedMovies, onClick }) {
+function CollectionCard({ collection, savedMovies, onClick, onShare }) {
   const previewMovies = collection.movieIds
     .slice(0, 3)
     .map((id) => savedMovies.get(id))
@@ -1793,6 +1818,13 @@ function CollectionCard({ collection, savedMovies, onClick }) {
 
   return (
     <div className="collection-card scroll-tile" onClick={onClick}>
+      {onShare && (
+        <button className="collection-share-btn" onClick={onShare} title={`Share "${collection.name}"`}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
+          </svg>
+        </button>
+      )}
       <div className="collection-card-posters">
         {previewMovies.length > 0 ? (
           previewMovies.map((m, i) => (
@@ -1915,13 +1947,33 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [emptyMsg] = useState(() => pickRandom(EMPTY_WATCHLIST));
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showShareModal, setShowShareModal] = useState(false);
   const [activeCollection, setActiveCollection] = useState(null);
+  const [watchlistView, setWatchlistView] = useState("grid");
 
   const movies = useMemo(
     () => Array.from(savedMovies.values()).map((m, i) => ({ ...m, _idx: i })),
     [savedMovies]
   );
+
+  const handleShareCollection = async (e, collection) => {
+    e.stopPropagation();
+    const ids = collection.movieIds.filter((id) => savedMovies.has(id));
+    if (ids.length === 0) { showToast("Collection is empty"); return; }
+    const url = new URL(window.location.origin + window.location.pathname);
+    url.searchParams.set("shared", ids.join(","));
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      showToast(`Copied link for "${collection.name}"`);
+    } catch {
+      const input = document.createElement("textarea");
+      input.value = url.toString();
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+      showToast(`Copied link for "${collection.name}"`);
+    }
+  };
 
   const viewingCollection = activeCollection ? collections.find((c) => c.id === activeCollection) : null;
 
@@ -1949,21 +2001,20 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
       <div className="content">
         <button className="movie-picker-card" onClick={onStartMoviePicker}>
           <div className="movie-picker-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" /><line x1="7" y1="2" x2="7" y2="22" /><line x1="17" y1="2" x2="17" y2="22" /><line x1="2" y1="12" x2="22" y2="12" /><line x1="2" y1="7" x2="7" y2="7" /><line x1="2" y1="17" x2="7" y2="17" /><line x1="17" y1="7" x2="22" y2="7" /><line x1="17" y1="17" x2="22" y2="17" />
             </svg>
           </div>
-          <div className="movie-picker-text">
-            <div className="movie-picker-title">Movie Picker</div>
-            <div className="movie-picker-desc">Tell me the vibe, I'll find the film</div>
-          </div>
-          <svg className="movie-picker-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="9 6 15 12 9 18" /></svg>
+          <div className="movie-picker-title">Movie Picker</div>
+          <div className="movie-picker-divider" />
+          <div className="movie-picker-desc">Tell me the vibe, I'll find the film</div>
+          <svg className="movie-picker-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 6 15 12 9 18" /></svg>
         </button>
 
         <div className="collections-section">
           <div className="collections-header">
             <div className="collections-title">My Collections</div>
-            <button className="collections-add-btn" onClick={() => setShowCreateModal(true)}>
+            <button className="collections-add-btn" onClick={() => setShowCreateModal(true)} title="New collection">
               <PlusIcon />
             </button>
           </div>
@@ -1974,6 +2025,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
                 collection={col}
                 savedMovies={savedMovies}
                 onClick={() => setActiveCollection(col.id)}
+                onShare={(e) => handleShareCollection(e, col)}
               />
             ))}
           </div>
@@ -1988,22 +2040,56 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
         ) : (
           <>
             <div className="watchlist-header-row">
-              <div className="results-label">{movies.length} movie{movies.length !== 1 ? "s" : ""} in your watchlist</div>
-              <button className="watchlist-share-btn" onClick={() => setShowShareModal(true)} title="Share watchlist">
-                <ShareIcon />
+              <div className="watchlist-title-row">
+                <span className="watchlist-title">Watchlist</span>
+                <span className="watchlist-count-pill">{movies.length}</span>
+              </div>
+              <button
+                className="watchlist-view-toggle"
+                onClick={() => setWatchlistView((v) => v === "grid" ? "list" : "grid")}
+                title={watchlistView === "grid" ? "Switch to list" : "Switch to grid"}
+              >
+                {watchlistView === "grid" ? <ListIcon /> : <GridIcon />}
               </button>
             </div>
-            <div className="movies-grid">
-              {movies.map((movie) => (
-                <MovieTile
-                  key={movie.id}
-                  movie={movie}
-                  isSaved={true}
-                  onToggleSave={toggleSave}
-                  onClick={() => setSelectedMovie(movie)}
-                />
-              ))}
-            </div>
+            {watchlistView === "grid" ? (
+              <div className="movies-grid">
+                {movies.map((movie) => (
+                  <MovieTile
+                    key={movie.id}
+                    movie={movie}
+                    isSaved={true}
+                    onToggleSave={toggleSave}
+                    onClick={() => setSelectedMovie(movie)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="watchlist-list">
+                {movies.map((movie) => {
+                  const ratingColor = getRatingColor(movie.rating);
+                  return (
+                    <div key={movie.id} className="watchlist-list-item" onClick={() => setSelectedMovie(movie)}>
+                      <div className="watchlist-list-poster">
+                        <PosterImage posterPath={movie.poster_path} title={movie.title} />
+                      </div>
+                      <div className="watchlist-list-info">
+                        <div className="watchlist-list-title">{movie.title}</div>
+                        <div className="watchlist-list-meta">{movie.genre} · {movie.year}</div>
+                      </div>
+                      <div className="watchlist-list-rating" style={{ color: ratingColor }}>★ {movie.rating}</div>
+                      <button
+                        className="save-btn saved watchlist-list-bookmark"
+                        onClick={(e) => { e.stopPropagation(); toggleSave(movie); }}
+                        title="Remove from watchlist"
+                      >
+                        <BookmarkIcon />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </>
         )}
       </div>
@@ -2027,13 +2113,6 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
         <CreateCollectionModal
           onClose={() => setShowCreateModal(false)}
           onCreate={createCollection}
-        />
-      )}
-      {showShareModal && (
-        <ShareWatchlistModal
-          onClose={() => setShowShareModal(false)}
-          savedMovies={savedMovies}
-          showToast={showToast}
         />
       )}
     </>
@@ -2619,10 +2698,14 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
     return { total, avg, topGenre };
   }, [rankedMovies, watchedRatings]);
 
+  const TOGGLE_VIEWS = ["journal", "rankings", "stats"];
+  const toggleIndex = TOGGLE_VIEWS.indexOf(view);
+
   return (
     <>
       <div className="content">
         <div className="journal-toggle">
+          <div className="journal-toggle-track" style={{ transform: `translateX(${toggleIndex * 100}%)` }} />
           <button className={`journal-toggle-btn ${view === "journal" ? "active" : ""}`} onClick={() => setView("journal")}>Journal</button>
           <button className={`journal-toggle-btn ${view === "rankings" ? "active" : ""}`} onClick={() => setView("rankings")}>Rankings</button>
           <button className={`journal-toggle-btn ${view === "stats" ? "active" : ""}`} onClick={() => setView("stats")}>Stats</button>
@@ -2658,31 +2741,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
           <>
             {view === "journal" && (
               <>
-                <div className={`insight-card${insightLoading ? " insight-loading" : ""}`}>
-                  {movies.length < 3 ? (
-                    <p className="insight-text" style={{ fontStyle: "normal", color: "var(--text-muted)" }}>Watch at least 3 movies to unlock AI insights about your taste.</p>
-                  ) : insightLoading ? (
-                    <div className="insight-shimmer">
-                      <div className="insight-shimmer-label" />
-                      <div className="insight-shimmer-line" />
-                      <div className="insight-shimmer-line short" />
-                    </div>
-                  ) : insight ? (
-                    <>
-                      <div className="insight-label">
-                        {INSIGHT_ICONS[insight.type]}
-                        {INSIGHT_LABELS[insight.type]}
-                        <button className="insight-refresh" onClick={refreshInsight} title="New insight">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                          </svg>
-                        </button>
-                      </div>
-                      <p className="insight-text">{insight.text}</p>
-                    </>
-                  ) : null}
-                </div>
-
                 <div className="journal-search-bar">
                   <span className="search-icon"><SearchIcon /></span>
                   <input
@@ -2697,9 +2755,29 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                 </div>
 
                 <div className="journal-sort-header">
-                  <div className="results-label">{filteredJournalMovies.length} watched movie{filteredJournalMovies.length !== 1 ? "s" : ""}</div>
+                  <div className="journal-count-label">
+                    <span className="journal-count-num">{filteredJournalMovies.length}</span> watched
+                  </div>
                   <SortDropdown options={JOURNAL_SORT_OPTIONS} value={journalSort} onChange={setJournalSort} />
                 </div>
+
+                {insight && !insightLoading && movies.length >= 3 && (
+                  <div className="insight-banner">
+                    <span className="insight-banner-icon">{INSIGHT_ICONS[insight.type]}</span>
+                    <span className="insight-banner-label">{INSIGHT_LABELS[insight.type]}</span>
+                    <span className="insight-banner-text">{insight.text}</span>
+                    <button className="insight-banner-refresh" onClick={refreshInsight} title="New insight">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+                {insightLoading && movies.length >= 3 && (
+                  <div className="insight-banner insight-banner-loading">
+                    <div className="insight-banner-shimmer" />
+                  </div>
+                )}
                 {filteredJournalMovies.length === 0 && journalSearch.trim() ? (
                   <div className="journal-no-results">No movies found</div>
                 ) : journalSort === "genre_group" ? (
@@ -2809,30 +2887,18 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                       })}
                     </div>
 
-                    <div className={`insight-card${insightLoading ? " insight-loading" : ""}`} style={{ marginTop: 16 }}>
-                      {movies.length < 3 ? (
-                        <p className="insight-text" style={{ fontStyle: "normal", color: "var(--text-muted)" }}>Watch at least 3 movies to unlock AI insights about your taste.</p>
-                      ) : insightLoading ? (
-                        <div className="insight-shimmer">
-                          <div className="insight-shimmer-label" />
-                          <div className="insight-shimmer-line" />
-                          <div className="insight-shimmer-line short" />
-                        </div>
-                      ) : insight ? (
-                        <>
-                          <div className="insight-label">
-                            {INSIGHT_ICONS[insight.type]}
-                            {INSIGHT_LABELS[insight.type]}
-                            <button className="insight-refresh" onClick={refreshInsight} title="New insight">
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                              </svg>
-                            </button>
-                          </div>
-                          <p className="insight-text">{insight.text}</p>
-                        </>
-                      ) : null}
-                    </div>
+                    {insight && !insightLoading && movies.length >= 3 && (
+                      <div className="insight-banner" style={{ marginTop: 16 }}>
+                        <span className="insight-banner-icon">{INSIGHT_ICONS[insight.type]}</span>
+                        <span className="insight-banner-label">{INSIGHT_LABELS[insight.type]}</span>
+                        <span className="insight-banner-text">{insight.text}</span>
+                        <button className="insight-banner-refresh" onClick={refreshInsight} title="New insight">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
 
                   </>
                 )}

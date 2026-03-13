@@ -379,7 +379,7 @@ body {
 .movie-poster {
   width: 100%;
   aspect-ratio: 2 / 3;
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--bg-card);
   border: none;
   display: flex;
@@ -412,15 +412,16 @@ body {
 
 .movie-poster-rating {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 6px;
+  right: 6px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--success);
-  background: rgba(26, 10, 20, 0.8);
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(0, 0, 0, 0.55);
   padding: 2px 6px;
   border-radius: 6px;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(6px);
+  letter-spacing: 0.2px;
 }
 
 .movie-tile-title {
@@ -441,13 +442,13 @@ body {
 
 .save-btn {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: rgba(26, 10, 20, 0.8);
-  backdrop-filter: blur(4px);
+  top: 6px;
+  left: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
   border: none;
   cursor: pointer;
   display: flex;
@@ -459,9 +460,9 @@ body {
   padding: 0;
 }
 
-.save-btn svg { width: 14px; height: 14px; color: var(--text-secondary); transition: color 0.2s; }
+.save-btn svg { width: 13px; height: 13px; color: rgba(255, 255, 255, 0.85); transition: color 0.2s; fill: none; }
 .movie-tile:hover .save-btn { opacity: 1; }
-.save-btn:hover { background: rgba(26, 10, 20, 0.92); transform: scale(1.1); }
+.save-btn:hover { background: rgba(0, 0, 0, 0.7); transform: scale(1.1); }
 .save-btn.saved { opacity: 1; }
 .save-btn.saved svg { color: var(--accent); fill: var(--accent); }
 
@@ -1884,32 +1885,47 @@ body {
 /* ── Journal View Toggle ─────────────────────────── */
 .journal-toggle {
   display: flex;
+  position: relative;
   background: var(--bg-secondary);
   border: none;
-  border-radius: 12px;
-  padding: 4px;
-  margin-bottom: 24px;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 16px;
+}
+
+.journal-toggle-track {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: calc(33.333% - 2px);
+  height: calc(100% - 6px);
+  border-radius: 8px;
+  background: var(--accent-burgundy);
+  transition: transform 200ms ease;
+  z-index: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .journal-toggle-btn {
   flex: 1;
-  padding: 8px 0;
+  padding: 6px 0;
   border-radius: 8px;
   border: none;
   background: none;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 12px;
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: color 200ms ease;
+  position: relative;
+  z-index: 1;
 }
 
 .journal-toggle-btn.active {
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  color: #fff;
+  background: none;
+  box-shadow: none;
 }
 
 /* ── Rankings List ───────────────────────────────── */
@@ -2264,6 +2280,102 @@ body {
 @keyframes insightShimmer {
   from { transform: translateX(-100%); }
   to { transform: translateX(100%); }
+}
+
+/* ── Insight Banner (slim inline) ─────────────────── */
+.insight-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.insight-banner-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+.insight-banner-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.insight-banner-label {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--accent-hover);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.insight-banner-text {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.insight-banner-refresh {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+.insight-banner-refresh:hover {
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.insight-banner-loading {
+  height: 36px;
+  position: relative;
+}
+
+.insight-banner-shimmer {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.insight-banner-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 40%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.04) 60%,
+    transparent 100%
+  );
+  animation: insightShimmer 1.5s infinite;
 }
 
 /* ── Modal Close Button ──────────────────────────── */
@@ -3086,8 +3198,7 @@ body {
 }
 
 .journal-toggle-btn:not(.active):hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .settings-toggle:hover {
@@ -3413,28 +3524,28 @@ body {
 .movie-picker-card {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   width: 100%;
-  padding: 16px 18px;
+  padding: 10px 14px;
   background: var(--bg-card);
   border: none;
-  border-radius: 16px;
+  border-radius: 12px;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   text-align: left;
 }
 
 .movie-picker-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 
 .movie-picker-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   background: var(--accent-dim);
   display: flex;
   align-items: center;
@@ -3443,23 +3554,31 @@ body {
   color: var(--accent);
 }
 
-.movie-picker-text {
-  flex: 1;
-  min-width: 0;
-}
-
 .movie-picker-title {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.movie-picker-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+  flex-shrink: 0;
 }
 
 .movie-picker-desc {
   font-size: 12px;
   color: var(--text-muted);
   font-family: 'Plus Jakarta Sans', sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 
 .movie-picker-arrow {
@@ -3478,14 +3597,35 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
-.watchlist-header-row .results-label {
-  margin-bottom: 0;
+.watchlist-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.watchlist-share-btn {
+.watchlist-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.2px;
+}
+
+.watchlist-count-pill {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  padding: 2px 8px;
+  border-radius: 10px;
+  line-height: 1.4;
+}
+
+.watchlist-view-toggle {
   width: 32px;
   height: 32px;
   border-radius: 8px;
@@ -3501,20 +3641,92 @@ body {
   padding: 0;
 }
 
-.watchlist-share-btn svg {
+.watchlist-view-toggle svg {
   width: 15px;
   height: 15px;
 }
 
-.watchlist-share-btn:hover {
+.watchlist-view-toggle:hover {
   background: var(--bg-elevated);
   color: var(--text-primary);
   border-color: var(--text-muted);
 }
 
+/* ── Watchlist List View ─────────────────────────── */
+.watchlist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.watchlist-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.watchlist-list-item:hover {
+  background: var(--bg-card);
+}
+
+.watchlist-list-poster {
+  width: 40px;
+  height: 60px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--bg-card);
+}
+
+.watchlist-list-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.watchlist-list-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.watchlist-list-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.watchlist-list-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.watchlist-list-rating {
+  font-size: 12px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.watchlist-list-bookmark {
+  position: static;
+  opacity: 1;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
 /* ── Collections ─────────────────────────────────── */
 .collections-section {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .collections-header {
@@ -3578,20 +3790,57 @@ body {
   width: 120px;
   min-width: 120px;
   background: var(--bg-secondary);
-  border: none;
-  border-radius: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
   padding: 14px 10px 12px;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s;
   display: flex;
   flex-direction: column;
   align-items: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  position: relative;
 }
 
 .collection-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  border-color: var(--text-muted);
+}
+
+.collection-share-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s;
+  z-index: 2;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.collection-share-btn svg {
+  width: 11px;
+  height: 11px;
+}
+
+.collection-card:hover .collection-share-btn {
+  opacity: 1;
+}
+
+.collection-share-btn:hover {
+  background: rgba(0, 0, 0, 0.65);
+  color: var(--accent);
 }
 
 .collection-card-posters {
@@ -4330,15 +4579,25 @@ body {
 }
 
 [data-theme="light"] .movie-poster-rating {
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 [data-theme="light"] .save-btn {
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="light"] .save-btn svg {
+  color: rgba(255, 255, 255, 0.9);
 }
 
 [data-theme="light"] .save-btn:hover {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(0, 0, 0, 0.55);
+}
+
+[data-theme="light"] .save-btn.saved svg {
+  color: var(--accent);
+  fill: var(--accent);
 }
 
 [data-theme="light"] .modal-close-btn {
@@ -4392,8 +4651,22 @@ body {
 
 [data-theme="light"] .collection-card {
   background: var(--bg-card);
-  border: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .collection-share-btn {
+  background: rgba(0, 0, 0, 0.3);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="light"] .collection-share-btn:hover {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="light"] .watchlist-count-pill {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-secondary);
 }
 
 [data-theme="light"] .collection-poster-thumb {
@@ -6440,11 +6713,20 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
 }
 
-.journal-sort-header .results-label {
-  margin-bottom: 0;
+.journal-count-label {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.journal-count-num {
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: 14px;
 }
 
 /* ── Journal Genre Groups ───────────────────────── */
@@ -6469,17 +6751,17 @@ body {
   align-items: center;
   gap: 6px;
   background: var(--bg-secondary);
-  border: none;
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0 12px;
-  height: 38px;
-  margin-bottom: 10px;
-  transition: box-shadow 0.2s;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  height: 36px;
+  margin-bottom: 12px;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .journal-search-bar:focus-within {
-  box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px var(--accent-dim);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
 .journal-search-bar .search-icon {
@@ -6520,7 +6802,34 @@ body {
 }
 
 [data-theme="light"] .journal-search-bar {
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.1);
+  background: var(--bg-card);
+}
+
+[data-theme="light"] .journal-toggle {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .journal-toggle-track {
+  background: var(--accent-burgundy);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .journal-toggle-btn.active {
+  color: #fff;
+}
+
+[data-theme="light"] .insight-banner {
+  background: var(--bg-card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .insight-banner-shimmer {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .insight-banner-shimmer::after {
+  background: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.03) 50%, transparent 100%);
 }
 
 /* ── Light Theme ────────────────────────────────── */
