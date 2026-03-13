@@ -1446,19 +1446,22 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                   </div>
                 ))}
                 <div className="hero-dots">
-                  {heroMovies.map((_, i) => (
-                    <button key={i} className={`hero-dot ${i === heroIndex ? 'active' : ''}`} onClick={() => setHeroIndex(i)} />
-                  ))}
+                  {Array.from({ length: Math.min(heroMovies.length, 5) }, (_, i) => {
+                    const segSize = Math.ceil(heroMovies.length / Math.min(heroMovies.length, 5));
+                    const isActive = Math.floor(heroIndex / segSize) === i;
+                    return <button key={i} className={`hero-dot ${isActive ? 'active' : ''}`} onClick={() => setHeroIndex(i * segSize)} />;
+                  })}
                 </div>
               </div>
             )}
 
-            {/* Two-column sections grid */}
-            <div className="browse-sections-grid">
+            {/* Browse Sections — stacked full-width */}
+            <div className="browse-sections">
               <div className="browse-section">
-                <div className="section-label">Everyone's Watching
+                <div className="browse-section-header">
+                  <div className="browse-section-title">Everyone's Watching</div>
                   <button className="desktop-refresh-btn" onClick={handleDesktopRefresh} disabled={refreshing} title="Refresh">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={refreshing ? "spinning" : ""}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={refreshing ? "spinning" : ""}>
                       <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
                       <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
                     </svg>
@@ -1487,7 +1490,9 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
               </div>
 
               <div className="browse-section">
-                <div className="section-label">Hidden Gems</div>
+                <div className="browse-section-header">
+                  <div className="browse-section-title">Hidden Gems</div>
+                </div>
                 {gemsLoading ? (
                   <div className="scroll-row"><div className="scroll-row-inner">{Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton-tile scroll-tile" />)}</div></div>
                 ) : gemsError ? (
@@ -1509,30 +1514,33 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                   </ScrollRow>
                 )}
               </div>
-            </div>
 
-            {/* All-Time Greats — full width */}
-            <div className="section-label" style={{ marginTop: 24 }}>All-Time Greats</div>
-            {topRatedLoading ? (
-              <div className="scroll-row"><div className="scroll-row-inner">{Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton-tile scroll-tile" />)}</div></div>
-            ) : topRatedError ? (
-              <div className="error-card compact">
-                <div className="error-card-title">Couldn't load this section</div>
+              <div className="browse-section">
+                <div className="browse-section-header">
+                  <div className="browse-section-title">All-Time Greats</div>
+                </div>
+                {topRatedLoading ? (
+                  <div className="scroll-row"><div className="scroll-row-inner">{Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton-tile scroll-tile" />)}</div></div>
+                ) : topRatedError ? (
+                  <div className="error-card compact">
+                    <div className="error-card-title">Couldn't load this section</div>
+                  </div>
+                ) : (
+                  <ScrollRow>
+                    {topRatedMovies.map((movie, i) => (
+                      <MovieTile
+                        key={movie.id}
+                        movie={{ ...movie, _idx: i }}
+                        isSaved={savedIds.has(movie.id)}
+                        onToggleSave={toggleSave}
+                        onClick={() => setSelectedMovie(movie)}
+                        className="scroll-tile"
+                      />
+                    ))}
+                  </ScrollRow>
+                )}
               </div>
-            ) : (
-              <ScrollRow>
-                {topRatedMovies.map((movie, i) => (
-                  <MovieTile
-                    key={movie.id}
-                    movie={{ ...movie, _idx: i }}
-                    isSaved={savedIds.has(movie.id)}
-                    onToggleSave={toggleSave}
-                    onClick={() => setSelectedMovie(movie)}
-                    className="scroll-tile"
-                  />
-                ))}
-              </ScrollRow>
-            )}
+            </div>
           </>
         )}
       </div>
@@ -1949,11 +1957,38 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeCollection, setActiveCollection] = useState(null);
   const [watchlistView, setWatchlistView] = useState("grid");
+  const [upNextId, setUpNextId] = useState(() => loadFromStorage("cc_upNextId", null));
 
   const movies = useMemo(
     () => Array.from(savedMovies.values()).map((m, i) => ({ ...m, _idx: i })),
     [savedMovies]
   );
+
+  // Up Next logic: persist pick, default to oldest movie in watchlist
+  const upNextMovie = useMemo(() => {
+    if (movies.length === 0) return null;
+    // If stored pick is still in watchlist, use it
+    if (upNextId && savedMovies.has(upNextId)) return savedMovies.get(upNextId);
+    // Otherwise pick the first (oldest added) movie
+    return movies[0] || null;
+  }, [movies, upNextId, savedMovies]);
+
+  const shuffleUpNext = () => {
+    if (movies.length <= 1) return;
+    const others = movies.filter((m) => m.id !== (upNextMovie?.id));
+    if (others.length === 0) return;
+    const pick = others[Math.floor(Math.random() * others.length)];
+    setUpNextId(pick.id);
+    saveToStorage("cc_upNextId", pick.id);
+  };
+
+  // Clear stored pick if it was removed from watchlist
+  useEffect(() => {
+    if (upNextId && !savedMovies.has(upNextId)) {
+      setUpNextId(null);
+      localStorage.removeItem("cc_upNextId");
+    }
+  }, [upNextId, savedMovies]);
 
   const handleShareCollection = async (e, collection) => {
     e.stopPropagation();
@@ -1999,6 +2034,37 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
   return (
     <>
       <div className="content">
+        {/* Up Next Card */}
+        {upNextMovie ? (
+          <div className="upnext-card" onClick={() => setSelectedMovie(upNextMovie)}>
+            {upNextMovie.poster_path && (
+              <div className="upnext-bg" style={{ backgroundImage: `url(${IMG_BASE}/w780${upNextMovie.poster_path})` }} />
+            )}
+            <div className="upnext-overlay" />
+            <div className="upnext-inner">
+              <div className="upnext-poster">
+                <PosterImage posterPath={upNextMovie.poster_path} title={upNextMovie.title} />
+              </div>
+              <div className="upnext-info">
+                <div className="upnext-label">Up Next</div>
+                <div className="upnext-title">{upNextMovie.title}</div>
+                <div className="upnext-meta">{upNextMovie.genre} · {upNextMovie.year}</div>
+                <div className="upnext-prompt">Watch tonight?</div>
+                <div className="upnext-actions">
+                  <button className="upnext-details-btn" onClick={(e) => { e.stopPropagation(); setSelectedMovie(upNextMovie); }}>More Info</button>
+                  <button className="upnext-shuffle-btn" onClick={(e) => { e.stopPropagation(); shuffleUpNext(); }} title="Pick a different movie">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" />
+                      <polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" />
+                      <line x1="4" y1="4" x2="9" y2="9" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <button className="movie-picker-card" onClick={onStartMoviePicker}>
           <div className="movie-picker-icon">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
