@@ -2338,29 +2338,31 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
 
   return (
     <div className="stats-grid" ref={statsRef}>
-      {/* ── Quick Stats Row ── */}
-      <div className="stats-card full stats-row">
-        <div className="stat-mini">
-          <div className="stat-mini-num">{stats.totalMovies}</div>
-          <div className="stat-mini-label">movies</div>
-        </div>
-        <div className="stat-mini">
-          <div className="stat-mini-num">{stats.totalHours}h</div>
-          <div className="stat-mini-label">watched</div>
-        </div>
-        <div className="stat-mini">
-          <div className="stat-mini-num">{stats.avgRating}</div>
-          <div className="stat-mini-label">avg rating</div>
-        </div>
-        <div className="stat-mini">
-          <div className="stat-mini-num">{stats.genreCount}</div>
-          <div className="stat-mini-label">genres</div>
+      {/* ── Hero Stats Banner ── */}
+      <div className="stats-card full stats-hero">
+        <div className="stats-hero-nums">
+          <div className="stats-hero-stat">
+            <div className="stats-hero-val">{stats.totalMovies}</div>
+            <div className="stats-hero-label">movies</div>
+          </div>
+          <div className="stats-hero-stat">
+            <div className="stats-hero-val">{stats.totalHours}h</div>
+            <div className="stats-hero-label">watched</div>
+          </div>
+          <div className="stats-hero-stat">
+            <div className="stats-hero-val">{stats.avgRating}</div>
+            <div className="stats-hero-label">avg rating</div>
+          </div>
+          <div className="stats-hero-stat">
+            <div className="stats-hero-val">{stats.genreCount}</div>
+            <div className="stats-hero-label">genres</div>
+          </div>
         </div>
       </div>
 
       {/* ── Best vs Worst ── */}
       {stats.highest && stats.lowest && (
-        <div className="stats-card full">
+        <div className="stats-card full stats-bvw">
           <div className="stats-card-label">Best vs Worst</div>
           <div className="stats-vs">
             <div className="stats-vs-side">
@@ -2369,17 +2371,19 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
               </div>
               <div className="stats-vs-info">
                 <div className="stats-card-title">{stats.highest.movie.title}</div>
-                <ScoreRing score={stats.highest.score} size={38} />
+                <ScoreRing score={stats.highest.score} size={34} />
               </div>
             </div>
-            <div className="stats-vs-divider">vs</div>
+            <div className="stats-vs-divider">
+              <span>vs</span>
+            </div>
             <div className="stats-vs-side">
               <div className="stats-card-poster">
                 <PosterImage posterPath={stats.lowest.movie.poster_path} title={stats.lowest.movie.title} />
               </div>
               <div className="stats-vs-info">
                 <div className="stats-card-title">{stats.lowest.movie.title}</div>
-                <ScoreRing score={stats.lowest.score} size={38} />
+                <ScoreRing score={stats.lowest.score} size={34} />
               </div>
             </div>
           </div>
@@ -2409,7 +2413,6 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
             <div className="stats-genre-bars">
               {arcs.slice(0, 6).map((g) => (
                 <div key={g.name} className="genre-bar-row">
-                  <span className="genre-bar-dot" style={{ background: g.color }} />
                   <span className="genre-bar-name">{g.name}</span>
                   <div className="genre-bar-track">
                     <div className="genre-bar-fill" style={{ width: `${g.pct * 100}%`, background: g.color }} />
@@ -2426,29 +2429,22 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
       {stats.unpopularOpinions.length > 0 && (
         <div className="stats-card full">
           <div className="stats-card-label">Unpopular Opinions</div>
-          <div className="stats-card-sublabel">Your biggest disagreements with the public</div>
           <div className="unpopular-list">
-            {stats.unpopularOpinions.map((item) => (
+            {stats.unpopularOpinions.map((item, i) => (
               <div key={item.movie.id} className="unpopular-item">
                 <div className="unpopular-poster">
                   <PosterImage posterPath={item.movie.poster_path} title={item.movie.title} />
                 </div>
                 <div className="unpopular-info">
                   <div className="unpopular-title">{item.movie.title}</div>
-                  <div className="unpopular-scores">
-                    <div className="unpopular-score-pair">
-                      <span className="unpopular-score-label">You</span>
-                      <ScoreRing score={item.userScore} size={36} />
-                    </div>
-                    <div className="unpopular-vs">vs</div>
-                    <div className="unpopular-score-pair">
-                      <span className="unpopular-score-label">TMDB</span>
-                      <span className="unpopular-tmdb">{item.tmdbScore.toFixed(1)}</span>
-                    </div>
+                  <div className="unpopular-score-row">
+                    <span className="unpopular-you">You: {item.userScore}</span>
+                    <span className="unpopular-sep">vs</span>
+                    <span className="unpopular-tmdb">TMDB: {item.tmdbScore.toFixed(1)}</span>
                   </div>
                 </div>
                 <div className={`unpopular-diff ${item.diff > 0 ? "higher" : "lower"}`}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                     {item.diff > 0 ? <polyline points="18 15 12 9 6 15"/> : <polyline points="6 9 12 15 18 9"/>}
                   </svg>
                   {Math.round(item.absDiff)}
@@ -2476,7 +2472,7 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
         </div>
       )}
 
-      {/* ── Achievements (Tiered) ── */}
+      {/* ── Achievements ── */}
       {(() => {
         const badgeCtx = { watchedMovies, watchedRatings, collections: collections || [], watchedDates: watchedDates || new Map() };
         const totalTiers = BADGE_DEFS.length * 3;
@@ -2486,7 +2482,7 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
           <div className="stats-card full achievements-section">
             <div className="achievements-inline-header">
               <div className="stats-card-label">Achievements</div>
-              <div className="achievements-count">{earnedTiers} of {totalTiers} tiers</div>
+              <div className="achievements-count">{earnedTiers}/{totalTiers}</div>
             </div>
             <div className="achievements-inline-bar">
               <div className="achievements-inline-bar-fill" style={{ width: `${(earnedTiers / totalTiers) * 100}%` }} />
@@ -2536,7 +2532,7 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
         const sorted = Object.entries(genreCounts).sort(([, a], [, b]) => b - a);
         if (sorted.length === 0) return null;
         return (
-          <div className="stats-card full genre-mastery-section">
+          <div className="stats-card full">
             <div className="stats-card-label">Genre Mastery</div>
             <div className="genre-mastery-list">
               {sorted.map(([genre, count]) => {
@@ -2547,12 +2543,10 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
                 return (
                   <div key={genre} className="genre-mastery-row">
                     <div className={`genre-mastery-name ${isMaster ? "master" : ""}`}>{genre}</div>
-                    <div className="genre-mastery-bar-wrap">
-                      <div className="genre-mastery-track">
-                        <div className="genre-mastery-fill" style={{ width: `${pct}%`, background: isMaster ? TIER_COLORS.gold : `${GENRE_COLORS[genre] || "var(--accent)"}` }} />
-                      </div>
-                      <span className="genre-mastery-label">{mastery.label}</span>
+                    <div className="genre-mastery-track">
+                      <div className="genre-mastery-fill" style={{ width: `${pct}%`, background: isMaster ? TIER_COLORS.gold : `${GENRE_COLORS[genre] || "var(--accent)"}` }} />
                     </div>
+                    <span className="genre-mastery-pill" style={isMaster ? { color: TIER_COLORS.gold } : undefined}>{mastery.label}</span>
                     <span className="genre-mastery-count">{count}</span>
                   </div>
                 );
@@ -2909,53 +2903,70 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                   <div className="rankings-empty">Rate movies in your journal to see them ranked here.</div>
                 ) : (
                   <>
-                    {rankingStats && (
-                      <div className="rank-pills">
-                        <div className="rank-pill"><span className="rank-pill-val">{rankingStats.total}</span> rated</div>
-                        <div className="rank-pill">Avg: <span className="rank-pill-val">{rankingStats.avg}</span>/100</div>
-                        <div className="rank-pill">Top: <span className="rank-pill-val">{rankingStats.topGenre}</span></div>
+                    {/* Hero Banner — #1 Movie */}
+                    {rankSort === "rating_desc" && rankedMovies.length >= 1 && (
+                      <div className="rank-hero" onClick={() => setSelectedMovie(rankedMovies[0])}>
+                        <div className="rank-hero-backdrop">
+                          <img src={`${IMG_BASE}/w780${rankedMovies[0].backdrop_path || rankedMovies[0].poster_path}`} alt="" />
+                        </div>
+                        <div className="rank-hero-gradient" />
+                        <div className="rank-hero-content">
+                          <div className="rank-hero-badge">#1 Ranked</div>
+                          <div className="rank-hero-title">{rankedMovies[0].title}</div>
+                          <div className="rank-hero-meta">{rankedMovies[0].genre} · {rankedMovies[0].year}</div>
+                          <div className="rank-hero-score">
+                            <ScoreRing score={watchedRatings.get(rankedMovies[0].id)} size={48} />
+                          </div>
+                        </div>
                       </div>
                     )}
 
-                    <div className="rank-sort-row">
+                    {/* Stat Row + Sort */}
+                    <div className="rank-stat-row">
+                      <div className="rank-stat-text">
+                        {rankingStats && (
+                          <>
+                            <strong>{rankingStats.total}</strong> rated
+                            <span className="rank-stat-dot" />
+                            <span>Avg </span><strong>{rankingStats.avg}</strong>/100
+                            <span className="rank-stat-dot" />
+                            <span>Top: </span><strong>{rankingStats.topGenre}</strong>
+                          </>
+                        )}
+                      </div>
                       <SortDropdown options={RANK_SORT_OPTIONS} value={rankSort} onChange={setRankSort} />
                     </div>
 
+                    {/* Podium — Top 3 */}
                     {rankSort === "rating_desc" && rankedMovies.length >= 3 && (
-                      <div className="podium">
-                        <div className="podium-slot second" onClick={() => setSelectedMovie(rankedMovies[1])}>
-                          <div className="podium-rank">2</div>
-                          <div className="podium-poster">
-                            <PosterImage posterPath={rankedMovies[1].poster_path} title={rankedMovies[1].title} />
-                          </div>
-                          <div className="podium-title">{rankedMovies[1].title}</div>
-                          <ScoreRing score={watchedRatings.get(rankedMovies[1].id)} size={36} />
-                        </div>
-                        <div className="podium-slot first" onClick={() => setSelectedMovie(rankedMovies[0])}>
-                          <div className="podium-rank">1</div>
-                          <div className="podium-poster">
-                            <PosterImage posterPath={rankedMovies[0].poster_path} title={rankedMovies[0].title} />
-                          </div>
-                          <div className="podium-title">{rankedMovies[0].title}</div>
-                          <ScoreRing score={watchedRatings.get(rankedMovies[0].id)} size={40} />
-                        </div>
-                        <div className="podium-slot third" onClick={() => setSelectedMovie(rankedMovies[2])}>
-                          <div className="podium-rank">3</div>
-                          <div className="podium-poster">
-                            <PosterImage posterPath={rankedMovies[2].poster_path} title={rankedMovies[2].title} />
-                          </div>
-                          <div className="podium-title">{rankedMovies[2].title}</div>
-                          <ScoreRing score={watchedRatings.get(rankedMovies[2].id)} size={36} />
-                        </div>
+                      <div className="podium-v2">
+                        {[1, 0, 2].map((idx) => {
+                          const m = rankedMovies[idx];
+                          const isFirst = idx === 0;
+                          const medalColor = idx === 0 ? "#C9A84C" : idx === 1 ? "#B0B0B0" : "#B87333";
+                          return (
+                            <div key={m.id} className={`podium-v2-slot ${isFirst ? "podium-v2-first" : ""}`} onClick={() => setSelectedMovie(m)}>
+                              <div className="podium-v2-poster-wrap">
+                                <div className={`podium-v2-poster ${isFirst ? "podium-v2-poster-lg" : ""}`}>
+                                  <PosterImage posterPath={m.poster_path} title={m.title} />
+                                </div>
+                                <div className="podium-v2-badge" style={{ background: medalColor }}>{idx + 1}</div>
+                              </div>
+                              <div className="podium-v2-title">{m.title}</div>
+                              <ScoreRing score={watchedRatings.get(m.id)} size={isFirst ? 40 : 34} />
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 
+                    {/* Ranking List #4+ */}
                     <div className="rankings-list">
                       {(rankSort === "rating_desc" && rankedMovies.length >= 3 ? rankedMovies.slice(3) : rankedMovies).map((movie, i) => {
                         const rank = rankSort === "rating_desc" && rankedMovies.length >= 3 ? i + 4 : i + 1;
                         return (
                           <div key={movie.id} className="ranking-item" onClick={() => setSelectedMovie(movie)} style={{ animationDelay: `${i * 30}ms` }}>
-                            <span className="ranking-num">#{rank}</span>
+                            <span className="ranking-num">{rank}</span>
                             <div className="ranking-poster">
                               <PosterImage posterPath={movie.poster_path} title={movie.title} />
                             </div>
@@ -2963,7 +2974,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                               <div className="ranking-title">{movie.title}</div>
                               <div className="ranking-meta">{movie.genre} · {movie.year}</div>
                             </div>
-                            <ScoreRing score={watchedRatings.get(movie.id)} size={38} />
+                            <ScoreRing score={watchedRatings.get(movie.id)} size={36} />
                           </div>
                         );
                       })}
@@ -2981,7 +2992,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                         </button>
                       </div>
                     )}
-
                   </>
                 )}
               </>
