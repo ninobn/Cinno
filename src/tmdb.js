@@ -131,3 +131,41 @@ export async function discoverMovies(params = {}, page = 1) {
   const data = await tmdbFetch("/discover/movie", { ...params, page });
   return { movies: data.results.map(tmdbToMovie), totalPages: data.total_pages };
 }
+
+export async function getMovieCredits(movieId) {
+  return tmdbFetch(`/movie/${movieId}/credits`);
+}
+
+export async function getMovieReviews(movieId) {
+  return tmdbFetch(`/movie/${movieId}/reviews`);
+}
+
+export async function getSmartContext(query) {
+  try {
+    const search = await tmdbFetch("/search/movie", { query });
+    const movie = search.results?.[0];
+    if (!movie) return null;
+
+    const [details, credits, reviews, similar] = await Promise.all([
+      tmdbFetch(`/movie/${movie.id}`),
+      tmdbFetch(`/movie/${movie.id}/credits`),
+      tmdbFetch(`/movie/${movie.id}/reviews`),
+      tmdbFetch(`/movie/${movie.id}/similar`),
+    ]);
+
+    const director = credits.crew?.find((c) => c.job === "Director")?.name || "Unknown";
+    const cast = credits.cast?.slice(0, 10).map((c) => c.name).join(", ") || "Unknown";
+    const reviewSnippets = (reviews.results || []).slice(0, 3).map((r) => r.content?.slice(0, 200)).filter(Boolean);
+    const similarTitles = (similar.results || []).slice(0, 5).map((m) => m.title).filter(Boolean);
+    const year = (details.release_date || "").slice(0, 4);
+
+    return {
+      found: true,
+      title: details.title,
+      year,
+      context: `Movie context: ${details.title} (${year}), directed by ${director}, starring ${cast}. Rating: ${details.vote_average?.toFixed(1) || "N/A"}/10. Runtime: ${details.runtime || "N/A"} min. Budget: $${details.budget?.toLocaleString() || "N/A"}. Revenue: $${details.revenue?.toLocaleString() || "N/A"}. Tagline: "${details.tagline || "None"}". Synopsis: ${details.overview || "N/A"}. User reviews: ${reviewSnippets.length ? reviewSnippets.join(" | ") : "None available"}. Similar movies: ${similarTitles.length ? similarTitles.join(", ") : "None"}.`,
+    };
+  } catch {
+    return null;
+  }
+}

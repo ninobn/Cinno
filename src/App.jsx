@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getMovieKeywords, tmdbToMovie, IMG_BASE } from "./tmdb.js";
+import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getMovieKeywords, getSmartContext, tmdbToMovie, IMG_BASE } from "./tmdb.js";
 
 const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
 
@@ -13,12 +13,22 @@ const GENRE_COLORS = {
 };
 
 const ALL_SUGGESTIONS = [
-  "Recommend a thriller", "Explain Inception's ending", "Movies like Parasite",
-  "Best films of the 90s", "Hidden gem dramas", "What should I watch tonight?",
-  "Movies with great soundtracks", "Underrated sci-fi films", "Best animated movies ever",
-  "Movies like Interstellar", "Dark comedies worth watching", "Classic noir films",
-  "Must-see foreign films", "Best ensemble casts", "Movies that make you think",
-  "Feel-good films to rewatch",
+  { text: "Recommend a thriller", icon: "knife" },
+  { text: "Explain Inception's ending", icon: "brain" },
+  { text: "Movies like Parasite", icon: "film" },
+  { text: "Best films of the 90s", icon: "clock" },
+  { text: "Hidden gem dramas", icon: "gem" },
+  { text: "What should I watch tonight?", icon: "popcorn" },
+  { text: "Movies with great soundtracks", icon: "music" },
+  { text: "Underrated sci-fi films", icon: "gem" },
+  { text: "Best animated movies ever", icon: "film" },
+  { text: "Movies like Interstellar", icon: "film" },
+  { text: "Dark comedies worth watching", icon: "masks" },
+  { text: "Classic noir films", icon: "film" },
+  { text: "Must-see foreign films", icon: "globe" },
+  { text: "Best ensemble casts", icon: "people" },
+  { text: "Movies that make you think", icon: "brain" },
+  { text: "Feel-good films to rewatch", icon: "heart" },
 ];
 
 const PICKER_SUGGESTIONS = [
@@ -1859,7 +1869,7 @@ function CollectionCard({ collection, savedMovies, onClick, onShare }) {
   );
 }
 
-function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, onBack, onRename, onDelete, collections, toggleMovieInCollection }) {
+function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, onBack, onRename, onDelete, onShare, collections, toggleMovieInCollection }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(collection.name);
@@ -1905,11 +1915,20 @@ function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, w
             )}
             <div className="collection-detail-count">{movies.length} movie{movies.length !== 1 ? "s" : ""}</div>
           </div>
-          {!collection.isDefault && (
-            <button className="collection-delete-btn" onClick={() => { onDelete(collection.id); onBack(); }}>
-              <TrashIcon />
-            </button>
-          )}
+          <div className="collection-detail-actions">
+            {onShare && (
+              <button className="collection-share-detail-btn" onClick={onShare} title="Share collection">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
+                  <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
+                </svg>
+              </button>
+            )}
+            {!collection.isDefault && (
+              <button className="collection-delete-btn" onClick={() => { onDelete(collection.id); onBack(); }}>
+                <TrashIcon />
+              </button>
+            )}
+          </div>
         </div>
         {movies.length === 0 ? (
           <div className="saved-empty">
@@ -2025,6 +2044,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
         onBack={() => setActiveCollection(null)}
         onRename={renameCollection}
         onDelete={deleteCollection}
+        onShare={(e) => handleShareCollection(e, viewingCollection)}
         collections={collections}
         toggleMovieInCollection={toggleMovieInCollection}
       />
@@ -2034,25 +2054,31 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
   return (
     <>
       <div className="content">
-        {/* Up Next Card */}
+        {/* Up Next Banner — immersive backdrop */}
         {upNextMovie ? (
-          <div className="upnext-card" onClick={() => setSelectedMovie(upNextMovie)}>
-            {upNextMovie.poster_path && (
-              <div className="upnext-bg" style={{ backgroundImage: `url(${IMG_BASE}/w780${upNextMovie.poster_path})` }} />
-            )}
-            <div className="upnext-overlay" />
-            <div className="upnext-inner">
-              <div className="upnext-poster">
+          <div className="upnext-banner" onClick={() => setSelectedMovie(upNextMovie)}>
+            <div className="upnext-banner-backdrop">
+              {(upNextMovie.backdrop_path || upNextMovie.poster_path) && (
+                <img
+                  src={`${IMG_BASE}/w780${upNextMovie.backdrop_path || upNextMovie.poster_path}`}
+                  alt=""
+                  className="upnext-banner-img"
+                />
+              )}
+            </div>
+            <div className="upnext-banner-gradient" />
+            <div className="upnext-banner-content">
+              <div className="upnext-banner-poster">
                 <PosterImage posterPath={upNextMovie.poster_path} title={upNextMovie.title} />
               </div>
-              <div className="upnext-info">
-                <div className="upnext-label">Up Next</div>
-                <div className="upnext-title">{upNextMovie.title}</div>
-                <div className="upnext-meta">{upNextMovie.genre} · {upNextMovie.year}</div>
-                <div className="upnext-prompt">Watch tonight?</div>
-                <div className="upnext-actions">
-                  <button className="upnext-details-btn" onClick={(e) => { e.stopPropagation(); setSelectedMovie(upNextMovie); }}>More Info</button>
-                  <button className="upnext-shuffle-btn" onClick={(e) => { e.stopPropagation(); shuffleUpNext(); }} title="Pick a different movie">
+              <div className="upnext-banner-info">
+                <div className="upnext-banner-label">Up Next</div>
+                <div className="upnext-banner-title">{upNextMovie.title}</div>
+                <div className="upnext-banner-meta">{upNextMovie.genre} · {upNextMovie.year}</div>
+                <div className="upnext-banner-prompt">Watch tonight?</div>
+                <div className="upnext-banner-actions">
+                  <button className="upnext-banner-details-btn" onClick={(e) => { e.stopPropagation(); setSelectedMovie(upNextMovie); }}>More Info</button>
+                  <button className="upnext-banner-shuffle-btn" onClick={(e) => { e.stopPropagation(); shuffleUpNext(); }} title="Pick a different movie">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" />
                       <polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" />
@@ -2064,38 +2090,6 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
             </div>
           </div>
         ) : null}
-
-        <button className="movie-picker-card" onClick={onStartMoviePicker}>
-          <div className="movie-picker-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" /><line x1="7" y1="2" x2="7" y2="22" /><line x1="17" y1="2" x2="17" y2="22" /><line x1="2" y1="12" x2="22" y2="12" /><line x1="2" y1="7" x2="7" y2="7" /><line x1="2" y1="17" x2="7" y2="17" /><line x1="17" y1="7" x2="22" y2="7" /><line x1="17" y1="17" x2="22" y2="17" />
-            </svg>
-          </div>
-          <div className="movie-picker-title">Movie Picker</div>
-          <div className="movie-picker-divider" />
-          <div className="movie-picker-desc">Tell me the vibe, I'll find the film</div>
-          <svg className="movie-picker-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 6 15 12 9 18" /></svg>
-        </button>
-
-        <div className="collections-section">
-          <div className="collections-header">
-            <div className="collections-title">My Collections</div>
-            <button className="collections-add-btn" onClick={() => setShowCreateModal(true)} title="New collection">
-              <PlusIcon />
-            </button>
-          </div>
-          <div className="collections-scroll">
-            {collections.map((col) => (
-              <CollectionCard
-                key={col.id}
-                collection={col}
-                savedMovies={savedMovies}
-                onClick={() => setActiveCollection(col.id)}
-                onShare={(e) => handleShareCollection(e, col)}
-              />
-            ))}
-          </div>
-        </div>
 
         {movies.length === 0 ? (
           <div className="saved-empty">
@@ -2158,7 +2152,50 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
             )}
           </>
         )}
+
+        {/* Collections — compact pill chips */}
+        {collections.length > 0 && (
+          <div className="collections-chips-section">
+            <div className="collections-chips-header">
+              <span className="collections-chips-title">Collections</span>
+            </div>
+            <div className="collections-chips-row">
+              {collections.map((col) => (
+                <button
+                  key={col.id}
+                  className="collection-chip"
+                  onClick={() => setActiveCollection(col.id)}
+                >
+                  <span className="collection-chip-name">{col.name}</span>
+                  <span className="collection-chip-count">{col.movieIds.length}</span>
+                </button>
+              ))}
+              <button className="collection-chip collection-chip-add" onClick={() => setShowCreateModal(true)} title="New collection">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                <span className="collection-chip-name">New</span>
+              </button>
+            </div>
+          </div>
+        )}
+        {collections.length === 0 && (
+          <div className="collections-chips-section">
+            <div className="collections-chips-row">
+              <button className="collection-chip collection-chip-add" onClick={() => setShowCreateModal(true)} title="New collection">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+                <span className="collection-chip-name">Create a collection</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Floating Movie Picker FAB */}
+      <button className="movie-picker-fab" onClick={onStartMoviePicker} title="Movie Picker">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+          <path d="M20 3v4" /><path d="M22 5h-4" />
+        </svg>
+      </button>
       {selectedMovie && (
         <MovieModal
           key={selectedMovie.id}
@@ -2769,13 +2806,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 
   return (
     <>
-      <div className="content">
-        <div className="journal-toggle">
-          <div className="journal-toggle-track" style={{ transform: `translateX(${toggleIndex * 100}%)` }} />
-          <button className={`journal-toggle-btn ${view === "journal" ? "active" : ""}`} onClick={() => setView("journal")}>Journal</button>
-          <button className={`journal-toggle-btn ${view === "rankings" ? "active" : ""}`} onClick={() => setView("rankings")}>Rankings</button>
-          <button className={`journal-toggle-btn ${view === "stats" ? "active" : ""}`} onClick={() => setView("stats")}>Stats</button>
-        </div>
+      <div className="content journal-content">
 
         {movies.length === 0 && (
           <div className="saved-empty">
@@ -2807,43 +2838,28 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
           <>
             {view === "journal" && (
               <>
-                <div className="journal-search-bar">
-                  <span className="search-icon"><SearchIcon /></span>
-                  <input
-                    type="text"
-                    placeholder="Search your movies..."
-                    value={journalSearch}
-                    onChange={(e) => setJournalSearch(e.target.value)}
-                  />
-                  {journalSearch && (
-                    <button className="search-clear" onClick={() => setJournalSearch("")}>✕</button>
-                  )}
+                {/* Unified toolbar card */}
+                <div className="journal-header-card">
+                  <div className="journal-header-top">
+                    <div className="journal-header-title">Your Journal</div>
+                    <div className="journal-header-count">{filteredJournalMovies.length} watched</div>
+                  </div>
+                  <div className="journal-header-bottom">
+                    <div className="journal-header-search">
+                      <span className="search-icon"><SearchIcon /></span>
+                      <input
+                        type="text"
+                        placeholder="Search movies..."
+                        value={journalSearch}
+                        onChange={(e) => setJournalSearch(e.target.value)}
+                      />
+                      {journalSearch && (
+                        <button className="search-clear" onClick={() => setJournalSearch("")}>✕</button>
+                      )}
+                    </div>
+                    <SortDropdown options={JOURNAL_SORT_OPTIONS} value={journalSort} onChange={setJournalSort} />
+                  </div>
                 </div>
-
-                <div className="journal-sort-header">
-                  <div className="journal-count-label">
-                    <span className="journal-count-num">{filteredJournalMovies.length}</span> watched
-                  </div>
-                  <SortDropdown options={JOURNAL_SORT_OPTIONS} value={journalSort} onChange={setJournalSort} />
-                </div>
-
-                {insight && !insightLoading && movies.length >= 3 && (
-                  <div className="insight-banner">
-                    <span className="insight-banner-icon">{INSIGHT_ICONS[insight.type]}</span>
-                    <span className="insight-banner-label">{INSIGHT_LABELS[insight.type]}</span>
-                    <span className="insight-banner-text">{insight.text}</span>
-                    <button className="insight-banner-refresh" onClick={refreshInsight} title="New insight">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
-                {insightLoading && movies.length >= 3 && (
-                  <div className="insight-banner insight-banner-loading">
-                    <div className="insight-banner-shimmer" />
-                  </div>
-                )}
                 {filteredJournalMovies.length === 0 && journalSearch.trim() ? (
                   <div className="journal-no-results">No movies found</div>
                 ) : journalSort === "genre_group" ? (
@@ -2978,6 +2994,17 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
         )}
       </div>
 
+      {/* Floating Toggle Pill — portaled to body to escape overflow/transform clipping */}
+      {createPortal(
+        <div className="journal-float-toggle">
+          <div className="journal-float-toggle-track" style={{ transform: `translateX(${toggleIndex * 100}%)` }} />
+          <button className={`journal-float-toggle-btn ${view === "journal" ? "active" : ""}`} onClick={() => setView("journal")}>Journal</button>
+          <button className={`journal-float-toggle-btn ${view === "rankings" ? "active" : ""}`} onClick={() => setView("rankings")}>Rankings</button>
+          <button className={`journal-float-toggle-btn ${view === "stats" ? "active" : ""}`} onClick={() => setView("stats")}>Stats</button>
+        </div>,
+        document.body
+      )}
+
       {selectedMovie && (
         <JournalDetailModal
           movie={selectedMovie}
@@ -3003,8 +3030,12 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [typingHint, setTypingHint] = useState(null);
+  const [researching, setResearching] = useState(false);
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [smartMode, setSmartMode] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("cinno-smart-mode")) || false; } catch { return false; }
+  });
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
   const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -3034,6 +3065,44 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
   const autoResize = () => {
     const ta = textareaRef.current;
     if (ta) { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 120) + "px"; }
+  };
+
+  const toggleSmartMode = () => {
+    setSmartMode((prev) => {
+      const next = !prev;
+      localStorage.setItem("cinno-smart-mode", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const fetchSmartEnrichment = async (userMsg) => {
+    let tmdbContext = "";
+    let webContext = "";
+
+    try {
+      const smartData = await getSmartContext(userMsg);
+      if (smartData?.found) {
+        tmdbContext = smartData.context;
+
+        try {
+          const searchQuery = `${smartData.title} ${smartData.year} movie reviews opinions discussion`;
+          const resp = await fetch("http://localhost:3001/api/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ query: searchQuery }),
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            const snippets = (data.results || []).slice(0, 3).map((r) => r.content?.slice(0, 200) || "").filter(Boolean);
+            webContext = data.answer
+              ? `Web context: ${data.answer}${snippets.length ? `. Sources: ${snippets.join(" | ")}` : ""}`
+              : snippets.length ? `Web context: ${snippets.join(" | ")}` : "";
+          }
+        } catch { /* Tavily unavailable, continue without web context */ }
+      }
+    } catch { /* TMDB enrichment failed, continue without it */ }
+
+    return [tmdbContext, webContext].filter(Boolean).join("\n\n");
   };
 
   const updateMessages = (newMsgs) => {
@@ -3154,6 +3223,15 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
     setLoading(true);
 
     try {
+      let smartEnrichment = "";
+      if (smartMode && !activeChat?.pickerMode) {
+        setResearching(true);
+        try {
+          smartEnrichment = await fetchSmartEnrichment(userMsg);
+        } catch { /* continue without enrichment */ }
+        setResearching(false);
+      }
+
       let movieContext;
       const picker = activeChat?.pickerMode;
       const pc = activeChat?.pickerContext;
@@ -3170,13 +3248,13 @@ Never use internet slang. No bold, no emojis, no markdown formatting ever. Bulle
         const personalContext = tasteProfile ? `The user's taste profile: ${tasteProfile}` : "";
         const mc = activeChat?.movieContext;
         const debriefContext = mc ? `\n\nThe user is debriefing about "${mc.title}" (${mc.year}, ${mc.genre}). TMDB rating: ${mc.tmdbRating}/10. Synopsis: ${mc.synopsis}.` : "";
-        movieContext = `You're a movie-loving friend who genuinely enjoys talking about films. Keep it conversational and natural. Match the user's energy — short replies when they're casual, longer when they ask something deeper. Don't volunteer cast, director, or production details unless asked.
+        movieContext = `You're a movie-loving friend who genuinely enjoys talking about films. Keep it conversational and natural. Match the user's energy — short replies when they're casual, longer when they ask something deeper.${smartEnrichment ? " You have been given detailed movie data and web research below — use this to give informed, specific, and accurate answers. Reference specific details naturally without dumping all the data." : " Don't volunteer cast, director, or production details unless asked."}
 
 You have two modes and should switch fluidly based on context:
 - Casual mode: relaxed, conversational, opinionated. Crack jokes when it fits. Keep recommendations tight — movie name, year, one sentence why. This is the default.
 - Thoughtful mode: when someone asks for a plot explanation, thematic analysis, character breakdown, or recommendation reasoning, respond with clarity and depth. Be insightful without being academic. Structure your thoughts but keep the tone warm and approachable.
 
-Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write like a real person having a real conversation, not like a text message. Bullet points are acceptable when listing things. No bold, no emojis, no markdown formatting ever.${debriefContext}${personalContext ? "\n\n" + personalContext : ""}`;
+Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write like a real person having a real conversation, not like a text message. Bullet points are acceptable when listing things. No bold, no emojis, no markdown formatting ever.${debriefContext}${personalContext ? "\n\n" + personalContext : ""}${smartEnrichment ? "\n\n" + smartEnrichment : ""}`;
       }
 
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -3201,6 +3279,7 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
       setError("Chat is temporarily unavailable. Please try again in a moment.");
     } finally {
       setLoading(false);
+      setResearching(false);
     }
   };
 
@@ -3262,6 +3341,10 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
         <div className="chat-topbar">
           <button className="chat-menu-btn" onClick={() => setSidebarOpen(true)}><MenuIcon /></button>
           <span className="chat-topbar-title">{activeChat?.title || "New chat"}</span>
+          <button className={`smart-toggle ${smartMode ? "smart-toggle-on" : ""}`} onClick={toggleSmartMode} title="Smart Mode — enriches responses with TMDB data and web search">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z"/></svg>
+            <span>Smart</span>
+          </button>
           <button className="chat-topbar-new" onClick={createNewChat} title="New chat">+</button>
         </div>
 
@@ -3269,12 +3352,37 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
           <div className="chat-messages" ref={messagesContainerRef} onScroll={handleMessagesScroll}>
             {messages.length === 0 && !loading ? (
               <div className="chat-welcome">
-                <div className="chat-avatar-lg"><BotIcon /></div>
-                <h2>Movie Companion</h2>
-                <p>Ask me anything about movies — recommendations, plot breakdowns, character analysis, or just chat about your favorites.</p>
-                <div className="chat-suggestions">
+                <div className="chat-welcome-header">
+                  <div className="chat-welcome-icon">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="2" y="2" width="20" height="20" rx="2" />
+                      <line x1="2" y1="8" x2="22" y2="8" />
+                      <line x1="6" y1="2" x2="4" y2="8" />
+                      <line x1="12" y1="2" x2="10" y2="8" />
+                      <line x1="18" y1="2" x2="16" y2="8" />
+                    </svg>
+                  </div>
+                  <h2>What are we watching?</h2>
+                  <p>Your personal movie expert</p>
+                </div>
+                <div className="chat-suggestions-grid">
                   {suggestions.map((s) => (
-                    <button key={s} className="chat-suggestion" onClick={() => sendMessage(s)}>{s}</button>
+                    <button key={s.text} className="chat-suggestion-card" onClick={() => sendMessage(s.text)}>
+                      <span className="chat-suggestion-icon">
+                        {s.icon === "knife" && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14.5 2L6 14h3l-1.5 8L18 10h-3z"/></svg>}
+                        {s.icon === "brain" && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3c-1 3-1 6 0 9s-1 6 0 9"/><path d="M3.6 9h16.8"/><path d="M3.6 15h16.8"/></svg>}
+                        {s.icon === "film" && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 8h20M2 16h20M6 4v4M6 16v4M18 4v4M18 16v4"/></svg>}
+                        {s.icon === "clock" && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>}
+                        {s.icon === "gem" && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 3h12l4 6-10 13L2 9z"/><path d="M2 9h20"/><path d="M12 22L6 9l6-6 6 6z"/></svg>}
+                        {s.icon === "popcorn" && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M7 22l-2-10h14l-2 10z"/><path d="M5 12a3 3 0 01-.5-5A3 3 0 018 4a3 3 0 014 0 3 3 0 013.5 3 3 3 0 01-.5 5"/></svg>}
+                        {s.icon === "music" && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>}
+                        {s.icon === "masks" && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>}
+                        {s.icon === "globe" && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>}
+                        {s.icon === "people" && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>}
+                        {s.icon === "heart" && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>}
+                      </span>
+                      <span className="chat-suggestion-text">{s.text}</span>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -3301,6 +3409,7 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
                   <div className="msg msg-assistant">
                     <div className="msg-avatar"><BotIcon /></div>
                     <div className="msg-bubble">
+                      {researching && <div className="msg-researching">Researching...</div>}
                       <div className="msg-typing">
                         {typingHint && <em className="msg-typing-hint">{typingHint}</em>}
                         <span /><span /><span />
@@ -3321,7 +3430,7 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
           )}
         </div>
 
-        <div className="chat-input-container">
+        <div className="chat-input-float">
           {followupChips && !input.trim() && (
             <div className="chat-followup-chips">
               {followupChips.map((chip) => (
@@ -3329,7 +3438,7 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
               ))}
             </div>
           )}
-          <div className="chat-input-bar">
+          <div className="chat-input-pill">
             <textarea
               ref={textareaRef}
               value={input}
@@ -3338,7 +3447,7 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
               placeholder="Ask about any movie..."
               rows={1}
             />
-            <button className="chat-send" onClick={() => sendMessage()} disabled={!input.trim() || loading}>
+            <button className="chat-send-pill" onClick={() => sendMessage()} disabled={!input.trim() || loading}>
               <SendIcon />
             </button>
           </div>
