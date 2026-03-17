@@ -57,22 +57,22 @@ body {
   overflow: hidden;
 }
 
-.tab-panel.slide-right { animation: slideFromRight 150ms ease both; }
-.tab-panel.slide-left  { animation: slideFromLeft 150ms ease both; }
+.tab-panel.slide-right { animation: slideFromRight 200ms ease-out both; }
+.tab-panel.slide-left  { animation: slideFromLeft 200ms ease-out both; }
 
 @keyframes slideFromRight {
-  from { opacity: 0; transform: translateX(16px); }
+  from { opacity: 0; transform: translateX(24px); }
   to   { opacity: 1; transform: none; }
 }
 @keyframes slideFromLeft {
-  from { opacity: 0; transform: translateX(-16px); }
+  from { opacity: 0; transform: translateX(-24px); }
   to   { opacity: 1; transform: none; }
 }
 
 /* ── Modal Tab Content Transition ────────────── */
 .modal-tab-content { overflow: hidden; }
-.modal-tab-content.slide-right { animation: slideFromRight 250ms ease both; }
-.modal-tab-content.slide-left  { animation: slideFromLeft 250ms ease both; }
+.modal-tab-content.slide-right { animation: slideFromRight 200ms ease-out both; }
+.modal-tab-content.slide-left  { animation: slideFromLeft 200ms ease-out both; }
 
 /* ── Pull to Refresh ─────────────────────────── */
 .pull-indicator {
@@ -6157,6 +6157,71 @@ body {
   100% { transform: translateX(100%); }
 }
 
+/* ── Reusable Skeleton Block ── */
+.skel {
+  background: var(--bg-card);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.skel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 40%,
+    rgba(255, 255, 255, 0.07) 50%,
+    rgba(255, 255, 255, 0.04) 60%,
+    transparent 100%
+  );
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+[data-theme="light"] .skel::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0, 0, 0, 0.03) 40%,
+    rgba(0, 0, 0, 0.06) 50%,
+    rgba(0, 0, 0, 0.03) 60%,
+    transparent 100%
+  );
+}
+
+/* ── Modal Skeleton ── */
+.skel-modal-body { padding: 16px 20px; }
+.skel-modal-top { display: flex; gap: 14px; }
+.skel-modal-info { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.skel-modal-meta-row { display: flex; align-items: center; gap: 8px; }
+.skel-modal-tabs { display: flex; gap: 20px; margin-top: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+
+/* ── Chat Skeleton Bubbles ── */
+.skel-chat-lines { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+
+/* ── Hero Banner Skeleton ── */
+.skel-hero { position: relative; overflow: hidden; }
+.skel-hero > .skel { position: absolute; inset: 0; }
+.skel-hero-content {
+  position: absolute;
+  bottom: 24px;
+  left: 20px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Similar Movies Skeleton ── */
+.skel-similar-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 4px 0;
+}
+.skel-similar-tile { display: flex; flex-direction: column; gap: 6px; }
+.skel-similar-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: 10px; }
+.skel-similar-title { height: 10px; width: 70%; border-radius: 5px; }
+
 /* ── Hero Banner ──────────────────────────────── */
 .hero-banner {
   position: relative;
@@ -7767,6 +7832,9 @@ body {
 .journal-content {
   padding-bottom: 140px !important;
 }
+
+.journal-view-panel.slide-right { animation: slideFromRight 200ms ease-out both; }
+.journal-view-panel.slide-left  { animation: slideFromLeft 200ms ease-out both; }
 
 /* ── Floating Journal Toggle ─────────────────────── */
 .journal-float-toggle {

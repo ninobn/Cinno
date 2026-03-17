@@ -585,6 +585,15 @@ function getMasteryMax(count) {
 
 // ─── Shared Components ─────────────────────────────────────────────────────────
 
+function Skeleton({ width, height, radius = 6, style, className = "" }) {
+  return (
+    <div
+      className={`skel ${className}`}
+      style={{ width, height, borderRadius: radius, ...style }}
+    />
+  );
+}
+
 function SkeletonGrid({ count = 12 }) {
   return (
     <div className="movies-grid">
@@ -594,6 +603,52 @@ function SkeletonGrid({ count = 12 }) {
           <div className="skeleton-title" />
         </div>
       ))}
+    </div>
+  );
+}
+
+function SkeletonScrollRow({ count = 8 }) {
+  return Array.from({ length: count }, (_, i) => (
+    <div key={i} className="skeleton-tile scroll-tile" />
+  ));
+}
+
+function SkeletonModalBody() {
+  return (
+    <div className="skel-modal-body">
+      <div className="skel-modal-top">
+        <Skeleton width={100} height={150} radius={10} />
+        <div className="skel-modal-info">
+          <Skeleton width="75%" height={20} radius={4} />
+          <div className="skel-modal-meta-row">
+            <Skeleton width={40} height={14} radius={4} />
+            <Skeleton width={50} height={14} radius={4} />
+            <Skeleton width={60} height={22} radius={12} />
+          </div>
+          <Skeleton width={56} height={14} radius={4} />
+          <div className="skel-modal-meta-row" style={{ marginTop: 10 }}>
+            <Skeleton width={80} height={32} radius={8} />
+            <Skeleton width={100} height={32} radius={8} />
+          </div>
+        </div>
+      </div>
+      <div className="skel-modal-tabs">
+        <Skeleton width={70} height={14} radius={4} />
+        <Skeleton width={90} height={14} radius={4} />
+      </div>
+      <Skeleton width="100%" height={12} radius={4} style={{ marginTop: 16 }} />
+      <Skeleton width="100%" height={12} radius={4} style={{ marginTop: 8 }} />
+      <Skeleton width="65%" height={12} radius={4} style={{ marginTop: 8 }} />
+    </div>
+  );
+}
+
+function SkeletonChatBubbles() {
+  return (
+    <div className="skel-chat-lines">
+      <Skeleton width="90%" height={12} radius={4} />
+      <Skeleton width="70%" height={12} radius={4} />
+      <Skeleton width="40%" height={12} radius={4} />
     </div>
   );
 }
@@ -837,7 +892,7 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
                 </span>
               </div>
               {detailsLoading ? (
-                <span className="modal-runtime-loading">...</span>
+                <Skeleton width={56} height={14} radius={4} style={{ marginTop: 2 }} />
               ) : details?.runtime ? (
                 <span className="modal-runtime">{formatRuntime(details.runtime)}</span>
               ) : null}
@@ -893,7 +948,7 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
             {tab === "overview" && (
               <>
                 {detailsLoading ? (
-                  <div className="modal-tagline-loading" />
+                  <Skeleton width="60%" height={14} radius={4} style={{ marginBottom: 8 }} />
                 ) : details?.tagline ? (
                   <p className="modal-tagline">{details.tagline}</p>
                 ) : null}
@@ -919,7 +974,14 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
             {tab === "similar" && (
               <div className="modal-similar">
                 {loadingSimilar ? (
-                  <div className="loading-container"><div className="loading-spinner" /></div>
+                  <div className="skel-similar-grid">
+                    {Array.from({ length: 6 }, (_, i) => (
+                      <div key={i} className="skel-similar-tile">
+                        <Skeleton className="skel-similar-poster" width="100%" height="auto" radius={10} style={{ aspectRatio: "2/3" }} />
+                        <Skeleton className="skel-similar-title" width="70%" height={10} radius={5} />
+                      </div>
+                    ))}
+                  </div>
                 ) : similar.length === 0 && similarLoaded ? (
                   <div className="no-results"><p>No similar movies found.</p></div>
                 ) : (
@@ -1001,7 +1063,7 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
                 </span>
               </div>
               {detailsLoading ? (
-                <span className="modal-runtime-loading">...</span>
+                <Skeleton width={56} height={14} radius={4} style={{ marginTop: 2 }} />
               ) : details?.runtime ? (
                 <span className="modal-runtime">{formatRuntime(details.runtime)}</span>
               ) : null}
@@ -1049,7 +1111,7 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
             {tab === "overview" && (
               <>
                 {detailsLoading ? (
-                  <div className="modal-tagline-loading" />
+                  <Skeleton width="60%" height={14} radius={4} style={{ marginBottom: 8 }} />
                 ) : details?.tagline ? (
                   <p className="modal-tagline">{details.tagline}</p>
                 ) : null}
@@ -1460,6 +1522,16 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
         {showSections && (
           <>
             {/* Hero Banner */}
+            {trendingLoading && (
+              <div className="hero-banner skel-hero">
+                <Skeleton width="100%" height="100%" radius={0} />
+                <div className="skel-hero-content">
+                  <Skeleton width="60%" height={24} radius={4} />
+                  <Skeleton width="35%" height={14} radius={4} style={{ marginTop: 8 }} />
+                  <Skeleton width={100} height={36} radius={10} style={{ marginTop: 14 }} />
+                </div>
+              </div>
+            )}
             {!trendingLoading && heroMovies.length > 0 && (
               <div className="hero-banner">
                 {heroMovies.map((movie, i) => (
@@ -1502,7 +1574,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                   </button>
                 </div>
                 {trendingLoading ? (
-                  <div className="scroll-row"><div className="scroll-row-inner">{Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton-tile scroll-tile" />)}</div></div>
+                  <div className="scroll-row"><div className="scroll-row-inner"><SkeletonScrollRow /></div></div>
                 ) : trendingError ? (
                   <div className="error-card compact">
                     <div className="error-card-title">Couldn't load this section</div>
@@ -1528,7 +1600,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                   <div className="browse-section-title">Hidden Gems</div>
                 </div>
                 {gemsLoading ? (
-                  <div className="scroll-row"><div className="scroll-row-inner">{Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton-tile scroll-tile" />)}</div></div>
+                  <div className="scroll-row"><div className="scroll-row-inner"><SkeletonScrollRow /></div></div>
                 ) : gemsError ? (
                   <div className="error-card compact">
                     <div className="error-card-title">Couldn't load this section</div>
@@ -1554,7 +1626,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                   <div className="browse-section-title">All-Time Greats</div>
                 </div>
                 {topRatedLoading ? (
-                  <div className="scroll-row"><div className="scroll-row-inner">{Array.from({ length: 8 }, (_, i) => <div key={i} className="skeleton-tile scroll-tile" />)}</div></div>
+                  <div className="scroll-row"><div className="scroll-row-inner"><SkeletonScrollRow /></div></div>
                 ) : topRatedError ? (
                   <div className="error-card compact">
                     <div className="error-card-title">Couldn't load this section</div>
@@ -2560,7 +2632,16 @@ const AI_INSIGHTS_ENABLED = false;
 
 function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections, showToast }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
-  const [view, setView] = useState("journal");
+  const [view, _setView] = useState("journal");
+  const prevViewRef = useRef("journal");
+  const [viewDir, setViewDir] = useState(null);
+  const setView = useCallback((v) => {
+    const ORDER = { journal: 0, rankings: 1, stats: 2 };
+    if (v === prevViewRef.current) return;
+    setViewDir(ORDER[v] > ORDER[prevViewRef.current] ? "right" : "left");
+    prevViewRef.current = v;
+    _setView(v);
+  }, []);
   const [journalSearch, setJournalSearch] = useState("");
   const [rankSort, setRankSort] = useState(() => {
     const stored = loadFromStorage("cc_rankSort", "rating_desc");
@@ -2738,6 +2819,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   return (
     <>
       <div className="content journal-content">
+        <div className={`journal-view-panel ${viewDir ? `slide-${viewDir}` : ""}`} key={view}>
 
         {movies.length === 0 && (
           <div className="saved-empty">
@@ -2939,6 +3021,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
             )}
           </>
         )}
+        </div>
       </div>
 
       {/* Floating Toggle Pill — portaled to body to escape overflow/transform clipping */}
@@ -3351,6 +3434,7 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
                     <div className="msg-avatar"><BotIcon /></div>
                     <div className="msg-bubble">
                       {researching && <div className="msg-researching">Researching...</div>}
+                      <SkeletonChatBubbles />
                       <div className="msg-typing">
                         {typingHint && <em className="msg-typing-hint">{typingHint}</em>}
                         <span /><span /><span />
