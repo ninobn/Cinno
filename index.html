@@ -31,15 +31,9 @@
       .splash-mark {
         width: 64px;
         height: 64px;
-        background: linear-gradient(135deg, #8B3A4A, #6B2A38);
-        border-radius: 16px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-        font-size: 34px;
-        font-weight: 700;
-        color: white;
       }
       .splash-name {
         font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
@@ -67,7 +61,20 @@
   <body>
     <div id="splash">
       <div class="splash-logo">
-        <div class="splash-mark">C</div>
+        <div class="splash-mark">
+          <svg width="64" height="64" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="splash-grad" x1="0.5" y1="0" x2="0.5" y2="0.55">
+                <stop offset="0%" stop-color="#C9A84C" stop-opacity="0.4"/>
+                <stop offset="40%" stop-color="#C9A84C" stop-opacity="0.12"/>
+                <stop offset="100%" stop-color="#8B2040" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <rect x="4" y="4" width="120" height="120" rx="28" fill="#8B2040"/>
+            <path d="M48,4 L80,4 Q86,28 92,58 L64,64 L36,58 Q42,28 48,4Z" fill="url(#splash-grad)"/>
+            <text x="64" y="82" text-anchor="middle" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="72" fill="#F5F0EB">c</text>
+          </svg>
+        </div>
         <div class="splash-name">Cinno</div>
       </div>
     </div>

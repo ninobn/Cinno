@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useRef, useEffect, useMemo, useCallback, useId } from "react";
 import { createPortal } from "react-dom";
 import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getMovieKeywords, getSmartContext, tmdbToMovie, IMG_BASE } from "./tmdb.js";
 
@@ -11,6 +11,30 @@ const GENRE_COLORS = {
   Mystery: "#8A7A70", Romance: "#B8707E", "Sci-Fi": "#6AA0A0", Thriller: "#7A6A90",
   War: "#7A8A6B", Western: "#AD8A5E", Film: "#7A7878",
 };
+
+function CinnoLogo({ size = 36 }) {
+  const uid = useId();
+  const grad = `spotlight-grad-${uid}`;
+  const glow = `logo-glow-${uid}`;
+  return (
+    <svg width={size} height={size} viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id={grad} x1="0.5" y1="0" x2="0.5" y2="0.55">
+          <stop offset="0%" stopColor="#C9A84C" stopOpacity="0.4"/>
+          <stop offset="40%" stopColor="#C9A84C" stopOpacity="0.12"/>
+          <stop offset="100%" stopColor="#8B2040" stopOpacity="0"/>
+        </linearGradient>
+        <filter id={glow}>
+          <feGaussianBlur stdDeviation="1.5" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <rect x="4" y="4" width="120" height="120" rx="28" fill="#8B2040"/>
+      <path d={`M48,4 L80,4 Q86,28 92,58 L64,64 L36,58 Q42,28 48,4Z`} fill={`url(#${grad})`}/>
+      <text x="64" y="82" textAnchor="middle" fontFamily="'Plus Jakarta Sans', sans-serif" fontWeight="700" fontSize="72" fill="#F5F0EB" filter={`url(#${glow})`}>c</text>
+    </svg>
+  );
+}
 
 const ALL_SUGGESTIONS = [
   { text: "Recommend a thriller", icon: "knife" },
@@ -1696,7 +1720,7 @@ function SharedWatchlistView() {
       <div className="shared-header">
         <div className="shared-header-inner">
           <div className="header-title">
-            <div className="logo-mark">C</div>
+            <CinnoLogo size={28} />
             Cinno
           </div>
         </div>
@@ -2060,7 +2084,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
             <div className="upnext-banner-backdrop">
               {(upNextMovie.backdrop_path || upNextMovie.poster_path) && (
                 <img
-                  src={`${IMG_BASE}/w780${upNextMovie.backdrop_path || upNextMovie.poster_path}`}
+                  src={`${IMG_BASE}/w1280${upNextMovie.backdrop_path || upNextMovie.poster_path}`}
                   alt=""
                   className="upnext-banner-img"
                 />
@@ -2224,8 +2248,19 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
 
 // ─── Stats View ────────────────────────────────────────────────────────────────
 
+const IDENTITY_MAP = {
+  Action: "The Thrill Seeker", Thriller: "The Thrill Seeker",
+  Drama: "The Deep Feeler", "Sci-Fi": "The Visionary",
+  Horror: "The Edge Walker", Comedy: "The Mood Lifter",
+  Animation: "The Young at Heart", Romance: "The Romantic Soul",
+  Documentary: "The Truth Seeker", Fantasy: "The Daydreamer",
+  Adventure: "The Explorer", Mystery: "The Puzzle Chaser",
+};
+
 function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges, collections }) {
-  const statsRef = useRef(null);
+  const [pinnedId, setPinnedId] = useState(() => loadFromStorage("cc_stats_pinned", null));
+  const [showAllBadges, setShowAllBadges] = useState(false);
+  const [showPinnedPicker, setShowPinnedPicker] = useState(false);
 
   const stats = useMemo(() => {
     const totalMovies = watchedMovies.size;
@@ -2236,11 +2271,7 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
       ? Math.round([...watchedRatings.values()].reduce((s, v) => s + v, 0) / watchedRatings.size)
       : 0;
 
-    let highest = null;
-    let lowest = null;
-    let highScore = -1;
-    let lowScore = 101;
-
+    let highest = null, lowest = null, highScore = -1, lowScore = 101;
     watchedRatings.forEach((score, id) => {
       const movie = watchedMovies.get(id);
       if (!movie) return;
@@ -2253,32 +2284,9 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
       const genre = movie.genre || "Other";
       genreCounts[genre] = (genreCounts[genre] || 0) + 1;
     });
-
     const genres = Object.entries(genreCounts)
       .sort((a, b) => b[1] - a[1])
       .map(([name, count]) => ({ name, count }));
-
-    // Unpopular opinions
-    const disagreements = [];
-    watchedRatings.forEach((userScore, id) => {
-      const movie = watchedMovies.get(id);
-      if (!movie || movie.rating === "—") return;
-      const tmdbScore = parseFloat(movie.rating) * 10;
-      const diff = userScore - tmdbScore;
-      disagreements.push({ movie, userScore, tmdbScore: parseFloat(movie.rating), diff, absDiff: Math.abs(diff) });
-    });
-    disagreements.sort((a, b) => b.absDiff - a.absDiff);
-    const unpopularOpinions = disagreements.slice(0, 3);
-
-    // Recent activity (last 5 by date)
-    const recentActivity = [];
-    if (watchedDates) {
-      const sorted = [...watchedDates.entries()].sort((a, b) => b[1].localeCompare(a[1]));
-      for (const [id, dateStr] of sorted.slice(0, 5)) {
-        const movie = watchedMovies.get(id);
-        if (movie) recentActivity.push({ movie, date: dateStr });
-      }
-    }
 
     return {
       totalMovies, totalHours, avgRating,
@@ -2286,275 +2294,204 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
       highest: highest ? { movie: highest, score: highScore } : null,
       lowest: lowest ? { movie: lowest, score: lowScore } : null,
       genres,
-      unpopularOpinions,
-      recentActivity,
     };
-  }, [watchedMovies, watchedRatings, watchedDates]);
+  }, [watchedMovies, watchedRatings]);
 
-  useEffect(() => {
-    const container = statsRef.current;
-    if (!container) return;
-    const cards = container.querySelectorAll(".stats-card");
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("visible");
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      { threshold: 0.15 }
-    );
-    cards.forEach((card) => observer.observe(card));
-    return () => observer.disconnect();
-  }, [stats]);
+  // Persist pinned movie
+  useEffect(() => { saveToStorage("cc_stats_pinned", pinnedId); }, [pinnedId]);
 
   if (stats.totalMovies === 0) {
-    return (
-      <div className="rankings-empty">
-        Watch some movies to see your stats here.
-      </div>
-    );
+    return <div className="rankings-empty">Watch some movies to see your profile here.</div>;
   }
 
-  const totalGenreMovies = stats.genres.reduce((sum, g) => sum + g.count, 0);
-  const donutSize = 100;
-  const strokeWidth = 18;
-  const radius = (donutSize - strokeWidth) / 2;
-  const cx = donutSize / 2;
-  const cy = donutSize / 2;
-  const circumference = 2 * Math.PI * radius;
+  // Identity from top genre
+  const topGenre = stats.genres[0]?.name || "Film";
+  const identity = IDENTITY_MAP[topGenre] || "The Eclectic Explorer";
+  const topThreeGenres = stats.genres.slice(0, 3);
 
-  let cumulativeOffset = 0;
-  const arcs = stats.genres.map((g) => {
-    const pct = g.count / totalGenreMovies;
-    const dashLen = circumference * pct;
-    const rotation = (cumulativeOffset / totalGenreMovies) * 360 - 90;
-    cumulativeOffset += g.count;
-    const color = GENRE_COLORS[g.name] || "#7A7878";
-    return { ...g, pct, dashLen, rotation, color };
+  // #1 movie for banner backdrop
+  const topMovie = stats.highest?.movie;
+  const backdropSrc = topMovie?.backdrop_path
+    ? `${IMG_BASE}/w1280${topMovie.backdrop_path}`
+    : topMovie?.poster_path ? `${IMG_BASE}/w780${topMovie.poster_path}` : null;
+
+  // Pinned favorite
+  const pinnedMovie = pinnedId && watchedMovies.has(pinnedId) ? watchedMovies.get(pinnedId) : stats.highest?.movie;
+  const pinnedScore = pinnedMovie ? watchedRatings.get(pinnedMovie.id) : null;
+
+  // Badges — sorted by tier descending, top 3 unlocked for showcase
+  const badgeCtx = { watchedMovies, watchedRatings, collections: collections || [], watchedDates: watchedDates || new Map() };
+  const badgesWithTier = BADGE_DEFS.map((b) => {
+    const progress = computeBadgeProgress(b.id, badgeCtx);
+    const tier = getBadgeTier(progress, b.tiers);
+    return { ...b, progress, tier };
   });
+  const showcaseBadges = badgesWithTier
+    .filter((b) => b.tier > 0)
+    .sort((a, b) => b.tier - a.tier)
+    .slice(0, 3);
 
   return (
-    <div className="stats-grid" ref={statsRef}>
-      {/* ── Hero Stats Banner ── */}
-      <div className="stats-card full stats-hero">
-        <div className="stats-hero-nums">
-          <div className="stats-hero-stat">
-            <div className="stats-hero-val">{stats.totalMovies}</div>
-            <div className="stats-hero-label">movies</div>
+    <div className="sp-profile">
+      {/* ── SECTION 1: Profile Header Banner ── */}
+      <div className="sp-hero">
+        {backdropSrc && <img src={backdropSrc} alt="" className="sp-hero-bg" />}
+        <div className="sp-hero-gradient" />
+        <div className="sp-hero-content">
+          <div className="sp-identity">{identity}</div>
+          <div className="sp-genre-pills">
+            {topThreeGenres.map((g) => (
+              <span key={g.name} className="sp-genre-pill" style={{ background: `${GENRE_COLORS[g.name] || "#7A7878"}30`, color: GENRE_COLORS[g.name] || "#7A7878" }}>{g.name}</span>
+            ))}
           </div>
-          <div className="stats-hero-stat">
-            <div className="stats-hero-val">{stats.totalHours}h</div>
-            <div className="stats-hero-label">watched</div>
-          </div>
-          <div className="stats-hero-stat">
-            <div className="stats-hero-val">{stats.avgRating}</div>
-            <div className="stats-hero-label">avg rating</div>
-          </div>
-          <div className="stats-hero-stat">
-            <div className="stats-hero-val">{stats.genreCount}</div>
-            <div className="stats-hero-label">genres</div>
+          <div className="sp-stats-line">
+            <span><strong>{stats.totalMovies}</strong> movies</span>
+            <span className="sp-stats-dot" />
+            <span><strong>{stats.totalHours}h</strong> watched</span>
+            <span className="sp-stats-dot" />
+            <span><strong>{stats.avgRating}</strong> avg</span>
+            <span className="sp-stats-dot" />
+            <span><strong>{stats.genreCount}</strong> genres</span>
           </div>
         </div>
       </div>
 
-      {/* ── Best vs Worst ── */}
-      {stats.highest && stats.lowest && (
-        <div className="stats-card full stats-bvw">
-          <div className="stats-card-label">Best vs Worst</div>
-          <div className="stats-vs">
-            <div className="stats-vs-side">
-              <div className="stats-card-poster">
-                <PosterImage posterPath={stats.highest.movie.poster_path} title={stats.highest.movie.title} />
-              </div>
-              <div className="stats-vs-info">
-                <div className="stats-card-title">{stats.highest.movie.title}</div>
-                <ScoreRing score={stats.highest.score} size={34} />
-              </div>
+      {/* ── SECTION 2: Pinned Favorite ── */}
+      {pinnedMovie && (
+        <div className="sp-section">
+          <div className="sp-section-header">
+            <span className="sp-section-label">Pinned</span>
+            <button className="sp-section-action" onClick={() => setShowPinnedPicker(true)}>Change</button>
+          </div>
+          <div className="sp-pinned-card">
+            <div className="sp-pinned-poster">
+              <PosterImage posterPath={pinnedMovie.poster_path} title={pinnedMovie.title} />
             </div>
-            <div className="stats-vs-divider">
-              <span>vs</span>
+            <div className="sp-pinned-info">
+              <div className="sp-pinned-title">{pinnedMovie.title}</div>
+              <div className="sp-pinned-meta">{pinnedMovie.genre} · {pinnedMovie.year}</div>
             </div>
-            <div className="stats-vs-side">
-              <div className="stats-card-poster">
-                <PosterImage posterPath={stats.lowest.movie.poster_path} title={stats.lowest.movie.title} />
-              </div>
-              <div className="stats-vs-info">
-                <div className="stats-card-title">{stats.lowest.movie.title}</div>
-                <ScoreRing score={stats.lowest.score} size={34} />
-              </div>
-            </div>
+            {pinnedScore != null && <ScoreRing score={pinnedScore} size={38} />}
           </div>
         </div>
       )}
 
-      {/* ── Genre Breakdown ── */}
-      {stats.genres.length > 0 && (
-        <div className="stats-card full">
-          <div className="stats-card-label">Genre Breakdown</div>
-          <div className="stats-genre-row">
-            <div className="stats-donut-container">
-              <svg width={donutSize} height={donutSize} viewBox={`0 0 ${donutSize} ${donutSize}`}>
-                {arcs.map((arc) => (
-                  <circle
-                    key={arc.name}
-                    cx={cx} cy={cy} r={radius}
-                    fill="none"
-                    stroke={arc.color}
-                    strokeWidth={strokeWidth}
-                    strokeDasharray={`${arc.dashLen} ${circumference - arc.dashLen}`}
-                    transform={`rotate(${arc.rotation} ${cx} ${cy})`}
-                  />
-                ))}
-              </svg>
-            </div>
-            <div className="stats-genre-bars">
-              {arcs.slice(0, 6).map((g) => (
-                <div key={g.name} className="genre-bar-row">
-                  <span className="genre-bar-name">{g.name}</span>
-                  <div className="genre-bar-track">
-                    <div className="genre-bar-fill" style={{ width: `${g.pct * 100}%`, background: g.color }} />
+      {/* Pinned picker modal */}
+      {showPinnedPicker && (
+        <div className="sp-picker-overlay" onClick={() => setShowPinnedPicker(false)}>
+          <div className="sp-picker-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="sp-picker-title">Choose Pinned Movie</div>
+            <div className="sp-picker-list">
+              {[...watchedMovies.entries()].map(([id, movie]) => (
+                <button
+                  key={id}
+                  className={`sp-picker-item ${id === pinnedMovie?.id ? "active" : ""}`}
+                  onClick={() => { setPinnedId(id); setShowPinnedPicker(false); }}
+                >
+                  <div className="sp-picker-item-poster">
+                    <PosterImage posterPath={movie.poster_path} title={movie.title} />
                   </div>
-                  <span className="genre-bar-count">{g.count}</span>
-                </div>
+                  <div className="sp-picker-item-info">
+                    <div className="sp-picker-item-title">{movie.title}</div>
+                    <div className="sp-picker-item-meta">{movie.genre} · {movie.year}</div>
+                  </div>
+                  {watchedRatings.has(id) && <ScoreRing score={watchedRatings.get(id)} size={30} />}
+                </button>
               ))}
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Unpopular Opinions ── */}
-      {stats.unpopularOpinions.length > 0 && (
-        <div className="stats-card full">
-          <div className="stats-card-label">Unpopular Opinions</div>
-          <div className="unpopular-list">
-            {stats.unpopularOpinions.map((item, i) => (
-              <div key={item.movie.id} className="unpopular-item">
-                <div className="unpopular-poster">
-                  <PosterImage posterPath={item.movie.poster_path} title={item.movie.title} />
-                </div>
-                <div className="unpopular-info">
-                  <div className="unpopular-title">{item.movie.title}</div>
-                  <div className="unpopular-score-row">
-                    <span className="unpopular-you">You: {item.userScore}</span>
-                    <span className="unpopular-sep">vs</span>
-                    <span className="unpopular-tmdb">TMDB: {item.tmdbScore.toFixed(1)}</span>
+      {/* ── SECTION 3: Showcase Badges ── */}
+      <div className="sp-section">
+        <div className="sp-section-header">
+          <span className="sp-section-label">Showcase</span>
+        </div>
+        <div className="sp-showcase-row">
+          {[0, 1, 2].map((i) => {
+            const badge = showcaseBadges[i];
+            if (!badge) {
+              return <div key={i} className="sp-showcase-slot sp-showcase-empty" />;
+            }
+            const tierColor = TIER_COLORS[["bronze", "silver", "gold"][badge.tier - 1]];
+            const Icon = badge.icon;
+            return (
+              <div key={badge.id} className="sp-showcase-slot">
+                <div className="sp-showcase-icon" style={{ color: tierColor }}><Icon /></div>
+                <div className="sp-showcase-name">{badge.title}</div>
+                <div className="sp-showcase-tier" style={{ color: tierColor }}>{TIER_NAMES[badge.tier]}</div>
+              </div>
+            );
+          })}
+        </div>
+        <button className="sp-see-all-btn" onClick={() => setShowAllBadges(!showAllBadges)}>
+          {showAllBadges ? "Hide badges" : "See all badges →"}
+        </button>
+        {showAllBadges && (
+          <div className="badge-grid-inline" style={{ marginTop: 12 }}>
+            {BADGE_DEFS.map((badge) => {
+              const progress = computeBadgeProgress(badge.id, badgeCtx);
+              const tier = getBadgeTier(progress, badge.tiers);
+              const tierColor = tier > 0 ? TIER_COLORS[["bronze", "silver", "gold"][tier - 1]] : null;
+              const nextTier = Math.min(tier + 1, 3);
+              const nextTarget = badge.tiers[nextTier - 1];
+              const prevTarget = tier > 0 ? badge.tiers[tier - 1] : 0;
+              const pct = tier >= 3 ? 100 : Math.min(((progress - prevTarget) / (nextTarget - prevTarget)) * 100, 100);
+              const Icon = badge.icon;
+              return (
+                <div key={badge.id} className={`badge-inline ${tier > 0 ? "unlocked" : "locked"}`}>
+                  <div className="badge-inline-icon" style={tierColor ? { color: tierColor } : undefined}>
+                    {tier > 0 && <div className="badge-tier-ring" style={{ borderColor: tierColor, boxShadow: tier === 3 ? `0 0 8px ${tierColor}44` : "none" }} />}
+                    {tier === 0 && <div className="badge-inline-lock"><LockIcon /></div>}
+                    <Icon />
+                  </div>
+                  <div className="badge-inline-name">{badge.title}</div>
+                  {tier > 0 && <div className="badge-tier-label" style={{ color: tierColor }}>{TIER_NAMES[tier]}</div>}
+                  <div className="badge-inline-progress">
+                    <div className="badge-inline-track">
+                      <div className="badge-inline-fill" style={{ width: `${pct}%`, background: tierColor || undefined }} />
+                    </div>
+                    <span className="badge-inline-frac">{progress}/{tier >= 3 ? badge.tiers[2] : nextTarget}</span>
                   </div>
                 </div>
-                <div className={`unpopular-diff ${item.diff > 0 ? "higher" : "lower"}`}>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    {item.diff > 0 ? <polyline points="18 15 12 9 6 15"/> : <polyline points="6 9 12 15 18 9"/>}
-                  </svg>
-                  {Math.round(item.absDiff)}
-                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── SECTION 4: Best vs Worst ── */}
+      {stats.highest && stats.lowest && (
+        <div className="sp-section">
+          <div className="sp-section-header">
+            <span className="sp-section-label">Best vs Worst</span>
+          </div>
+          <div className="sp-bvw">
+            <div className="sp-bvw-side">
+              <div className="sp-bvw-poster">
+                <PosterImage posterPath={stats.highest.movie.poster_path} title={stats.highest.movie.title} />
               </div>
-            ))}
+              <div className="sp-bvw-info">
+                <div className="sp-bvw-label-tag best">Best</div>
+                <div className="sp-bvw-title">{stats.highest.movie.title}</div>
+              </div>
+              <ScoreRing score={stats.highest.score} size={34} />
+            </div>
+            <div className="sp-bvw-divider">vs</div>
+            <div className="sp-bvw-side">
+              <div className="sp-bvw-poster">
+                <PosterImage posterPath={stats.lowest.movie.poster_path} title={stats.lowest.movie.title} />
+              </div>
+              <div className="sp-bvw-info">
+                <div className="sp-bvw-label-tag worst">Worst</div>
+                <div className="sp-bvw-title">{stats.lowest.movie.title}</div>
+              </div>
+              <ScoreRing score={stats.lowest.score} size={34} />
+            </div>
           </div>
         </div>
       )}
-
-      {/* ── Recent Activity ── */}
-      {stats.recentActivity.length > 0 && (
-        <div className="stats-card full">
-          <div className="stats-card-label">Recent Activity</div>
-          <div className="recent-activity-row">
-            {stats.recentActivity.map((item) => (
-              <div key={item.movie.id} className="recent-activity-item">
-                <div className="recent-activity-poster">
-                  <PosterImage posterPath={item.movie.poster_path} title={item.movie.title} />
-                </div>
-                <div className="recent-activity-date">{new Date(item.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Achievements ── */}
-      {(() => {
-        const badgeCtx = { watchedMovies, watchedRatings, collections: collections || [], watchedDates: watchedDates || new Map() };
-        const totalTiers = BADGE_DEFS.length * 3;
-        let earnedTiers = 0;
-        BADGE_DEFS.forEach((b) => { earnedTiers += getBadgeTier(computeBadgeProgress(b.id, badgeCtx), b.tiers); });
-        return (
-          <div className="stats-card full achievements-section">
-            <div className="achievements-inline-header">
-              <div className="stats-card-label">Achievements</div>
-              <div className="achievements-count">{earnedTiers}/{totalTiers}</div>
-            </div>
-            <div className="achievements-inline-bar">
-              <div className="achievements-inline-bar-fill" style={{ width: `${(earnedTiers / totalTiers) * 100}%` }} />
-            </div>
-            <div className="badge-grid-inline">
-              {BADGE_DEFS.map((badge) => {
-                const progress = computeBadgeProgress(badge.id, badgeCtx);
-                const tier = getBadgeTier(progress, badge.tiers);
-                const tierColor = tier > 0 ? TIER_COLORS[["bronze", "silver", "gold"][tier - 1]] : null;
-                const nextTier = Math.min(tier + 1, 3);
-                const nextTarget = badge.tiers[nextTier - 1];
-                const prevTarget = tier > 0 ? badge.tiers[tier - 1] : 0;
-                const pct = tier >= 3 ? 100 : Math.min(((progress - prevTarget) / (nextTarget - prevTarget)) * 100, 100);
-                const Icon = badge.icon;
-                return (
-                  <div key={badge.id} className={`badge-inline ${tier > 0 ? "unlocked" : "locked"}`}>
-                    <div className="badge-inline-icon" style={tierColor ? { color: tierColor } : undefined}>
-                      {tier > 0 && (
-                        <div className="badge-tier-ring" style={{ borderColor: tierColor, boxShadow: tier === 3 ? `0 0 8px ${tierColor}44` : "none" }} />
-                      )}
-                      {tier === 0 && <div className="badge-inline-lock"><LockIcon /></div>}
-                      <Icon />
-                    </div>
-                    <div className="badge-inline-name">{badge.title}</div>
-                    {tier > 0 && <div className="badge-tier-label" style={{ color: tierColor }}>{TIER_NAMES[tier]}</div>}
-                    <div className="badge-inline-progress">
-                      <div className="badge-inline-track">
-                        <div className="badge-inline-fill" style={{ width: `${pct}%`, background: tierColor || undefined }} />
-                      </div>
-                      <span className="badge-inline-frac">{progress}/{tier >= 3 ? badge.tiers[2] : nextTarget}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ── Genre Mastery ── */}
-      {watchedMovies.size > 0 && (() => {
-        const genreCounts = {};
-        watchedMovies.forEach((m) => {
-          const g = m.genre || "Film";
-          if (g !== "Film") genreCounts[g] = (genreCounts[g] || 0) + 1;
-        });
-        const sorted = Object.entries(genreCounts).sort(([, a], [, b]) => b - a);
-        if (sorted.length === 0) return null;
-        return (
-          <div className="stats-card full">
-            <div className="stats-card-label">Genre Mastery</div>
-            <div className="genre-mastery-list">
-              {sorted.map(([genre, count]) => {
-                const mastery = getMasteryLevel(count);
-                const max = getMasteryMax(count);
-                const pct = Math.min((count / max) * 100, 100);
-                const isMaster = mastery.label === "Master";
-                return (
-                  <div key={genre} className="genre-mastery-row">
-                    <div className={`genre-mastery-name ${isMaster ? "master" : ""}`}>{genre}</div>
-                    <div className="genre-mastery-track">
-                      <div className="genre-mastery-fill" style={{ width: `${pct}%`, background: isMaster ? TIER_COLORS.gold : `${GENRE_COLORS[genre] || "var(--accent)"}` }} />
-                    </div>
-                    <span className="genre-mastery-pill" style={isMaster ? { color: TIER_COLORS.gold } : undefined}>{mastery.label}</span>
-                    <span className="genre-mastery-count">{count}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
     </div>
   );
 }
@@ -2907,7 +2844,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                     {rankSort === "rating_desc" && rankedMovies.length >= 1 && (
                       <div className="rank-hero" onClick={() => setSelectedMovie(rankedMovies[0])}>
                         <div className="rank-hero-backdrop">
-                          <img src={`${IMG_BASE}/w780${rankedMovies[0].backdrop_path || rankedMovies[0].poster_path}`} alt="" />
+                          <img src={`${IMG_BASE}/w1280${rankedMovies[0].backdrop_path || rankedMovies[0].poster_path}`} alt="" />
                         </div>
                         <div className="rank-hero-gradient" />
                         <div className="rank-hero-content">
@@ -3364,13 +3301,7 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
               <div className="chat-welcome">
                 <div className="chat-welcome-header">
                   <div className="chat-welcome-icon">
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="2" y="2" width="20" height="20" rx="2" />
-                      <line x1="2" y1="8" x2="22" y2="8" />
-                      <line x1="6" y1="2" x2="4" y2="8" />
-                      <line x1="12" y1="2" x2="10" y2="8" />
-                      <line x1="18" y1="2" x2="16" y2="8" />
-                    </svg>
+                    <CinnoLogo size={64} />
                   </div>
                   <h2>What are we watching?</h2>
                   <p>Your personal movie expert</p>
@@ -3767,6 +3698,8 @@ const DISCOVER_CHIPS = [
 ];
 
 function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, watchedMovies, watchedRatings, setWatchedRating, showToast }) {
+  const SESSION_LIMIT = 30;
+
   // ─── STEP 1: STATE ───
   const [movies, setMovies] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -3873,6 +3806,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       fetchedPagesRef.current.clear();
     }
 
+    let gotMovies = false;
     try {
       const { genreIds, isChipFilter } = getEffectiveGenres();
       const hasProfile = genreIds.length > 0 || tasteProfile.hasData;
@@ -3892,6 +3826,8 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
           }
         });
         unique.sort(() => Math.random() - 0.5);
+        unique.length = Math.min(unique.length, SESSION_LIMIT);
+        gotMovies = unique.length > 0;
         if (reset) {
           setMovies(unique);
           setCurrentIndex(0);
@@ -3903,7 +3839,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
             setCardDetails((prev) => ({ ...prev, [m.id]: { tagline: d.tagline || "" } }));
           }).catch(() => {});
         });
-        return;
+        return gotMovies;
       }
 
       // Build TMDB discover params
@@ -3927,26 +3863,36 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         params.with_genres = genreIds.join(",");
       }
 
-      // Retry up to 3 pages if filtering yields 0 results
+      // Fetch 2 pages per attempt to get 30+ movies, retry up to 3 times if 0 results
       let newMovies = [];
       for (let attempt = 0; attempt < 3; attempt++) {
-        const page = getRandomPage();
-        fetchedPagesRef.current.add(page);
+        const page1 = getRandomPage();
+        fetchedPagesRef.current.add(page1);
+        const page2 = getRandomPage();
+        fetchedPagesRef.current.add(page2);
 
-        console.log(`[Discover] Fetch attempt ${attempt + 1}/3, page ${page}, params:`, JSON.stringify(params));
+        console.log(`[Discover] Fetch attempt ${attempt + 1}/3, pages ${page1}+${page2}, params:`, JSON.stringify(params));
 
-        const data = await discoverMovies(params, page);
-        console.log(`[Discover] TMDB returned ${data.movies.length} movies (totalPages: ${data.totalPages})`);
+        const [data1, data2] = await Promise.all([
+          discoverMovies(params, page1),
+          discoverMovies(params, page2),
+        ]);
+        console.log(`[Discover] TMDB returned ${data1.movies.length} + ${data2.movies.length} movies`);
 
-        newMovies = data.movies.filter(
-          (m) => !exclusionSet.has(m.id) && m.poster_path
-        );
-        console.log(`[Discover] After exclusion filter: ${newMovies.length} movies`);
+        const seenIds = new Set();
+        newMovies = [...data1.movies, ...data2.movies].filter((m) => {
+          if (seenIds.has(m.id) || exclusionSet.has(m.id) || !m.poster_path) return false;
+          seenIds.add(m.id);
+          return true;
+        });
+        console.log(`[Discover] After dedup + exclusion: ${newMovies.length} movies`);
 
         if (newMovies.length > 0) break;
       }
 
       newMovies.sort(() => Math.random() - 0.5);
+      newMovies = newMovies.slice(0, SESSION_LIMIT);
+      gotMovies = newMovies.length > 0;
 
       if (reset) {
         setMovies(newMovies);
@@ -3972,20 +3918,26 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
           );
           setMovies(filtered);
           setCurrentIndex(0);
+          gotMovies = filtered.length > 0;
         } catch {}
       }
     } finally {
       setLoading(false);
       fetchingRef.current = false;
     }
+    return gotMovies;
   }, [getEffectiveGenres, exclusionSet, tasteProfile, getRandomPage]);
 
   const fetchMoviesRef = useRef(fetchMovies);
   fetchMoviesRef.current = fetchMovies;
 
-  // ─── Initial fetch on mount ───
+  // ─── Initial fetch on mount — calls handleShuffle directly, no guards ───
+  const initialFetchDone = useRef(false);
   useEffect(() => {
-    fetchMovies(true);
+    if (initialFetchDone.current) return;
+    initialFetchDone.current = true;
+    console.log("DISCOVER MOUNTED - FETCHING INITIAL BATCH");
+    setTimeout(() => handleShuffle(), 0);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Prefetch taglines for upcoming 3 cards
@@ -4001,10 +3953,10 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
 
   // ─── STEP 3 & 4: Auto-fetch when running low (< 5 cards ahead) ───
   useEffect(() => {
-    if (movies.length > 0 && movies.length - currentIndex < 5 && !fetchingRef.current) {
+    if (movies.length > 0 && movies.length - currentIndex < 5 && !fetchingRef.current && swipeCount < SESSION_LIMIT) {
       fetchMoviesRef.current();
     }
-  }, [currentIndex, movies.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentIndex, movies.length, swipeCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   // Toggle genre chip
@@ -4181,15 +4133,30 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   // ─── SHUFFLE: self-contained fetch, zero dependencies on other state/refs ───
   const handleShuffle = async () => {
     setLoading(true);
+    setSwipeCount(0);
+    setUndoHistory([]);
     const page = Math.floor(Math.random() * 100) + 1;
     const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-    const url = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&vote_average.gte=6.5&vote_count.gte=100&with_original_language=en&sort_by=popularity.desc&page=${page}`;
-    console.log("[Discover] Shuffle → page", page);
+    const baseUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&vote_average.gte=6.5&vote_count.gte=100&with_original_language=en&sort_by=popularity.desc`;
+    console.log("[Discover] Shuffle → pages", page, page + 1);
     try {
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.results && data.results.length > 0) {
-        const mapped = data.results.filter((m) => m.poster_path).map(tmdbToMovie);
+      const [res1, res2] = await Promise.all([
+        fetch(`${baseUrl}&page=${page}`),
+        fetch(`${baseUrl}&page=${page + 1}`),
+      ]);
+      const [data1, data2] = await Promise.all([res1.json(), res2.json()]);
+      const combined = [...(data1.results || []), ...(data2.results || [])];
+      const seenIds = new Set();
+      const mapped = combined
+        .filter((m) => {
+          if (!m.poster_path || seenIds.has(m.id)) return false;
+          seenIds.add(m.id);
+          return true;
+        })
+        .map(tmdbToMovie)
+        .slice(0, SESSION_LIMIT);
+      if (mapped.length > 0) {
+        mapped.sort(() => Math.random() - 0.5);
         setMovies(mapped);
         setCurrentIndex(0);
       }
@@ -4206,7 +4173,14 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       <div className="discover-container">
         <div className="discover-header">
           <div className="discover-undo-btn disabled"><UndoIcon /></div>
-          <span className="discover-session-count" style={{ opacity: 0.3 }}>0 discovered</span>
+          <span className="discover-session-count" style={{ opacity: 0.3 }}>0 / 30 discovered</span>
+          <div className="discover-undo-btn disabled">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+              <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" />
+              <polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" />
+              <line x1="4" y1="4" x2="9" y2="9" />
+            </svg>
+          </div>
           <div className="discover-filter">
             <div className="discover-filter-btn" style={{ opacity: 0.3 }}><FilterIcon /></div>
           </div>
@@ -4254,6 +4228,29 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     );
   }
 
+  // Batch complete (30 movies)
+  if (swipeCount >= SESSION_LIMIT && !loading) {
+    return (
+      <div className="discover-container">
+        <div className="discover-empty">
+          <div className="discover-empty-icon">
+            <DiscoverIcon />
+          </div>
+          <h3>30 movies explored</h3>
+          <p>Shuffle for a fresh batch</p>
+          <button className="discover-reset-btn" onClick={handleShuffle}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18, marginRight: 6, verticalAlign: -3 }}>
+              <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" />
+              <polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" />
+              <line x1="4" y1="4" x2="9" y2="9" />
+            </svg>
+            Shuffle
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Empty / exhausted
   if (!currentMovie && !loading) {
     return (
@@ -4262,8 +4259,8 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
           <div className="discover-empty-icon">
             <DiscoverIcon />
           </div>
-          <h3>We've explored every corner</h3>
-          <p>Shuffle to load a fresh batch of movies</p>
+          <h3>No more movies found</h3>
+          <p>Shuffle for a fresh batch</p>
           <button className="discover-reset-btn" onClick={handleShuffle}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18, marginRight: 6, verticalAlign: -3 }}>
               <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" />
@@ -4292,9 +4289,9 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         >
           <UndoIcon />
         </button>
-        <span className="discover-session-count">{swipeCount} discovered</span>
+        <span className="discover-session-count">{swipeCount} / {SESSION_LIMIT} discovered</span>
         <button className="discover-undo-btn" onClick={handleShuffle} title="Shuffle">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" />
             <polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" />
             <line x1="4" y1="4" x2="9" y2="9" />
@@ -4324,7 +4321,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         </div>
       </div>
 
-      {/* Content: card stack */}
+      {/* Content: card */}
       <div className="discover-content">
         {/* Card stack */}
         <div className="discover-stack">
@@ -4776,7 +4773,7 @@ function MainApp() {
     <div className="app">
       <div className="header">
         <div className="header-title">
-          <div className="logo-mark">C</div>
+          <CinnoLogo size={28} />
           Cinno
         </div>
         <div className="header-actions">
