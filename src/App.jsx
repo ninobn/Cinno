@@ -12,6 +12,90 @@ const GENRE_COLORS = {
   War: "#7A8A6B", Western: "#AD8A5E", Film: "#7A7878",
 };
 
+function useSwipeToDismiss(onClose) {
+  const startY = useRef(null);
+  const currentY = useRef(0);
+  const modalRef = useRef(null);
+  const overlayRef = useRef(null);
+  const isDragging = useRef(false);
+  const dismissTimer = useRef(null);
+  const THRESHOLD = 120;
+
+  useEffect(() => () => clearTimeout(dismissTimer.current), []);
+
+  const onTouchStart = useCallback((e) => {
+    const el = modalRef.current;
+    if (!el) return;
+    const scrollable = el.querySelector(".modal-body") || el;
+    if (scrollable.scrollTop > 0) return;
+    startY.current = e.touches[0].clientY;
+    currentY.current = 0;
+    isDragging.current = false;
+    el.style.transition = "none";
+  }, []);
+
+  const onTouchMove = useCallback((e) => {
+    if (startY.current === null) return;
+    const el = modalRef.current;
+    if (!el) return;
+    const diff = e.touches[0].clientY - startY.current;
+    if (diff < 0) { currentY.current = 0; el.style.transform = ""; return; }
+    if (diff > 8) isDragging.current = true;
+    if (!isDragging.current) return;
+    e.preventDefault();
+    const resisted = diff < 60 ? diff : 60 + (diff - 60) * 0.4;
+    currentY.current = resisted;
+    el.style.transform = `translateY(${resisted}px)`;
+    if (overlayRef.current) {
+      overlayRef.current.style.opacity = Math.max(0.2, 1 - resisted / 400);
+    }
+  }, []);
+
+  const onTouchEnd = useCallback(() => {
+    const el = modalRef.current;
+    if (!el) { startY.current = null; return; }
+    const raw = currentY.current;
+    startY.current = null;
+    if (!isDragging.current) { el.style.transform = ""; return; }
+    isDragging.current = false;
+    if (raw >= THRESHOLD * 0.4 + 60 * 0.6) {
+      el.style.transition = "transform 0.28s cubic-bezier(0.4, 0, 1, 1), opacity 0.28s ease";
+      el.style.transform = "translateY(100vh)";
+      el.style.opacity = "0";
+      if (overlayRef.current) {
+        overlayRef.current.style.transition = "opacity 0.28s ease";
+        overlayRef.current.style.opacity = "0";
+      }
+      dismissTimer.current = setTimeout(() => onClose(), 250);
+    } else {
+      el.style.transition = "transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)";
+      el.style.transform = "";
+      if (overlayRef.current) {
+        overlayRef.current.style.transition = "opacity 0.3s ease";
+        overlayRef.current.style.opacity = "";
+      }
+    }
+  }, [onClose]);
+
+  return { modalRef, overlayRef, swipeHandlers: { onTouchStart, onTouchMove, onTouchEnd } };
+}
+
+function useScrollRestore(key, scrollPositions, existingRef) {
+  const ownRef = useRef(null);
+  const ref = existingRef || ownRef;
+  useEffect(() => {
+    const el = ref.current;
+    if (el && scrollPositions.current[key]) {
+      el.scrollTop = scrollPositions.current[key];
+    }
+    return () => {
+      if (el) scrollPositions.current[key] = el.scrollTop;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return ref;
+}
+
 function CinnoLogo({ size = 36 }) {
   const uid = useId();
   const grad = `spotlight-grad-${uid}`;
@@ -860,10 +944,11 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
 
   const backdropUrl = movie.backdrop_path ? `${IMG_BASE}/w780${movie.backdrop_path}` : null;
   const posterBlurUrl = movie.poster_path ? `${IMG_BASE}/w342${movie.poster_path}` : null;
+  const { modalRef, overlayRef, swipeHandlers } = useSwipeToDismiss(onClose);
 
   return createPortal(
-    <div className="movie-modal-overlay" onClick={onClose}>
-      <div className="movie-modal movie-modal-lg" onClick={(e) => e.stopPropagation()}>
+    <div className="movie-modal-overlay" ref={overlayRef} onClick={onClose}>
+      <div className="movie-modal movie-modal-lg" ref={modalRef} {...swipeHandlers} onClick={(e) => e.stopPropagation()}>
         {posterBlurUrl && <div className="modal-poster-bg" style={{ backgroundImage: `url(${posterBlurUrl})` }} />}
         <div className="modal-handle-bar">
           <div className="modal-handle" />
@@ -1032,9 +1117,11 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
     setTab(t);
   };
 
+  const { modalRef, overlayRef, swipeHandlers } = useSwipeToDismiss(onClose);
+
   return createPortal(
-    <div className="movie-modal-overlay" onClick={onClose}>
-      <div className="movie-modal movie-modal-lg" onClick={(e) => e.stopPropagation()}>
+    <div className="movie-modal-overlay" ref={overlayRef} onClick={onClose}>
+      <div className="movie-modal movie-modal-lg" ref={modalRef} {...swipeHandlers} onClick={(e) => e.stopPropagation()}>
         {posterBlurUrl && <div className="modal-poster-bg" style={{ backgroundImage: `url(${posterBlurUrl})` }} />}
         <div className="modal-handle-bar">
           <div className="modal-handle" />
@@ -1155,7 +1242,7 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
 
 // ─── Search Tab ────────────────────────────────────────────────────────────────
 
-function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection }) {
+function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, scrollPositions }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [movies, setMovies] = useState([]);
@@ -1186,6 +1273,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
   const touchStartY = useRef(0);
   const contentRef = useRef(null);
   const pulling = useRef(false);
+  useScrollRestore("search", scrollPositions, contentRef);
   const [heroIndex, setHeroIndex] = useState(0);
   const [heroMovies, setHeroMovies] = useState([]);
 
@@ -1723,9 +1811,11 @@ function ShareWatchlistModal({ onClose, savedMovies, showToast }) {
     }
   };
 
+  const { modalRef, overlayRef, swipeHandlers } = useSwipeToDismiss(onClose);
+
   return createPortal(
-    <div className="movie-modal-overlay" onClick={onClose}>
-      <div className="share-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="movie-modal-overlay" ref={overlayRef} onClick={onClose}>
+      <div className="share-modal" ref={modalRef} {...swipeHandlers} onClick={(e) => e.stopPropagation()}>
         <div className="modal-handle-bar"><div className="modal-handle" /></div>
         <button className="modal-close-btn" onClick={onClose}>✕</button>
         <div className="share-modal-icon">
@@ -1764,6 +1854,8 @@ function SharedWatchlistView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState(null);
+  const closeSharedDetail = useCallback(() => setSelectedMovie(null), []);
+  const { modalRef, overlayRef, swipeHandlers } = useSwipeToDismiss(closeSharedDetail);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", loadFromStorage("cc_theme", "dark"));
@@ -1842,10 +1934,10 @@ function SharedWatchlistView() {
       </div>
 
       {selectedMovie && createPortal(
-        <div className="movie-modal-overlay" onClick={() => setSelectedMovie(null)}>
-          <div className="shared-detail-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="movie-modal-overlay" ref={overlayRef} onClick={closeSharedDetail}>
+          <div className="shared-detail-modal" ref={modalRef} {...swipeHandlers} onClick={(e) => e.stopPropagation()}>
             <div className="modal-handle-bar"><div className="modal-handle" /></div>
-            <button className="modal-close-btn" onClick={() => setSelectedMovie(null)}>✕</button>
+            <button className="modal-close-btn" onClick={closeSharedDetail}>✕</button>
             {selectedMovie.backdrop_path && (
               <div className="modal-backdrop">
                 <img src={`${IMG_BASE}/w780${selectedMovie.backdrop_path}`} alt={selectedMovie.title} />
@@ -1891,6 +1983,7 @@ function CreateCollectionModal({ onClose, onCreate }) {
   const [name, setName] = useState("");
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
+  const { modalRef, overlayRef, swipeHandlers } = useSwipeToDismiss(onClose);
 
   const handleSubmit = () => {
     const trimmed = name.trim();
@@ -1900,8 +1993,8 @@ function CreateCollectionModal({ onClose, onCreate }) {
   };
 
   return createPortal(
-    <div className="movie-modal-overlay" onClick={onClose}>
-      <div className="collection-create-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="movie-modal-overlay" ref={overlayRef} onClick={onClose}>
+      <div className="collection-create-modal" ref={modalRef} {...swipeHandlers} onClick={(e) => e.stopPropagation()}>
         <div className="modal-handle-bar"><div className="modal-handle" /></div>
         <div className="collection-create-header">New Collection</div>
         <input
@@ -2020,7 +2113,7 @@ function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, w
               </button>
             )}
             {!collection.isDefault && (
-              <button className="collection-delete-btn" onClick={() => { onDelete(collection.id); onBack(); }}>
+              <button className="collection-delete-btn" onClick={() => onDelete(collection.id, onBack)}>
                 <TrashIcon />
               </button>
             )}
@@ -2066,13 +2159,14 @@ function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, w
   );
 }
 
-function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief, collections, createCollection, renameCollection, deleteCollection, toggleMovieInCollection, onStartMoviePicker, showToast }) {
+function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief, collections, createCollection, renameCollection, deleteCollection, toggleMovieInCollection, onStartMoviePicker, showToast, scrollPositions }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [emptyMsg] = useState(() => pickRandom(EMPTY_WATCHLIST));
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeCollection, setActiveCollection] = useState(null);
   const [watchlistView, setWatchlistView] = useState("grid");
   const [upNextId, setUpNextId] = useState(() => loadFromStorage("cc_upNextId", null));
+  const savedContentRef = useScrollRestore("saved", scrollPositions);
 
   const movies = useMemo(
     () => Array.from(savedMovies.values()).map((m, i) => ({ ...m, _idx: i })),
@@ -2149,7 +2243,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
 
   return (
     <>
-      <div className="content">
+      <div className="content" ref={savedContentRef}>
         {/* Up Next Banner — immersive backdrop */}
         {upNextMovie ? (
           <div className="upnext-banner" onClick={() => setSelectedMovie(upNextMovie)}>
@@ -2630,14 +2724,20 @@ const INSIGHT_PROMPTS = {
 
 const AI_INSIGHTS_ENABLED = false;
 
-function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections, showToast }) {
+function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections, showToast, scrollPositions }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [view, _setView] = useState("journal");
   const prevViewRef = useRef("journal");
   const [viewDir, setViewDir] = useState(null);
+  const journalContentRef = useRef(null);
+  const subScrollPositions = useRef({});
   const setView = useCallback((v) => {
     const ORDER = { journal: 0, rankings: 1, stats: 2 };
     if (v === prevViewRef.current) return;
+    // Save current sub-tab scroll
+    if (journalContentRef.current) {
+      subScrollPositions.current[prevViewRef.current] = journalContentRef.current.scrollTop;
+    }
     setViewDir(ORDER[v] > ORDER[prevViewRef.current] ? "right" : "left");
     prevViewRef.current = v;
     _setView(v);
@@ -2659,6 +2759,29 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   const [emptyJournal] = useState(() => pickRandom(EMPTY_JOURNAL));
   const [emptyRankings] = useState(() => pickRandom(EMPTY_RANKINGS));
   const [emptyStats] = useState(() => pickRandom(EMPTY_STATS));
+
+  // Restore sub-tab scroll after view switch (skip initial mount — handled by main tab restore)
+  const viewMounted = useRef(false);
+  useEffect(() => {
+    if (!viewMounted.current) { viewMounted.current = true; return; }
+    const el = journalContentRef.current;
+    let raf;
+    if (el) {
+      raf = requestAnimationFrame(() => { el.scrollTop = subScrollPositions.current[view] || 0; });
+    }
+    return () => { if (raf) cancelAnimationFrame(raf); };
+  }, [view]);
+
+  // Save/restore main tab scroll position (runs on mount/unmount)
+  useEffect(() => {
+    const el = journalContentRef.current;
+    if (el && scrollPositions.current["journal"]) {
+      el.scrollTop = scrollPositions.current["journal"];
+    }
+    return () => {
+      if (el) scrollPositions.current["journal"] = el.scrollTop;
+    };
+  }, [scrollPositions]);
 
   const movies = useMemo(
     () => Array.from(watchedMovies.values()).map((m, i) => ({ ...m, _idx: i })),
@@ -2818,7 +2941,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 
   return (
     <>
-      <div className="content journal-content">
+      <div className="content journal-content" ref={journalContentRef}>
         <div className={`journal-view-panel ${viewDir ? `slide-${viewDir}` : ""}`} key={view}>
 
         {movies.length === 0 && (
@@ -3484,10 +3607,35 @@ Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write 
 
 // ─── Settings Modal ────────────────────────────────────────────────────────────
 
-function GlobalToast({ message }) {
-  if (!message) return null;
+function GlobalToast({ toast, onDismiss }) {
+  if (!toast) return null;
+  const { message: msg, onUndo, id } = toast;
   return createPortal(
-    <div className="global-toast" key={message}>{message}</div>,
+    <div className={`global-toast${onUndo ? " has-undo" : ""}`} key={id}>
+      <span>{msg}</span>
+      {onUndo && (
+        <button className="toast-undo-btn" onClick={() => { onUndo(); onDismiss(); }}>Undo</button>
+      )}
+    </div>,
+    document.body
+  );
+}
+
+function ConfirmDialog({ dialog, onCancel }) {
+  const { modalRef, overlayRef, swipeHandlers } = useSwipeToDismiss(onCancel);
+  if (!dialog) return null;
+  return createPortal(
+    <div className="confirm-overlay" ref={overlayRef} onClick={onCancel}>
+      <div className="confirm-dialog" ref={modalRef} {...swipeHandlers} onClick={(e) => e.stopPropagation()}>
+        <div className="confirm-handle"><div className="modal-handle" /></div>
+        <div className="confirm-title">{dialog.title}</div>
+        <div className="confirm-message">{dialog.message}</div>
+        <div className="confirm-actions">
+          <button className="confirm-cancel-btn" onClick={onCancel}>Cancel</button>
+          <button className="confirm-action-btn destructive" onClick={dialog.onConfirm}>{dialog.confirmLabel}</button>
+        </div>
+      </div>
+    </div>,
     document.body
   );
 }
@@ -3663,20 +3811,11 @@ function SortDropdown({ options, value, onChange }) {
 }
 
 function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
-  const [confirmClear, setConfirmClear] = useState(false);
-
-  const handleClear = () => {
-    if (!confirmClear) {
-      setConfirmClear(true);
-      return;
-    }
-    onClearData();
-    onClose();
-  };
+  const { modalRef, overlayRef, swipeHandlers } = useSwipeToDismiss(onClose);
 
   return (
-    <div className="movie-modal-overlay" onClick={onClose}>
-      <div className="movie-modal settings-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="movie-modal-overlay" ref={overlayRef} onClick={onClose}>
+      <div className="movie-modal settings-modal" ref={modalRef} {...swipeHandlers} onClick={(e) => e.stopPropagation()}>
         <div className="modal-handle" />
         <div className="settings-header">
           <div className="settings-title">Settings</div>
@@ -3701,10 +3840,10 @@ function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
           <div className="settings-row">
             <div>
               <div className="settings-label">Clear all data</div>
-              <div className="settings-desc">{confirmClear ? "This cannot be undone!" : "Remove all saved movies, journal entries and chats"}</div>
+              <div className="settings-desc">Remove all saved movies, journal entries and chats</div>
             </div>
-            <button className={`settings-clear-btn ${confirmClear ? "confirm" : ""}`} onClick={handleClear}>
-              {confirmClear ? "Confirm" : "Clear"}
+            <button className="settings-clear-btn" onClick={onClearData}>
+              Clear
             </button>
           </div>
         </div>
@@ -4565,7 +4704,7 @@ function MainApp() {
     _setActiveTab(t);
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
-
+  const scrollPositions = useRef({});
 
   const [theme, setTheme] = useState(() => loadFromStorage("cc_theme", "dark"));
   const [savedIds, setSavedIds] = useState(() => new Set(loadFromStorage("cc_savedIds", [])));
@@ -4597,10 +4736,18 @@ function MainApp() {
   const prevWatchedCount = useRef(watchedIds.size);
   const [globalToast, setGlobalToast] = useState(null);
   const globalToastTimer = useRef(null);
-  const showToast = useCallback((msg) => {
+  const toastIdRef = useRef(0);
+  const [confirmDialog, setConfirmDialog] = useState(null);
+  const showToast = useCallback((msg, onUndo) => {
     clearTimeout(globalToastTimer.current);
-    setGlobalToast(msg);
-    globalToastTimer.current = setTimeout(() => setGlobalToast(null), 2500);
+    const id = ++toastIdRef.current;
+    setGlobalToast(onUndo ? { message: msg, onUndo, id } : { message: msg, id });
+    const duration = onUndo ? 5000 : 2500;
+    globalToastTimer.current = setTimeout(() => setGlobalToast(null), duration);
+  }, []);
+  const dismissToast = useCallback(() => {
+    clearTimeout(globalToastTimer.current);
+    setGlobalToast(null);
   }, []);
 
   const defaultChatId = "default";
@@ -4635,6 +4782,20 @@ function MainApp() {
     setActiveChatId(newId);
   };
 
+  const requestClearAllData = () => {
+    setConfirmDialog({
+      title: "Clear all Cinno data?",
+      message: "This removes your watchlist, journal, ratings, and collections permanently.",
+      confirmLabel: "Clear",
+      onConfirm: () => {
+        clearAllData();
+        setConfirmDialog(null);
+        setSettingsOpen(false);
+        showToast("All data cleared");
+      },
+    });
+  };
+
   const toggleSave = (movie) => {
     const id = movie.id;
     const wasSaved = savedIds.has(id);
@@ -4648,37 +4809,63 @@ function MainApp() {
       if (next.has(id)) next.delete(id); else next.set(id, movie);
       return next;
     });
-    showToast(wasSaved ? "Removed from watchlist" : "Added to watchlist");
+    if (wasSaved) {
+      showToast("Removed from watchlist", () => {
+        setSavedIds((prev) => new Set(prev).add(id));
+        setSavedMovies((prev) => new Map(prev).set(id, movie));
+      });
+    } else {
+      showToast("Added to watchlist");
+    }
   };
 
   const toggleWatched = (movie) => {
     const id = movie.id;
     const wasWatched = watchedIds.has(id);
+    if (wasWatched) {
+      setConfirmDialog({
+        title: `Remove "${movie.title}"?`,
+        message: "Remove from your journal? Your rating and notes will be lost.",
+        confirmLabel: "Remove",
+        onConfirm: () => {
+          const prevDate = watchedDates.get(id);
+          const prevNote = watchedNotes.get(id);
+          const prevRating = watchedRatings.get(id);
+          setWatchedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+          setWatchedMovies((prev) => { const next = new Map(prev); next.delete(id); return next; });
+          setWatchedDates((prev) => { const next = new Map(prev); next.delete(id); return next; });
+          setConfirmDialog(null);
+          showToast("Removed from journal", () => {
+            setWatchedIds((prev) => new Set(prev).add(id));
+            setWatchedMovies((prev) => new Map(prev).set(id, movie));
+            if (prevDate) setWatchedDates((prev) => new Map(prev).set(id, prevDate));
+            if (prevNote !== undefined) setWatchedNotes((prev) => new Map(prev).set(id, prevNote));
+            if (prevRating !== undefined) setWatchedRatings((prev) => new Map(prev).set(id, prevRating));
+          });
+        },
+      });
+      return;
+    }
     setWatchedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      next.add(id);
       return next;
     });
     setWatchedMovies((prev) => {
       const next = new Map(prev);
-      if (next.has(id)) next.delete(id); else next.set(id, movie);
+      next.set(id, movie);
       return next;
     });
-    if (!wasWatched) {
-      setWatchedDates((prev) => new Map(prev).set(id, new Date().toISOString()));
-      // Remove from watchlist and all collections when marking as watched
-      const wasSaved = savedIds.has(id);
-      if (wasSaved) {
-        setSavedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
-        setSavedMovies((prev) => { const next = new Map(prev); next.delete(id); return next; });
-      }
-      setCollections((prev) => prev.map((c) =>
-        c.movieIds.includes(id) ? { ...c, movieIds: c.movieIds.filter((mid) => mid !== id) } : c
-      ));
-      showToast("Moved to journal");
-    } else {
-      setWatchedDates((prev) => { const next = new Map(prev); next.delete(id); return next; });
+    setWatchedDates((prev) => new Map(prev).set(id, new Date().toISOString()));
+    const wasSaved = savedIds.has(id);
+    if (wasSaved) {
+      setSavedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+      setSavedMovies((prev) => { const next = new Map(prev); next.delete(id); return next; });
     }
+    setCollections((prev) => prev.map((c) =>
+      c.movieIds.includes(id) ? { ...c, movieIds: c.movieIds.filter((mid) => mid !== id) } : c
+    ));
+    showToast("Moved to journal");
   };
 
   const setWatchedNote = (id, text) => {
@@ -4703,8 +4890,20 @@ function MainApp() {
     setCollections((prev) => prev.map((c) => c.id === collectionId ? { ...c, name: newName } : c));
   };
 
-  const deleteCollection = (collectionId) => {
-    setCollections((prev) => prev.filter((c) => c.id !== collectionId || c.isDefault));
+  const deleteCollection = (collectionId, afterDelete) => {
+    const col = collections.find((c) => c.id === collectionId);
+    if (!col || col.isDefault) return;
+    setConfirmDialog({
+      title: `Delete "${col.name}"?`,
+      message: "This can't be undone.",
+      confirmLabel: "Delete",
+      onConfirm: () => {
+        setCollections((prev) => prev.filter((c) => c.id !== collectionId));
+        setConfirmDialog(null);
+        showToast(`Deleted "${col.name}"`);
+        if (afterDelete) afterDelete();
+      },
+    });
   };
 
   const toggleMovieInCollection = (collectionId, movie) => {
@@ -4829,6 +5028,7 @@ function MainApp() {
   }, [watchedMovies, watchedRatings, collections, watchedDates, unlockedBadges, showNextToast]);
 
   useEffect(() => () => clearTimeout(badgeToastTimer.current), []);
+  useEffect(() => () => clearTimeout(globalToastTimer.current), []);
 
   // ── Milestone celebration check ────────────────────────────
   useEffect(() => {
@@ -4869,7 +5069,7 @@ function MainApp() {
 
       <div className={`tab-panel ${tabDir ? `slide-${tabDir}` : ""}`} key={activeTab}>
         {activeTab === "search" && (
-          <SearchTab savedIds={savedIds} toggleSave={toggleSave} watchedIds={watchedIds} toggleWatched={toggleWatched} startDebrief={startDebrief} collections={collections} toggleMovieInCollection={toggleMovieInCollection} />
+          <SearchTab savedIds={savedIds} toggleSave={toggleSave} watchedIds={watchedIds} toggleWatched={toggleWatched} startDebrief={startDebrief} collections={collections} toggleMovieInCollection={toggleMovieInCollection} scrollPositions={scrollPositions} />
         )}
         {activeTab === "saved" && (
           <SavedTab
@@ -4880,6 +5080,7 @@ function MainApp() {
             toggleMovieInCollection={toggleMovieInCollection}
             onStartMoviePicker={startMoviePicker}
             showToast={showToast}
+            scrollPositions={scrollPositions}
           />
         )}
         {activeTab === "discover" && (
@@ -4911,6 +5112,7 @@ function MainApp() {
             unlockedBadges={unlockedBadges}
             collections={collections}
             showToast={showToast}
+            scrollPositions={scrollPositions}
           />
         )}
         {activeTab === "chat" && (
@@ -4935,7 +5137,7 @@ function MainApp() {
       {settingsOpen && (
         <SettingsModal
           onClose={() => setSettingsOpen(false)}
-          onClearData={clearAllData}
+          onClearData={requestClearAllData}
           theme={theme}
           onToggleTheme={toggleTheme}
         />
@@ -4943,7 +5145,8 @@ function MainApp() {
 
       <BadgeToast badge={badgeToast} visible={!!badgeToast} />
       <MilestoneCelebration milestone={activeMilestone} onDismiss={() => setActiveMilestone(null)} />
-      <GlobalToast message={globalToast} />
+      <GlobalToast toast={globalToast} onDismiss={dismissToast} />
+      <ConfirmDialog dialog={confirmDialog} onCancel={() => setConfirmDialog(null)} />
     </div>
   );
 }
