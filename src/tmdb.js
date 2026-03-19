@@ -34,28 +34,28 @@ async function tmdbFetch(endpoint, params = {}) {
 
 export async function getTrending(page = 1) {
   const data = await tmdbFetch("/trending/movie/week", { page });
-  return { movies: data.results.map(tmdbToMovie), totalPages: data.total_pages };
+  return { movies: (data?.results || []).map(tmdbToMovie), totalPages: data?.total_pages || 0 };
 }
 
 export async function searchMovies(query, page = 1) {
   if (!query.trim()) return { movies: [], totalPages: 0 };
   const data = await tmdbFetch("/search/movie", { query, page });
-  return { movies: data.results.map(tmdbToMovie), totalPages: data.total_pages };
+  return { movies: (data?.results || []).map(tmdbToMovie), totalPages: data?.total_pages || 0 };
 }
 
 export async function getPopular(page = 1) {
   const data = await tmdbFetch("/movie/popular", { page });
-  return { movies: data.results.map(tmdbToMovie), totalPages: data.total_pages };
+  return { movies: (data?.results || []).map(tmdbToMovie), totalPages: data?.total_pages || 0 };
 }
 
 export async function getTopRated(page = 1) {
   const data = await tmdbFetch("/movie/top_rated", { page });
-  return { movies: data.results.map(tmdbToMovie), totalPages: data.total_pages };
+  return { movies: (data?.results || []).map(tmdbToMovie), totalPages: data?.total_pages || 0 };
 }
 
 export async function getNowPlaying(page = 1) {
   const data = await tmdbFetch("/movie/now_playing", { page });
-  return { movies: data.results.map(tmdbToMovie), totalPages: data.total_pages };
+  return { movies: (data?.results || []).map(tmdbToMovie), totalPages: data?.total_pages || 0 };
 }
 
 export async function getMovieDetails(movieId) {
@@ -64,7 +64,7 @@ export async function getMovieDetails(movieId) {
 
 export async function getSimilar(movieId) {
   const data = await tmdbFetch(`/movie/${movieId}/recommendations`);
-  return data.results.slice(0, 12).map(tmdbToMovie);
+  return (data?.results || []).slice(0, 12).map(tmdbToMovie);
 }
 
 export async function getHiddenGems(page = 1) {
@@ -75,7 +75,7 @@ export async function getHiddenGems(page = 1) {
     sort_by: "vote_average.desc",
     page,
   });
-  return { movies: data.results.map(tmdbToMovie), totalPages: data.total_pages };
+  return { movies: (data?.results || []).map(tmdbToMovie), totalPages: data?.total_pages || 0 };
 }
 
 export async function getWatchProviders(movieId, region = "TH") {
@@ -119,7 +119,7 @@ export async function discoverByGenres(genreIds, page = 1) {
     sort_by: "popularity.desc",
     page,
   });
-  return { movies: data.results.map(tmdbToMovie), totalPages: data.total_pages };
+  return { movies: (data?.results || []).map(tmdbToMovie), totalPages: data?.total_pages || 0 };
 }
 
 export async function getMovieKeywords(movieId) {
@@ -129,7 +129,7 @@ export async function getMovieKeywords(movieId) {
 
 export async function discoverMovies(params = {}, page = 1) {
   const data = await tmdbFetch("/discover/movie", { ...params, page });
-  return { movies: data.results.map(tmdbToMovie), totalPages: data.total_pages };
+  return { movies: (data?.results || []).map(tmdbToMovie), totalPages: data?.total_pages || 0 };
 }
 
 export async function getMovieCredits(movieId) {

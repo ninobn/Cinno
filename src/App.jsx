@@ -3049,7 +3049,11 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                     {rankSort === "rating_desc" && rankedMovies.length >= 1 && (
                       <div className="rank-hero" onClick={() => setSelectedMovie(rankedMovies[0])}>
                         <div className="rank-hero-backdrop">
-                          <img src={`${IMG_BASE}/w1280${rankedMovies[0].backdrop_path || rankedMovies[0].poster_path}`} alt="" />
+                          {(rankedMovies[0].backdrop_path || rankedMovies[0].poster_path) ? (
+                            <img src={`${IMG_BASE}/w1280${rankedMovies[0].backdrop_path || rankedMovies[0].poster_path}`} alt="" />
+                          ) : (
+                            <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg, var(--bg-elevated), var(--bg-card))" }} />
+                          )}
                         </div>
                         <div className="rank-hero-gradient" />
                         <div className="rank-hero-content">
@@ -3223,7 +3227,7 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
   const toggleSmartMode = () => {
     setSmartMode((prev) => {
       const next = !prev;
-      localStorage.setItem("cinno-smart-mode", JSON.stringify(next));
+      try { localStorage.setItem("cinno-smart-mode", JSON.stringify(next)); } catch {}
       return next;
     });
   };
@@ -4346,9 +4350,9 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  const currentMovie = movies[currentIndex];
-  const nextMovie = movies[currentIndex + 1];
-  const thirdMovie = movies[currentIndex + 2];
+  const currentMovie = currentIndex < movies.length ? movies[currentIndex] : undefined;
+  const nextMovie = currentIndex + 1 < movies.length ? movies[currentIndex + 1] : undefined;
+  const thirdMovie = currentIndex + 2 < movies.length ? movies[currentIndex + 2] : undefined;
   const rotation = Math.max(-12, Math.min(12, dragX * 0.08));
   const opacity = Math.min(Math.abs(dragX) / 80, 1);
   const tagline = currentMovie ? (cardDetails[currentMovie.id]?.tagline || "") : "";
@@ -4358,36 +4362,41 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     setLoading(true);
     setSwipeCount(0);
     setUndoHistory([]);
-    const page = Math.floor(Math.random() * 100) + 1;
     const apiKey = import.meta.env.VITE_TMDB_API_KEY;
     const baseUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&vote_average.gte=6.5&vote_count.gte=100&with_original_language=en&sort_by=popularity.desc`;
-    console.log("[Discover] Shuffle → pages", page, page + 1);
-    try {
-      const [res1, res2] = await Promise.all([
-        fetch(`${baseUrl}&page=${page}`),
-        fetch(`${baseUrl}&page=${page + 1}`),
-      ]);
-      const [data1, data2] = await Promise.all([res1.json(), res2.json()]);
-      const combined = [...(data1.results || []), ...(data2.results || [])];
-      const seenIds = new Set();
-      const mapped = combined
-        .filter((m) => {
-          if (!m.poster_path || seenIds.has(m.id)) return false;
-          seenIds.add(m.id);
-          return true;
-        })
-        .map(tmdbToMovie)
-        .slice(0, SESSION_LIMIT);
-      if (mapped.length > 0) {
-        mapped.sort(() => Math.random() - 0.5);
-        setMovies(mapped);
-        setCurrentIndex(0);
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const page = Math.floor(Math.random() * 100) + 1;
+      try {
+        const [res1, res2] = await Promise.all([
+          fetch(`${baseUrl}&page=${page}`),
+          fetch(`${baseUrl}&page=${page + 1}`),
+        ]);
+        if (!res1.ok || !res2.ok) continue;
+        const [data1, data2] = await Promise.all([res1.json(), res2.json()]);
+        if (!data1?.results && !data2?.results) continue;
+        const combined = [...(data1?.results || []), ...(data2?.results || [])];
+        const seenIds = new Set();
+        const mapped = combined
+          .filter((m) => {
+            if (!m.poster_path || seenIds.has(m.id)) return false;
+            seenIds.add(m.id);
+            return true;
+          })
+          .map(tmdbToMovie)
+          .slice(0, SESSION_LIMIT);
+        if (mapped.length > 0) {
+          mapped.sort(() => Math.random() - 0.5);
+          setMovies(mapped);
+          setCurrentIndex(0);
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        // Retry with different page
       }
-    } catch (e) {
-      console.error("Shuffle failed", e);
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   // Loading skeleton
