@@ -5,7 +5,8 @@
       "Bash(node:*)",
       "mcp__stitch__get_screen",
       "Bash(curl -L -o \"/tmp/stitch_design.png\" \"https://lh3.googleusercontent.com/aida/AOfcidVAHaeVwMIZZ2yJlwhNljI4kBjlFodHN9RM2aohfKSo3bH6fQq3Smqn6RKJgH6zMPQJkOdLWyNjVvJYyGdHWQwTRDP6FQQnMu0fW3HWcw2BM16rq5NWmJTUV28lKYtHJdkW98pfHdW6anYLfaax8Zl6871mN363mwJihkzAOAPQCbo_LwR7Je7huPcDaM9vIy7fNuTNGUdejU8dIHqjVWwd771aijtvIfhr3uZH71sQ_B2CNek3hdUDqkA\" 2>&1 | tail -5)",
-      "WebFetch(domain:lh3.googleusercontent.com)"
+      "WebFetch(domain:lh3.googleusercontent.com)",
+      "Bash(git:*)"
     ]
   }
 }

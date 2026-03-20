@@ -6753,6 +6753,11 @@ body {
   font-weight: 600;
 }
 
+.discover-header .genre-dropdown-panel {
+  left: auto;
+  right: 0;
+}
+
 /* ── Content Area ── */
 .discover-content {
   display: flex;
