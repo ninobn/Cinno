@@ -18,10 +18,13 @@ A sleek, dark-themed movie companion web app with real-time TMDB search, trendin
 2. **Configure API keys** — Edit `.env` in the project root:
    ```
    VITE_TMDB_API_KEY=your_tmdb_key_here
-   VITE_ANTHROPIC_API_KEY=your_anthropic_key_here
+   VITE_API_URL=http://localhost:3001
+   ANTHROPIC_API_KEY=your_anthropic_key_here
+   TAVILY_API_KEY=your_tavily_key_here
    ```
    - TMDB key: Get one free at https://www.themoviedb.org/settings/api
    - Anthropic key: Get one at https://console.anthropic.com
+   - Tavily key: Get one at https://tavily.com
 
 3. **Run:**
    ```bash

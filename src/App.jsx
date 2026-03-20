@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback, useId } from 
 import { createPortal } from "react-dom";
 import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getMovieKeywords, getSmartContext, tmdbToMovie, IMG_BASE } from "./tmdb.js";
 
-const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY;
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 const GENRE_COLORS = {
   Action: "#C4856A", Adventure: "#8BA88C", Animation: "#7AADA0", Comedy: "#C4B07A",
@@ -2807,9 +2807,9 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
       });
       const systemPrompt = `You are a witty, concise movie taste analyst. The user has watched these movies: ${lines.join("; ")}. Respond with ONLY the insight text, nothing else. No preamble, no "Here's your insight", just the insight itself. Max 2 sentences.`;
       const userPrompt = INSIGHT_PROMPTS[insightType];
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 120, system: systemPrompt, messages: [{ role: "user", content: userPrompt }] }),
       });
       const data = await resp.json();
@@ -3243,7 +3243,7 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
 
         try {
           const searchQuery = `${smartData.title} ${smartData.year} movie reviews opinions discussion`;
-          const resp = await fetch("http://localhost:3001/api/search", {
+          const resp = await fetch(`${API_URL}/api/search`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ query: searchQuery }),
@@ -3305,9 +3305,9 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
 
   const generateTitle = async (userMsg, assistantMsg) => {
     try {
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 30,
@@ -3414,9 +3414,9 @@ You have two modes and should switch fluidly based on context:
 Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write like a real person having a real conversation, not like a text message. Bullet points are acceptable when listing things. No bold, no emojis, no markdown formatting ever.${debriefContext}${personalContext ? "\n\n" + personalContext : ""}${smartEnrichment ? "\n\n" + smartEnrichment : ""}`;
       }
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 1000,
@@ -4350,6 +4350,16 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     }
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
+  // Auto-skip movies that entered the exclusion set mid-session
+  useEffect(() => {
+    if (movies.length === 0) return;
+    if (currentIndex < movies.length && exclusionSet.has(movies[currentIndex].id)) {
+      let next = currentIndex + 1;
+      while (next < movies.length && exclusionSet.has(movies[next].id)) next++;
+      setCurrentIndex(next);
+    }
+  }, [exclusionSet, currentIndex, movies]);
+
   const currentMovie = currentIndex < movies.length ? movies[currentIndex] : undefined;
   const nextMovie = currentIndex + 1 < movies.length ? movies[currentIndex + 1] : undefined;
   const thirdMovie = currentIndex + 2 < movies.length ? movies[currentIndex + 2] : undefined;
@@ -4379,7 +4389,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         const seenIds = new Set();
         const mapped = combined
           .filter((m) => {
-            if (!m.poster_path || seenIds.has(m.id)) return false;
+            if (!m.poster_path || seenIds.has(m.id) || exclusionSet.has(m.id)) return false;
             seenIds.add(m.id);
             return true;
           })
