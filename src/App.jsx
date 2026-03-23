@@ -98,24 +98,26 @@ function useScrollRestore(key, scrollPositions, existingRef) {
 
 function CinnoLogo({ size = 36 }) {
   const uid = useId();
-  const grad = `spotlight-grad-${uid}`;
-  const glow = `logo-glow-${uid}`;
+  const glowId = `cinno-hinge-glow-${uid}`;
   return (
     <svg width={size} height={size} viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id={grad} x1="0.5" y1="0" x2="0.5" y2="0.55">
-          <stop offset="0%" stopColor="#C9A84C" stopOpacity="0.4"/>
-          <stop offset="40%" stopColor="#C9A84C" stopOpacity="0.12"/>
-          <stop offset="100%" stopColor="#8B2040" stopOpacity="0"/>
-        </linearGradient>
-        <filter id={glow}>
-          <feGaussianBlur stdDeviation="1.5" result="b"/>
-          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-        </filter>
+        <radialGradient id={glowId} cx="0.25" cy="0.48" r="0.15">
+          <stop offset="0%" stopColor="#D4B05C" stopOpacity="0.25"/>
+          <stop offset="100%" stopColor="#D4B05C" stopOpacity="0"/>
+        </radialGradient>
       </defs>
       <rect x="4" y="4" width="120" height="120" rx="28" fill="#8B2040"/>
-      <path d={`M48,4 L80,4 Q86,28 92,58 L64,64 L36,58 Q42,28 48,4Z`} fill={`url(#${grad})`}/>
-      <text x="64" y="82" textAnchor="middle" fontFamily="'Plus Jakarta Sans', sans-serif" fontWeight="700" fontSize="72" fill="#F5F0EB" filter={`url(#${glow})`}>c</text>
+      <circle cx="32" cy="56" r="16" fill={`url(#${glowId})`}/>
+      <rect x="32" y="56" width="66" height="34" rx="4" fill="#F5F0EB" opacity="0.04"/>
+      <rect x="32" y="56" width="66" height="34" rx="4" fill="none" stroke="#F5F0EB" strokeWidth="8" opacity="0.9"/>
+      <line x1="32" y1="56" x2="98" y2="56" stroke="#F5F0EB" strokeWidth="8" opacity="0.9"/>
+      <line x1="32" y1="56" x2="96" y2="34" stroke="#F5F0EB" strokeWidth="8" strokeLinecap="round"/>
+      <line x1="48" y1="52.5" x2="51" y2="41" stroke="#D4B05C" strokeWidth="2.8" strokeLinecap="round" opacity="0.55"/>
+      <line x1="62" y1="50.5" x2="65" y2="39" stroke="#D4B05C" strokeWidth="2.8" strokeLinecap="round" opacity="0.55"/>
+      <line x1="76" y1="48.5" x2="79" y2="37" stroke="#D4B05C" strokeWidth="2.8" strokeLinecap="round" opacity="0.55"/>
+      <circle cx="32" cy="56" r="4.5" fill="none" stroke="#D4B05C" strokeWidth="2.2" opacity="0.7"/>
+      <circle cx="32" cy="56" r="3" fill="#D4B05C"/>
     </svg>
   );
 }
@@ -863,7 +865,7 @@ function ScrollRow({ children }) {
 function MovieTile({ movie, onClick, isSaved, onToggleSave, className }) {
   const genreColor = GENRE_COLORS[movie.genre] || "#7A7878";
   return (
-    <div className={`movie-tile ${className || ""}`} onClick={onClick} style={{ animationDelay: `${(movie._idx || 0) * 25}ms` }}>
+    <div className={`movie-tile ${className || ""}`} onClick={onClick}>
       <div className="movie-poster">
         <PosterImage posterPath={movie.poster_path} title={movie.title} />
         <span className="movie-poster-rating">★ {movie.rating}</span>
@@ -1927,7 +1929,6 @@ function SharedWatchlistView() {
                 key={movie.id}
                 className="movie-tile"
                 onClick={() => setSelectedMovie(movie)}
-                style={{ animationDelay: `${(movie._idx || 0) * 25}ms` }}
               >
                 <div className="movie-poster">
                   <PosterImage posterPath={movie.poster_path} title={movie.title} />
@@ -2479,11 +2480,12 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
   const identity = IDENTITY_MAP[topGenre] || "The Eclectic Explorer";
   const topThreeGenres = stats.genres.slice(0, 3);
 
-  // #1 movie for banner backdrop
+  // #1 movie for banner backdrop — fallback chain: backdrop → poster → gradient (CSS)
   const topMovie = stats.highest?.movie;
   const backdropSrc = topMovie?.backdrop_path
     ? `${IMG_BASE}/w1280${topMovie.backdrop_path}`
     : topMovie?.poster_path ? `${IMG_BASE}/w780${topMovie.poster_path}` : null;
+  const posterFallbackSrc = topMovie?.poster_path ? `${IMG_BASE}/w780${topMovie.poster_path}` : null;
 
   // Pinned favorite
   const pinnedMovie = pinnedId && watchedMovies.has(pinnedId) ? watchedMovies.get(pinnedId) : stats.highest?.movie;
@@ -2505,7 +2507,10 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
     <div className="sp-profile">
       {/* ── SECTION 1: Profile Header Banner ── */}
       <div className="sp-hero">
-        {backdropSrc && <img src={backdropSrc} alt="" className="sp-hero-bg" />}
+        {backdropSrc && <img src={backdropSrc} alt="" className="sp-hero-bg" onError={(e) => {
+          if (posterFallbackSrc && e.target.src !== posterFallbackSrc) { e.target.src = posterFallbackSrc; }
+          else { e.target.style.display = "none"; }
+        }} />}
         <div className="sp-hero-gradient" />
         <div className="sp-hero-content">
           <div className="sp-identity">{identity}</div>
@@ -2574,7 +2579,7 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
       )}
 
       {/* ── SECTION 3: Showcase Badges ── */}
-      <div className="sp-section">
+      <div className="sp-section sp-showcase-section">
         <div className="sp-section-header">
           <span className="sp-section-label">Showcase</span>
         </div>
@@ -2584,10 +2589,11 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
             if (!badge) {
               return <div key={i} className="sp-showcase-slot sp-showcase-empty" />;
             }
-            const tierColor = TIER_COLORS[["bronze", "silver", "gold"][badge.tier - 1]];
+            const tierKey = ["bronze", "silver", "gold"][badge.tier - 1];
+            const tierColor = TIER_COLORS[tierKey];
             const Icon = badge.icon;
             return (
-              <div key={badge.id} className="sp-showcase-slot">
+              <div key={badge.id} className="sp-showcase-slot" data-tier={tierKey}>
                 <div className="sp-showcase-icon" style={{ color: tierColor }}><Icon /></div>
                 <div className="sp-showcase-name">{badge.title}</div>
                 <div className="sp-showcase-tier" style={{ color: tierColor }}>{TIER_NAMES[badge.tier]}</div>
@@ -3397,25 +3403,30 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
       const picker = activeChat?.pickerMode;
       const pc = activeChat?.pickerContext;
 
+      const basePrompt = `You're a movie-obsessed friend. Not a service, not an assistant — a friend who watches way too many movies.
+
+Rules:
+- Match the user's energy. If they write one line, you respond with one line. If they want depth, go deep.
+- For recommendations: just give them. Don't ask clarifying questions unless the user is extremely vague like 'recommend me something' with zero context. If they give you ANY hint (genre, mood, a movie they liked), skip the questions and go straight to recommendations.
+- Never repeat back what the user just said. Don't say 'So you want sci-fi...' or 'Great choice!' Just respond naturally.
+- Never ask more than 1 question per message. If you need to ask, make it casual and quick, not a structured interview.
+- Keep recommendations tight: movie name, year, one sentence why. No bullet points, no numbered lists.
+- For explanations, plot discussions, or debriefs: go longer and more thoughtful. Match the depth of what they're asking.
+- Be opinionated. Have actual takes. Disagree sometimes. A real friend doesn't just validate everything.
+- No emojis, no markdown bold, no headers, no bullet points ever. Just natural conversation.
+- No phrases like 'Great question!' or 'That's a great pick!' or 'I'd love to help!' — these sound like customer service.
+- Swear very occasionally if it fits the vibe, but don't force it.
+- If the user's journal or watchlist data is available, reference it naturally like a friend who knows their taste. Don't announce that you're doing it.`;
+
       if (picker) {
-        movieContext = `You are a movie picker assistant helping someone decide what to watch right now. Be warm, casual, and conversational — like a friend who just happens to know every movie ever made.
+        movieContext = `${basePrompt}
 
-Your approach: Have a natural conversation to understand what they want. Ask naturally (not as a form): how many people are watching, what mood or vibe they want, any genre or decade preferences, and whether they want something new or a comfort rewatch. Don't ask all at once — let the conversation flow. If they already gave you some info, work with it and ask follow-up questions.
-
-Once you have enough info, recommend 2-3 specific movies with title, year, and a one-sentence reason each. Be opinionated and decisive — don't hedge.
-
-Never use internet slang. No bold, no emojis, no markdown formatting ever. Bullet points are fine for listing movies.${pc?.watched ? `\n\nMovies they've watched recently: ${pc.watched}` : ""}${pc?.watchlist ? `\n\nMovies on their watchlist (haven't watched yet): ${pc.watchlist}` : ""}${pc?.tasteProfile ? `\n\nTheir taste profile: ${pc.tasteProfile}` : ""}`;
+The user is using the movie picker — they want to decide what to watch right now. Get to recommendations fast.${pc?.watched ? `\n\nMovies they've watched recently: ${pc.watched}` : ""}${pc?.watchlist ? `\n\nMovies on their watchlist (haven't watched yet): ${pc.watchlist}` : ""}${pc?.tasteProfile ? `\n\nTheir taste profile: ${pc.tasteProfile}` : ""}`;
       } else {
         const personalContext = tasteProfile ? `The user's taste profile: ${tasteProfile}` : "";
         const mc = activeChat?.movieContext;
         const debriefContext = mc ? `\n\nThe user is debriefing about "${mc.title}" (${mc.year}, ${mc.genre}). TMDB rating: ${mc.tmdbRating}/10. Synopsis: ${mc.synopsis}.` : "";
-        movieContext = `You're a movie-loving friend who genuinely enjoys talking about films. Keep it conversational and natural. Match the user's energy — short replies when they're casual, longer when they ask something deeper.${smartEnrichment ? " You have been given detailed movie data and web research below — use this to give informed, specific, and accurate answers. Reference specific details naturally without dumping all the data." : " Don't volunteer cast, director, or production details unless asked."}
-
-You have two modes and should switch fluidly based on context:
-- Casual mode: relaxed, conversational, opinionated. Crack jokes when it fits. Keep recommendations tight — movie name, year, one sentence why. This is the default.
-- Thoughtful mode: when someone asks for a plot explanation, thematic analysis, character breakdown, or recommendation reasoning, respond with clarity and depth. Be insightful without being academic. Structure your thoughts but keep the tone warm and approachable.
-
-Never use internet slang (no "lol", "ngl", "fr", "lowkey", "tbh", "imo"). Write like a real person having a real conversation, not like a text message. Bullet points are acceptable when listing things. No bold, no emojis, no markdown formatting ever.${debriefContext}${personalContext ? "\n\n" + personalContext : ""}${smartEnrichment ? "\n\n" + smartEnrichment : ""}`;
+        movieContext = `${basePrompt}${smartEnrichment ? "\n\nYou have detailed movie data and web research below — use it to give informed, specific answers. Reference details naturally without dumping all the data." : ""}${debriefContext}${personalContext ? "\n\n" + personalContext : ""}${smartEnrichment ? "\n\n" + smartEnrichment : ""}`;
       }
 
       const resp = await fetch(`${API_URL}/api/chat`, {
@@ -3867,7 +3878,7 @@ function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
 const GENRE_ID_TO_LABEL = {};
 GENRE_FILTERS.forEach((g) => { GENRE_ID_TO_LABEL[g.id] = g.label; });
 
-function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, setWatchedRating, showToast }) {
+function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, setWatchedRating, showToast, watchedMovies }) {
   const SESSION_LIMIT = 30;
 
   // ─── STEP 1: STATE ───
@@ -3887,6 +3898,8 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   const [maybeLater, setMaybeLater] = useState(() => loadFromStorage("cc_discover_maybe_later", []));
   const [watchedModal, setWatchedModal] = useState(null);
   const [watchedSlider, setWatchedSlider] = useState(75);
+  const [cardKey, setCardKey] = useState(0);
+  const [counterBump, setCounterBump] = useState(false);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const isHorizontalSwipe = useRef(false);
@@ -3903,6 +3916,24 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     watchedIds.forEach((id) => ids.add(id));
     return ids;
   }, [savedIds, watchedIds]);
+
+  // Compute preferred release date filter from journal decade preferences
+  const releaseDateGte = useMemo(() => {
+    if (!watchedMovies || watchedMovies.size === 0) return "2000-01-01";
+    const decadeCounts = {};
+    watchedMovies.forEach((m) => {
+      const yr = parseInt(m.year);
+      if (!yr || isNaN(yr)) return;
+      const decade = Math.floor(yr / 10) * 10;
+      decadeCounts[decade] = (decadeCounts[decade] || 0) + 1;
+    });
+    const entries = Object.entries(decadeCounts);
+    if (entries.length === 0) return "2000-01-01";
+    entries.sort((a, b) => b[1] - a[1]);
+    const topDecade = parseInt(entries[0][0]);
+    // 5-year buffer below preferred decade
+    return `${topDecade - 5}-01-01`;
+  }, [watchedMovies]);
 
   // Only persist maybeLater to localStorage
   useEffect(() => { saveToStorage("cc_discover_maybe_later", maybeLater); }, [maybeLater]);
@@ -3923,6 +3954,8 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   const loadMoviesRef = useRef(null);
 
   const loadMovies = async (genreIds = [], append = false) => {
+    console.log("loadMovies called with genreIds:", genreIds);
+    console.log("Active genres ref:", [...activeGenresRef.current]);
     const version = ++fetchVersionRef.current;
 
     if (!append) {
@@ -3933,22 +3966,42 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
 
     try {
       const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-      let baseUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&vote_average.gte=6.5&vote_count.gte=100&with_original_language=en&sort_by=popularity.desc`;
+      let baseUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&vote_average.gte=6.5&vote_count.gte=100&with_original_language=en&sort_by=popularity.desc&primary_release_date.gte=${releaseDateGte}`;
       if (genreIds.length > 0) {
         baseUrl += `&with_genres=${genreIds.join("|")}`;
       }
 
+      // Probe page 1 first to discover total_pages, so we don't request beyond available range
+      let maxPage = 500; // TMDB hard cap
+      try {
+        const probeRes = await fetch(`${baseUrl}&page=1`);
+        if (probeRes.ok) {
+          const probeData = await probeRes.json();
+          maxPage = Math.min(probeData.total_pages || 1, 500);
+          console.log("TMDB total_pages for this query:", probeData.total_pages, "-> capped maxPage:", maxPage);
+        }
+      } catch {
+        // fallback to default maxPage
+      }
+
       const genreIdSet = new Set(genreIds);
       for (let attempt = 0; attempt < 3; attempt++) {
-        const page = Math.floor(Math.random() * 100) + 1;
+        // Pick a random page within the actual available range (leave room for page+1 fetch)
+        const pageLimit = Math.max(1, maxPage - 1);
+        const page = Math.floor(Math.random() * pageLimit) + 1;
+        const fetchUrl1 = `${baseUrl}&page=${page}`;
+        const fetchUrl2 = `${baseUrl}&page=${page + 1}`;
+        console.log(`[Attempt ${attempt + 1}] Fetching page ${page}/${page + 1} of ${maxPage}:`, fetchUrl1);
         try {
           const [res1, res2] = await Promise.all([
-            fetch(`${baseUrl}&page=${page}`),
-            fetch(`${baseUrl}&page=${page + 1}`),
+            fetch(fetchUrl1),
+            fetch(fetchUrl2),
           ]);
           if (!res1.ok || !res2.ok) continue;
           const [data1, data2] = await Promise.all([res1.json(), res2.json()]);
           const combined = [...(data1?.results || []), ...(data2?.results || [])];
+          console.log(`Page ${page} returned ${data1?.results?.length || 0} raw results`);
+          console.log(`Page ${page + 1} returned ${data2?.results?.length || 0} raw results`);
           const seenIds = new Set();
           const batch = combined
             .filter((m) => {
@@ -3967,9 +4020,12 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
               return movie;
             });
 
+          console.log(`After filtering exclusions: ${batch.length} results`);
+
           if (batch.length > 0 && fetchVersionRef.current === version) {
             batch.sort(() => Math.random() - 0.5);
             const limited = batch.slice(0, SESSION_LIMIT);
+            console.log(`Final batch length: ${limited.length}`);
             if (append) {
               setMovies((prev) => {
                 const existingIds = new Set(prev.map((m) => m.id));
@@ -3992,6 +4048,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       }
 
       // All 3 attempts returned 0 results
+      console.log("All 3 attempts returned 0 usable results for genreIds:", genreIds);
       if (fetchVersionRef.current === version && !append) {
         setMovies([]);
         setCurrentIndex(0);
@@ -4086,6 +4143,9 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       setSwipeCount((c) => c + 1);
       setUndoHistory((prev) => [{ movie, action, index: currentIndex }, ...prev].slice(0, 5));
       setCurrentIndex((i) => i + 1);
+      setCardKey((k) => k + 1);
+      setCounterBump(true);
+      setTimeout(() => setCounterBump(false), 200);
       setSwipeDir(null);
       setShowStamp(null);
       setDragX(0);
@@ -4101,6 +4161,9 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     setWatchedModal(null);
     setSwipeCount((c) => c + 1);
     setCurrentIndex((i) => i + 1);
+    setCardKey((k) => k + 1);
+    setCounterBump(true);
+    setTimeout(() => setCounterBump(false), 200);
   }, [watchedModal, watchedSlider, toggleWatched, setWatchedRating]);
 
   const handleSwipe = useCallback((direction) => {
@@ -4342,7 +4405,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         >
           <UndoIcon />
         </button>
-        <span className="discover-session-count">{swipeCount} / {SESSION_LIMIT} discovered</span>
+        <span className={`discover-session-count${counterBump ? " bump" : ""}`}>{swipeCount} / {SESSION_LIMIT} discovered</span>
         <button className="discover-undo-btn" onClick={() => loadMoviesRef.current([...activeGenresRef.current])} title="Shuffle">
           <ShuffleIcon size={20} />
         </button>
@@ -4397,7 +4460,8 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
           )}
           {currentMovie && (
             <div
-              className={`discover-card discover-card-active ${swipeDir ? `swipe-${swipeDir}` : ""}`}
+              key={cardKey}
+              className={`discover-card discover-card-active ${swipeDir ? `swipe-${swipeDir}` : "card-enter"}`}
               style={{
                 transform: swipeDir ? undefined : `translateX(${dragX}px) rotate(${rotation}deg)`,
                 transition: isDragging ? "none" : "transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
@@ -4926,6 +4990,7 @@ function MainApp() {
             collections={collections} toggleMovieInCollection={toggleMovieInCollection}
             setWatchedRating={setWatchedRating}
             showToast={showToast}
+            watchedMovies={watchedMovies}
           />
         )}
         {activeTab === "journal" && (

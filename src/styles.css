@@ -356,7 +356,6 @@ body {
   flex-direction: column;
   align-items: center;
   cursor: pointer;
-  animation: cardIn 0.3s ease both;
   position: relative;
 }
 
@@ -365,16 +364,16 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-.movie-tile:nth-child(1) { animation-delay: 0ms; }
-.movie-tile:nth-child(2) { animation-delay: 30ms; }
-.movie-tile:nth-child(3) { animation-delay: 60ms; }
-.movie-tile:nth-child(4) { animation-delay: 90ms; }
-.movie-tile:nth-child(5) { animation-delay: 120ms; }
-.movie-tile:nth-child(6) { animation-delay: 150ms; }
-.movie-tile:nth-child(7) { animation-delay: 180ms; }
-.movie-tile:nth-child(8) { animation-delay: 210ms; }
-.movie-tile:nth-child(9) { animation-delay: 240ms; }
-.movie-tile:nth-child(n+10) { animation-delay: 270ms; }
+/* Group fade-in: entire grid/row fades in together */
+@keyframes groupFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.movies-grid,
+.scroll-row-inner {
+  animation: groupFadeIn 0.3s ease-out;
+}
 
 .movie-poster {
   width: 100%;
@@ -1560,7 +1559,13 @@ body {
   gap: 3px;
   min-width: 280px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
-  animation: fadeIn 0.15s ease;
+  animation: dropdownSlideDown 0.15s ease-out;
+  transform-origin: top center;
+}
+
+@keyframes dropdownSlideDown {
+  from { opacity: 0; transform: translateY(-8px) scaleY(0.95); }
+  to { opacity: 1; transform: translateY(0) scaleY(1); }
 }
 
 .genre-option {
@@ -1576,7 +1581,7 @@ body {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.12s;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
   text-align: left;
 }
 
@@ -3027,8 +3032,8 @@ body {
   border-radius: 16px;
   overflow: hidden;
   height: 220px;
-  margin-bottom: 16px;
-  background: #0a0508;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, #3D1020 0%, #8B2040 40%, #5A1530 100%);
 }
 
 .sp-hero-bg {
@@ -3111,9 +3116,9 @@ body {
   flex-shrink: 0;
 }
 
-/* Sections */
+/* Sections — tight spacing, thin dividers */
 .sp-section {
-  padding: 16px 0;
+  padding: 12px 0;
   border-top: 1px solid var(--border);
 }
 
@@ -3125,7 +3130,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .sp-section-label {
@@ -3139,32 +3144,34 @@ body {
 
 .sp-section-action {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--accent);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
   background: none;
   border: none;
   cursor: pointer;
   padding: 0;
+  transition: color 0.15s;
 }
 
 .sp-section-action:hover {
-  color: var(--accent-hover);
+  color: var(--accent);
 }
 
-/* Pinned Favorite */
+/* Pinned Favorite — inline with left accent bar */
 .sp-pinned-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
-  background: var(--bg-card);
-  border-radius: 12px;
+  gap: 10px;
+  padding: 0 0 0 12px;
+  background: none;
+  border-radius: 0;
+  border-left: 4px solid var(--accent-burgundy, #8B2040);
 }
 
 .sp-pinned-poster {
-  width: 50px;
-  height: 75px;
+  width: 70px;
+  height: 105px;
   border-radius: 8px;
   overflow: hidden;
   flex-shrink: 0;
@@ -3178,8 +3185,9 @@ body {
 }
 
 .sp-pinned-info {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
+  margin-right: 8px;
 }
 
 .sp-pinned-title {
@@ -3298,6 +3306,14 @@ body {
   color: var(--text-muted);
 }
 
+/* Showcase section — subtle tinted background */
+.sp-showcase-section {
+  background: var(--bg-card-alt, var(--bg-card));
+  margin: 0 -16px;
+  padding: 12px 16px;
+  border-radius: 0;
+}
+
 /* Showcase Badges */
 .sp-showcase-row {
   display: grid;
@@ -3310,12 +3326,28 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 14px 8px;
+  gap: 3px;
+  padding: 10px 6px;
   background: var(--bg-card);
   border-radius: 12px;
-  min-height: 80px;
+  border: 1px solid transparent;
+  min-height: 0;
   justify-content: center;
+}
+
+.sp-showcase-slot[data-tier="gold"] {
+  background: rgba(212, 176, 92, 0.08);
+  border-color: rgba(212, 168, 67, 0.2);
+}
+
+.sp-showcase-slot[data-tier="silver"] {
+  background: rgba(180, 180, 190, 0.08);
+  border-color: rgba(168, 168, 168, 0.2);
+}
+
+.sp-showcase-slot[data-tier="bronze"] {
+  background: rgba(180, 120, 80, 0.08);
+  border-color: rgba(184, 115, 51, 0.2);
 }
 
 .sp-showcase-empty {
@@ -3324,16 +3356,16 @@ body {
 }
 
 .sp-showcase-icon {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .sp-showcase-icon svg {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
 }
 
 .sp-showcase-name {
@@ -3346,10 +3378,10 @@ body {
 
 .sp-showcase-tier {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 9px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 1px;
 }
 
 .sp-see-all-btn {
@@ -6044,7 +6076,7 @@ body {
 /* Stats cards */
 /* Light theme: profile hero stays dark/cinematic */
 [data-theme="light"] .sp-hero {
-  background: #0a0508;
+  background: linear-gradient(135deg, #3D1020 0%, #8B2040 40%, #5A1530 100%);
 }
 
 /* Insight card */
@@ -6654,6 +6686,17 @@ body {
   white-space: nowrap;
   flex-shrink: 0;
   letter-spacing: 0.2px;
+  transition: transform 0.15s ease-out;
+}
+
+.discover-session-count.bump {
+  animation: counterBump 0.2s ease-out;
+}
+
+@keyframes counterBump {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.18); }
+  100% { transform: scale(1); }
 }
 
 /* ── Filter Icon Button ── */
@@ -7034,6 +7077,31 @@ body {
   100% { transform: translateX(-140%) rotate(-12deg); opacity: 0; }
 }
 
+/* Card entrance after swipe — uses opacity only to avoid conflicting with inline transform */
+.discover-card-active.card-enter {
+  animation: cardEnter 0.15s ease-out forwards;
+}
+
+@keyframes cardEnter {
+  from { opacity: 0.6; }
+  to { opacity: 1; }
+}
+
+/* Card fade-out during loading transition */
+.discover-card-active.card-fade-out {
+  animation: cardFadeOut 0.15s ease-in forwards;
+}
+
+@keyframes cardFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Skeleton fade-in */
+.discover-skeleton-card.skeleton-fade-in {
+  animation: fadeIn 0.15s ease-out;
+}
+
 /* ── Action Buttons with Labels ── */
 .discover-actions {
   display: flex;
@@ -7067,11 +7135,12 @@ body {
   height: 48px;
   border-radius: 50%;
   cursor: pointer;
-  transition: all 0.2s, transform 0.1s;
+  transition: all 0.2s, transform 0.12s ease-out;
 }
 
 .discover-action-btn:active {
-  transform: scale(0.88);
+  transform: scale(0.95);
+  transition: transform 0.06s ease-in;
 }
 
 .discover-action-btn svg {
@@ -7362,6 +7431,12 @@ body {
   text-align: center;
   gap: 10px;
   padding: 40px 24px;
+  animation: discoverFadeIn 0.2s ease-out;
+}
+
+@keyframes discoverFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .discover-empty-icon {

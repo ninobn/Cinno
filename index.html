@@ -64,15 +64,22 @@
         <div class="splash-mark">
           <svg width="64" height="64" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
             <defs>
-              <linearGradient id="splash-grad" x1="0.5" y1="0" x2="0.5" y2="0.55">
-                <stop offset="0%" stop-color="#C9A84C" stop-opacity="0.4"/>
-                <stop offset="40%" stop-color="#C9A84C" stop-opacity="0.12"/>
-                <stop offset="100%" stop-color="#8B2040" stop-opacity="0"/>
-              </linearGradient>
+              <radialGradient id="splash-hinge-glow" cx="0.25" cy="0.48" r="0.15">
+                <stop offset="0%" stop-color="#D4B05C" stop-opacity="0.25"/>
+                <stop offset="100%" stop-color="#D4B05C" stop-opacity="0"/>
+              </radialGradient>
             </defs>
             <rect x="4" y="4" width="120" height="120" rx="28" fill="#8B2040"/>
-            <path d="M48,4 L80,4 Q86,28 92,58 L64,64 L36,58 Q42,28 48,4Z" fill="url(#splash-grad)"/>
-            <text x="64" y="82" text-anchor="middle" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="72" fill="#F5F0EB">c</text>
+            <circle cx="32" cy="56" r="16" fill="url(#splash-hinge-glow)"/>
+            <rect x="32" y="56" width="66" height="34" rx="4" fill="#F5F0EB" opacity="0.04"/>
+            <rect x="32" y="56" width="66" height="34" rx="4" fill="none" stroke="#F5F0EB" stroke-width="3.5" opacity="0.9"/>
+            <line x1="32" y1="56" x2="98" y2="56" stroke="#F5F0EB" stroke-width="3.5" opacity="0.9"/>
+            <line x1="32" y1="56" x2="96" y2="34" stroke="#F5F0EB" stroke-width="3.5" stroke-linecap="round"/>
+            <line x1="48" y1="52.5" x2="51" y2="41" stroke="#D4B05C" stroke-width="2.8" stroke-linecap="round" opacity="0.55"/>
+            <line x1="62" y1="50.5" x2="65" y2="39" stroke="#D4B05C" stroke-width="2.8" stroke-linecap="round" opacity="0.55"/>
+            <line x1="76" y1="48.5" x2="79" y2="37" stroke="#D4B05C" stroke-width="2.8" stroke-linecap="round" opacity="0.55"/>
+            <circle cx="32" cy="56" r="4.5" fill="none" stroke="#D4B05C" stroke-width="2.2" opacity="0.7"/>
+            <circle cx="32" cy="56" r="3" fill="#D4B05C"/>
           </svg>
         </div>
         <div class="splash-name">Cinno</div>
