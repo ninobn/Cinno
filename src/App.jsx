@@ -1386,11 +1386,12 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
   }, [genreDropdownOpen]);
 
   const handleSearch = useCallback((q) => {
-    setQuery(q);
+    const safeQ = sanitizeText(q).slice(0, 200);
+    setQuery(safeQ);
     setSearchPage(1);
     setFetchError(false);
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    if (!q.trim()) {
+    if (!safeQ.trim()) {
       setSearchResults([]);
       setLoading(false);
       return;
@@ -1398,7 +1399,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
     setLoading(true);
     searchTimeout.current = setTimeout(async () => {
       try {
-        const result = await searchMovies(q, 1);
+        const result = await searchMovies(safeQ, 1);
         setSearchResults(result.movies);
         setSearchTotalPages(result.totalPages || 1);
       } catch {
@@ -3437,9 +3438,18 @@ The user is using the movie picker — they want to decide what to watch right n
           model: "claude-sonnet-4-6",
           max_tokens: 1000,
           system: movieContext,
-          messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+          messages: newMessages.slice(-50).map((m) => ({ role: m.role, content: m.content })),
         }),
       });
+
+      if (resp.status === 429) {
+        setError("Slow down! Try again in a minute.");
+        return;
+      }
+      if (resp.status === 503) {
+        setError("Daily chat limit reached. Try again tomorrow.");
+        return;
+      }
 
       const data = await resp.json();
       if (data.error) throw new Error(data.error.message || data.error.type || "API error");
@@ -4729,7 +4739,7 @@ export default function App() {
 }
 
 function MainApp() {
-  const { user, isGuest, signOut, signInWithGoogle } = useAuth();
+  const { user, isGuest, signOut, signInWithGoogle, registerSignOutCallback } = useAuth();
   const { guardAction, guestModal } = useGuestGate();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
@@ -4811,7 +4821,7 @@ function MainApp() {
 
   const toggleTheme = () => setTheme((t) => t === "dark" ? "light" : "dark");
 
-  const clearAllData = () => {
+  const clearAllData = useCallback(() => {
     const keys = ["cc_savedIds", "cc_savedMovies", "cc_watchedIds", "cc_watchedMovies", "cc_watchedNotes", "cc_watchedRatings", "cc_tasteProfile", "cc_aiInsight", "cc_moodPlaylist", "cc_chats", "cc_activeChatId", "cc_collections", "cc_badges", "cc_watchedDates", "cc_discover_swipe_weights", "cc_discover_seen", "cc_discover_maybe_later", "cc_discover_swipe_history", "cc_shownMilestones", "cc_rankSort", "cc_journalSort", "cc_runtimeCache"];
     keys.forEach((k) => localStorage.removeItem(k));
     setSavedIds(new Set());
@@ -4830,7 +4840,12 @@ function MainApp() {
     const newId = Date.now().toString();
     setChats([{ id: newId, title: "New chat", messages: [] }]);
     setActiveChatId(newId);
-  };
+  }, []);
+
+  // Register callback so signOut clears all app state
+  useEffect(() => {
+    registerSignOutCallback(clearAllData);
+  }, [registerSignOutCallback, clearAllData]);
 
   const requestClearAllData = () => {
     setConfirmDialog({
