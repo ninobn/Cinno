@@ -1,128 +1,100 @@
-\## Cinno Project Rules
+\## Current Roadmap
 
 
 
-\### Environment
+\### STATUS: Pre-deployment polish + Supabase migration
 
-\- This is a Windows machine. NEVER use the Bash tool. NEVER try to run shell commands. Only edit files directly.
 
-\- The user will test everything in the browser manually.
 
+\### Phase 1: Supabase Auth + Guest Mode (DO FIRST)
 
+\- Set up Supabase project and configure in .env (VITE\_SUPABASE\_URL, VITE\_SUPABASE\_ANON\_KEY)
 
-\### Project
+\- Install @supabase/supabase-js
 
-\- App name is Cinno, a movie companion web app
+\- Create auth context/provider wrapping the app
 
-\- Uses React + Vite, TMDB API, and Anthropic Claude API via a proxy server
+\- Three auth states: logged out (guest), logged in (Google), logged in (Apple)
 
-\- All state is stored in localStorage
+\- Guest mode: user can browse Search tab fully (hero banner, sections, search, genre filter, movie modal viewing)
 
+\- Guest restrictions: when guest tries to save to watchlist, add to journal, use chat, or use discover, show a clean modal: "Sign in to unlock this feature" with Google and Apple sign-in buttons and a "Continue browsing" dismiss button
 
+\- Google OAuth login via Supabase Auth
 
-\### Code Style
+\- Apple OAuth login via Supabase Auth
 
-\- Dark minimal UI, same style throughout
+\- Auth UI: clean login screen with Cinno logo, "Welcome to Cinno" heading, Google and Apple sign-in buttons, and "Continue as guest" link below
 
-\- Use CSS media queries for responsive design
+\- Show user profile icon in header when logged in (replace settings icon or add next to it)
 
-\- No external chart libraries, use SVG
+\- Logout option in settings
 
-\- No markdown, no bold, no emojis in AI chat responses
 
 
+\### Phase 2: Supabase Database Migration
 
-\## Current Roadmap (in order)
+\- Create database tables:
 
+&#x20; - watchlist (id, user\_id, tmdb\_id, movie\_data jsonb, created\_at)
 
+&#x20; - journal (id, user\_id, tmdb\_id, movie\_data jsonb, rating, notes, watch\_date, created\_at)
 
-\### Phase 1: Smart Discover Engine
+&#x20; - collections (id, user\_id, name, created\_at)
 
-\- Build taste profile from journal data (genre scores, decade preferences, top 5 keyword analysis)
+&#x20; - collection\_movies (id, collection\_id, tmdb\_id, created\_at)
 
-\- Fetch movies via TMDB /discover/movie with weighted parameters from taste profile
+&#x20; - chat\_conversations (id, user\_id, title, messages jsonb, created\_at, updated\_at)
 
-\- Exclude all movies already in watchlist or journal
+&#x20; - user\_preferences (id, user\_id, theme, discover\_weights jsonb, pinned\_movie\_id, showcase\_badges jsonb, smart\_mode boolean)
 
-\- Real-time swipe learning: right swipe boosts genres +5, left swipe penalizes +3
+\- Replace ALL localStorage reads/writes with Supabase queries
 
-\- Every 5 swipes refetch with adjusted weights
+\- On first login: check if localStorage has existing data, if yes show "Import your existing data?" prompt, migrate all localStorage data to Supabase under the user's account
 
-\- Mix in 20% random movies from outside top genres
+\- After migration, clear localStorage movie data (keep theme preference locally for fast load)
 
-\- Store swipe weights in localStorage, merge with journal data at 70/30 ratio
+\- Add loading states for all database operations
 
-\- Use TMDB /movie/{id}/keywords for top 5 rated movies to get taste keywords
+\- Handle offline gracefully — show cached data if network fails
 
 
 
-\### Phase 2: UI Polish Pass
+\### Phase 3: Deploy
 
-\- Consistent card backgrounds across all tabs (no gray gradients in light mode)
+\- Build frontend for production: npm run build
 
-\- Consistent spacing using 8px grid system
+\- Deploy frontend to Vercel
 
-\- Consistent border radius (16px cards, 12px posters)
+\- Deploy proxy server (server.js) to Railway or Render
 
-\- Fix any misaligned buttons, overflowing text, or inconsistent padding
+\- Set environment variables on both platforms:
 
-\- Ensure all hover states and tap feedback are present everywhere
+&#x20; - Vercel: VITE\_SUPABASE\_URL, VITE\_SUPABASE\_ANON\_KEY, VITE\_API\_URL (pointing to Railway/Render proxy URL), VITE\_TMDB\_API\_KEY
 
-\- Fix the broken rating badge on first Search movie
+&#x20; - Railway/Render: ANTHROPIC\_API\_KEY, TAVILY\_API\_KEY, PRODUCTION\_URL (Vercel URL for CORS)
 
-\- Do NOT add features, only polish existing UI
+\- Update CORS in server.js to allow the production Vercel URL
 
+\- Test full flow: guest browse → sign in → data sync → all features work
 
+\- Add Vercel Analytics
 
-\### Phase 3: Movie Identity in Stats
+\- PWA manifest + service worker for installability
 
-\- Analyze journal genre distribution and average ratings per genre
 
-\- Map to identity archetypes (The Thrill Seeker, The Deep Feeler, etc)
 
-\- Display as prominent card at top of Stats view
+\### Phase 4: Post-launch Polish
 
-\- Add 2-3 smaller trait tags below
+\- Monitor for bugs via Vercel Analytics
 
-\- Update whenever journal data changes
+\- Dark mode thorough testing
 
-\- Store in localStorage
+\- Performance optimization
 
-\- No API calls needed, all local logic
+\- End Debrief → auto journal feature
 
+\- Movie Identity refinement
 
-
-\### Phase 4: End Debrief → Auto Journal
-
-\- Add "End Debrief" button in chat top bar for debrief chats only
-
-\- Send conversation to AI proxy to extract rating, key thoughts, summary
-
-\- Show editable journal entry modal with slider, text fields, date
-
-\- User reviews and saves to journal in same format as manual entries
-
-\- Toast confirmation on save
-
-
-
-\### Phase 5: Dark Mode Fix
-
-\- Test dark mode toggle thoroughly
-
-\- Fix any colors, backgrounds, or borders that look wrong in dark mode
-
-\- Ensure all cards, modals, and charts work in both themes
-
-
-
-\### Phase 6: Deployment Prep
-
-\- Setup for Vercel/Netlify frontend deployment
-
-\- Setup for Railway/Render backend proxy
-
-\- Environment variable configuration
-
-\- PWA manifest and service worker
+\- Year-end Wrapped feature (build closer to December)
 

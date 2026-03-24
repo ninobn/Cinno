@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback, useId } from "react";
 import { createPortal } from "react-dom";
 import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getMovieKeywords, getSmartContext, tmdbToMovie, IMG_BASE } from "./tmdb.js";
+import { useAuth } from "./AuthContext.jsx";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -3371,7 +3372,7 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
   }, []);
 
   const sendMessage = async (text) => {
-    const userMsg = text || input.trim();
+    const userMsg = sanitizeText(text || input.trim()).slice(0, 2000);
     if (!userMsg || loading) return;
 
     setInput("");
@@ -3878,7 +3879,7 @@ function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
 const GENRE_ID_TO_LABEL = {};
 GENRE_FILTERS.forEach((g) => { GENRE_ID_TO_LABEL[g.id] = g.label; });
 
-function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, setWatchedRating, showToast, watchedMovies }) {
+function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, setWatchedRating, showToast, watchedMovies, isGuest, guardAction }) {
   const SESSION_LIMIT = 30;
 
   // ─── STEP 1: STATE ───
@@ -4113,6 +4114,12 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     const movie = movies[currentIndex];
     if (!movie) return;
 
+    // Guest gate: block save/maybe/watched but allow skip
+    if (isGuest && action !== "skip" && guardAction) {
+      guardAction(() => {}); // shows the sign-in modal
+      return;
+    }
+
     // "watched" opens the rating modal instead of swiping
     if (action === "watched") {
       setWatchedModal(movie);
@@ -4151,7 +4158,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       setDragX(0);
       swipingRef.current = false;
     }, 300);
-  }, [movies, currentIndex, savedIds, toggleSave, showToast]);
+  }, [movies, currentIndex, savedIds, toggleSave, showToast, isGuest, guardAction]);
 
   // Save from the "Already Watched" mini modal
   const handleWatchedSave = useCallback(() => {
@@ -4579,20 +4586,164 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   );
 }
 
+// ─── Auth Components ────────────────────────────────────────────────────────────
+
+function sanitizeText(str) {
+  if (typeof str !== "string") return "";
+  return str.replace(/<[^>]*>/g, "").slice(0, 2000);
+}
+
+function LoginScreen() {
+  const { signInWithGoogle, continueAsGuest, signInCooldown, signInError } = useAuth();
+
+  return (
+    <div className="login-screen">
+      <div className="login-card">
+        <CinnoLogo size={64} />
+        <h1 className="login-title">Welcome to Cinno</h1>
+        <p className="login-subtitle">Your personal movie companion</p>
+
+        <button
+          className="login-google-btn"
+          onClick={signInWithGoogle}
+          disabled={signInCooldown}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          {signInCooldown ? "Please wait..." : "Sign in with Google"}
+        </button>
+
+        {signInError && <p className="login-error">{signInError}</p>}
+
+        <button className="login-guest-btn" onClick={continueAsGuest}>
+          Continue as guest
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function GuestRestrictionModal({ onClose }) {
+  const { signInWithGoogle, signInCooldown, signInError } = useAuth();
+
+  return createPortal(
+    <div className="guest-modal-overlay" onClick={onClose}>
+      <div className="guest-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="guest-modal-icon">
+          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+        </div>
+        <h2 className="guest-modal-title">Sign in to unlock this feature</h2>
+        <p className="guest-modal-desc">Create an account to save movies, write reviews, chat with AI, and more.</p>
+
+        <button
+          className="login-google-btn"
+          onClick={signInWithGoogle}
+          disabled={signInCooldown}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          {signInCooldown ? "Please wait..." : "Sign in with Google"}
+        </button>
+
+        {signInError && <p className="login-error">{signInError}</p>}
+
+        <button className="guest-modal-dismiss" onClick={onClose}>
+          Continue browsing
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function useGuestGate() {
+  const { user, isGuest, isAuthenticated } = useAuth();
+  const [showModal, setShowModal] = useState(false);
+
+  const guardAction = useCallback((action) => {
+    // Always re-check auth state on every restricted action
+    if (!isAuthenticated() && isGuest) {
+      setShowModal(true);
+      return;
+    }
+    if (!user && !isGuest) {
+      setShowModal(true);
+      return;
+    }
+    action();
+  }, [user, isGuest, isAuthenticated]);
+
+  const modal = showModal ? <GuestRestrictionModal onClose={() => setShowModal(false)} /> : null;
+
+  return { guardAction, guestModal: modal };
+}
+
+const UserIcon = () => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
+
 // ─── Main App ──────────────────────────────────────────────────────────────────
 
 const MAIN_TAB_ORDER = { search: 0, saved: 1, discover: 2, journal: 3, chat: 4 };
 
 const IS_SHARED_VIEW = new URLSearchParams(window.location.search).has("shared");
 
-export default function App() {
+function AppRouter() {
   if (IS_SHARED_VIEW) {
     return <SharedWatchlistView />;
   }
+  return <AuthGate />;
+}
+
+function AuthGate() {
+  const { user, loading, isGuest } = useAuth();
+
+  if (loading) {
+    // The HTML splash screen handles the loading state visually
+    return null;
+  }
+
+  if (!user && !isGuest) {
+    return <LoginScreen />;
+  }
+
   return <MainApp />;
 }
 
+export default function App() {
+  return <AppRouter />;
+}
+
 function MainApp() {
+  const { user, isGuest, signOut, signInWithGoogle } = useAuth();
+  const { guardAction, guestModal } = useGuestGate();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef(null);
+
+  // Close user menu on outside click
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handler = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setUserMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [userMenuOpen]);
+
   const [activeTab, _setActiveTab] = useState("search");
   const prevTabRef = useRef("search");
   const [tabDir, setTabDir] = useState(null);
@@ -4768,7 +4919,7 @@ function MainApp() {
   };
 
   const setWatchedNote = (id, text) => {
-    setWatchedNotes((prev) => new Map(prev).set(id, text));
+    setWatchedNotes((prev) => new Map(prev).set(id, sanitizeText(text).slice(0, 1000)));
   };
 
   const setWatchedRating = (id, rating) => {
@@ -4781,12 +4932,14 @@ function MainApp() {
 
   const createCollection = (name) => {
     const id = Date.now().toString();
-    setCollections((prev) => [...prev, { id, name, movieIds: [], isDefault: false }]);
+    const safeName = sanitizeText(name).slice(0, 50);
+    setCollections((prev) => [...prev, { id, name: safeName, movieIds: [], isDefault: false }]);
     return id;
   };
 
   const renameCollection = (collectionId, newName) => {
-    setCollections((prev) => prev.map((c) => c.id === collectionId ? { ...c, name: newName } : c));
+    const safeName = sanitizeText(newName).slice(0, 50);
+    setCollections((prev) => prev.map((c) => c.id === collectionId ? { ...c, name: safeName } : c));
   };
 
   const deleteCollection = (collectionId, afterDelete) => {
@@ -4952,6 +5105,48 @@ function MainApp() {
     { id: "chat",     label: "Chat",       icon: ChatIcon      },
   ];
 
+  // ── Guarded actions for guest mode ──
+  const guardedToggleSave = useCallback((movie) => {
+    guardAction(() => toggleSave(movie));
+  }, [guardAction, toggleSave]);
+
+  const guardedToggleWatched = useCallback((movie) => {
+    guardAction(() => toggleWatched(movie));
+  }, [guardAction, toggleWatched]);
+
+  const guardedCreateCollection = useCallback((name) => {
+    let result;
+    guardAction(() => { result = createCollection(sanitizeText(name).slice(0, 50)); });
+    return result;
+  }, [guardAction, createCollection]);
+
+  const guardedToggleMovieInCollection = useCallback((collectionId, movie) => {
+    guardAction(() => toggleMovieInCollection(collectionId, movie));
+  }, [guardAction, toggleMovieInCollection]);
+
+  const guardedStartDebrief = useCallback((movie) => {
+    guardAction(() => startDebrief(movie));
+  }, [guardAction, startDebrief]);
+
+  const guardedStartMoviePicker = useCallback(() => {
+    guardAction(() => startMoviePicker());
+  }, [guardAction, startMoviePicker]);
+
+  const guardedSetWatchedRating = useCallback((id, rating) => {
+    guardAction(() => setWatchedRating(id, rating));
+  }, [guardAction, setWatchedRating]);
+
+  // Guest users get blocked from Chat tab entirely
+  const handleTabClick = useCallback((tabId) => {
+    if (tabId === "chat" && isGuest) {
+      guardAction(() => {});
+      return;
+    }
+    setActiveTab(tabId);
+  }, [isGuest, guardAction, setActiveTab]);
+
+  const avatarUrl = user?.user_metadata?.avatar_url;
+
   return (
     <div className="app">
       <div className="header">
@@ -4960,6 +5155,32 @@ function MainApp() {
           Cinno
         </div>
         <div className="header-actions">
+          {user ? (
+            <div className="user-menu-wrapper" ref={userMenuRef}>
+              <button className="user-avatar-btn" onClick={() => setUserMenuOpen((v) => !v)}>
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" className="user-avatar-img" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="user-avatar-fallback"><UserIcon /></div>
+                )}
+              </button>
+              {userMenuOpen && (
+                <div className="user-dropdown">
+                  <button className="user-dropdown-item" onClick={() => { setUserMenuOpen(false); setSettingsOpen(true); }}>
+                    <GearIcon /> Settings
+                  </button>
+                  <button className="user-dropdown-item user-dropdown-signout" onClick={() => { setUserMenuOpen(false); signOut(); }}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button className="header-signin-btn" onClick={signInWithGoogle}>
+              Sign in
+            </button>
+          )}
           <button className="header-settings-btn" onClick={() => setSettingsOpen(true)}>
             <GearIcon />
           </button>
@@ -4968,29 +5189,31 @@ function MainApp() {
 
       <div className={`tab-panel ${tabDir ? `slide-${tabDir}` : ""}`} key={activeTab}>
         {activeTab === "search" && (
-          <SearchTab savedIds={savedIds} toggleSave={toggleSave} watchedIds={watchedIds} toggleWatched={toggleWatched} startDebrief={startDebrief} collections={collections} toggleMovieInCollection={toggleMovieInCollection} scrollPositions={scrollPositions} />
+          <SearchTab savedIds={savedIds} toggleSave={guardedToggleSave} watchedIds={watchedIds} toggleWatched={guardedToggleWatched} startDebrief={guardedStartDebrief} collections={collections} toggleMovieInCollection={guardedToggleMovieInCollection} scrollPositions={scrollPositions} />
         )}
         {activeTab === "saved" && (
           <SavedTab
-            savedIds={savedIds} toggleSave={toggleSave} savedMovies={savedMovies}
-            watchedIds={watchedIds} toggleWatched={toggleWatched} startDebrief={startDebrief}
-            collections={collections} createCollection={createCollection}
+            savedIds={savedIds} toggleSave={guardedToggleSave} savedMovies={savedMovies}
+            watchedIds={watchedIds} toggleWatched={guardedToggleWatched} startDebrief={guardedStartDebrief}
+            collections={collections} createCollection={guardedCreateCollection}
             renameCollection={renameCollection} deleteCollection={deleteCollection}
-            toggleMovieInCollection={toggleMovieInCollection}
-            onStartMoviePicker={startMoviePicker}
+            toggleMovieInCollection={guardedToggleMovieInCollection}
+            onStartMoviePicker={guardedStartMoviePicker}
             showToast={showToast}
             scrollPositions={scrollPositions}
           />
         )}
         {activeTab === "discover" && (
           <DiscoverTab
-            savedIds={savedIds} toggleSave={toggleSave}
-            watchedIds={watchedIds} toggleWatched={toggleWatched}
-            startDebrief={startDebrief}
-            collections={collections} toggleMovieInCollection={toggleMovieInCollection}
-            setWatchedRating={setWatchedRating}
+            savedIds={savedIds} toggleSave={guardedToggleSave}
+            watchedIds={watchedIds} toggleWatched={guardedToggleWatched}
+            startDebrief={guardedStartDebrief}
+            collections={collections} toggleMovieInCollection={guardedToggleMovieInCollection}
+            setWatchedRating={guardedSetWatchedRating}
             showToast={showToast}
             watchedMovies={watchedMovies}
+            isGuest={isGuest}
+            guardAction={guardAction}
           />
         )}
         {activeTab === "journal" && (
@@ -4999,15 +5222,15 @@ function MainApp() {
             watchedNotes={watchedNotes}
             setWatchedNote={setWatchedNote}
             watchedIds={watchedIds}
-            toggleWatched={toggleWatched}
+            toggleWatched={guardedToggleWatched}
             savedIds={savedIds}
-            toggleSave={toggleSave}
+            toggleSave={guardedToggleSave}
             watchedRatings={watchedRatings}
-            setWatchedRating={setWatchedRating}
+            setWatchedRating={guardedSetWatchedRating}
             watchedDates={watchedDates}
             tasteProfile={tasteProfile}
             onSetTasteProfile={setTasteProfile}
-            startDebrief={startDebrief}
+            startDebrief={guardedStartDebrief}
             unlockedBadges={unlockedBadges}
             collections={collections}
             showToast={showToast}
@@ -5024,8 +5247,40 @@ function MainApp() {
       </div>
 
       <div className="tab-bar">
+        {/* Desktop sidebar profile button — hidden on mobile */}
+        <div className="sidebar-profile-wrapper" ref={userMenuRef}>
+          <button
+            className="sidebar-profile-btn"
+            onClick={() => {
+              if (user) {
+                setUserMenuOpen((v) => !v);
+              } else {
+                guardAction(() => {});
+              }
+            }}
+          >
+            {user && avatarUrl ? (
+              <img src={avatarUrl} alt="" className="sidebar-profile-img" referrerPolicy="no-referrer" />
+            ) : (
+              <div className="sidebar-profile-fallback"><UserIcon /></div>
+            )}
+          </button>
+          {userMenuOpen && (
+            <div className="user-dropdown sidebar-dropdown">
+              <button className="user-dropdown-item" onClick={() => { setUserMenuOpen(false); setSettingsOpen(true); }}>
+                <GearIcon /> Settings
+              </button>
+              <button className="user-dropdown-item user-dropdown-signout" onClick={() => { setUserMenuOpen(false); signOut(); }}>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Sign out
+              </button>
+            </div>
+          )}
+          <div className="sidebar-profile-divider" />
+        </div>
+
         {tabs.map((tab) => (
-          <button key={tab.id} className={`tab-item ${activeTab === tab.id ? "active" : ""}`} onClick={() => setActiveTab(tab.id)}>
+          <button key={tab.id} className={`tab-item ${activeTab === tab.id ? "active" : ""}`} onClick={() => handleTabClick(tab.id)}>
             {activeTab === tab.id && <div className="tab-indicator" />}
             <tab.icon />
             <span className="tab-label">{tab.label}</span>
@@ -5046,6 +5301,7 @@ function MainApp() {
       <MilestoneCelebration milestone={activeMilestone} onDismiss={() => setActiveMilestone(null)} />
       <GlobalToast toast={globalToast} onDismiss={dismissToast} />
       <ConfirmDialog dialog={confirmDialog} onCancel={() => setConfirmDialog(null)} />
+      {guestModal}
     </div>
   );
 }
