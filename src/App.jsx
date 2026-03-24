@@ -298,10 +298,22 @@ function ScoreRing({ score, size = 44 }) {
   );
 }
 
-// ─── localStorage Helpers ──────────────────────────────────────────────────────
+// ─── User-Scoped localStorage ─────────────────────────────────────────────────
+// When a user is logged in, all user-data keys are prefixed with their Supabase
+// user ID so data persists across sign-out / sign-in cycles.  Guest mode uses
+// non-prefixed keys.  Theme is never scoped (shared across sessions).
+
+let _storageUserId = null;
+const NON_SCOPED_KEYS = new Set(["cc_theme"]);
+
+function scopedKey(key) {
+  if (!_storageUserId || NON_SCOPED_KEYS.has(key)) return key;
+  return `${_storageUserId}_${key}`;
+}
+
 function loadFromStorage(key, fallback) {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(scopedKey(key));
     return raw !== null ? JSON.parse(raw) : fallback;
   } catch {
     return fallback;
@@ -310,10 +322,41 @@ function loadFromStorage(key, fallback) {
 
 function saveToStorage(key, value) {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem(scopedKey(key), JSON.stringify(value));
   } catch (e) {
     console.error("localStorage save failed:", e);
   }
+}
+
+function removeFromStorage(key) {
+  try { localStorage.removeItem(scopedKey(key)); } catch {}
+}
+
+// All keys that hold user-specific data (everything except cc_theme)
+const USER_DATA_KEYS = [
+  "cc_savedIds", "cc_savedMovies", "cc_watchedIds", "cc_watchedMovies",
+  "cc_watchedNotes", "cc_watchedRatings", "cc_tasteProfile", "cc_collections",
+  "cc_badges", "cc_watchedDates", "cc_chats", "cc_activeChatId",
+  "cc_upNextId", "cc_stats_pinned", "cc_rankSort", "cc_journalSort",
+  "cc_runtimeCache", "cc_discover_maybe_later", "cc_shownMilestones",
+  "cc_aiInsight", "cc_moodPlaylist", "cc_discover_swipe_weights",
+  "cc_discover_seen", "cc_discover_swipe_history", "cinno-smart-mode",
+];
+
+// On first login: migrate any non-prefixed (pre-auth or guest) data to user-scoped keys
+function migrateGuestDataToUser(userId) {
+  // If user already has scoped data, skip — don't overwrite
+  if (USER_DATA_KEYS.some((k) => localStorage.getItem(`${userId}_${k}`) !== null)) return;
+  // If no non-prefixed data exists, nothing to migrate
+  if (!USER_DATA_KEYS.some((k) => localStorage.getItem(k) !== null)) return;
+  // Copy non-prefixed → prefixed, then delete originals
+  USER_DATA_KEYS.forEach((k) => {
+    const val = localStorage.getItem(k);
+    if (val !== null) {
+      localStorage.setItem(`${userId}_${k}`, val);
+      localStorage.removeItem(k);
+    }
+  });
 }
 
 // ─── SVG Icons ─────────────────────────────────────────────────────────────────
@@ -2206,7 +2249,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
   useEffect(() => {
     if (upNextId && !savedMovies.has(upNextId)) {
       setUpNextId(null);
-      localStorage.removeItem("cc_upNextId");
+      removeFromStorage("cc_upNextId");
     }
   }, [upNextId, savedMovies]);
 
@@ -2435,6 +2478,22 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
   const [showAllBadges, setShowAllBadges] = useState(false);
   const [showPinnedPicker, setShowPinnedPicker] = useState(false);
 
+  // ── Mosaic banner — living poster wall ──
+  const allPosterMovies = useMemo(() =>
+    [...watchedMovies.values()].filter((m) => m.poster_path), [watchedMovies]
+  );
+  const [mosaicIds, setMosaicIds] = useState(() => {
+    const shuffled = [...watchedMovies.values()]
+      .filter((m) => m.poster_path)
+      .sort(() => Math.random() - 0.5);
+    const ids = [];
+    for (let i = 0; i < 8 && shuffled.length > 0; i++) ids.push(shuffled[i % shuffled.length].id);
+    return ids;
+  });
+  const [mosaicSwap, setMosaicSwap] = useState(null);
+  const mosaicIdsRef = useRef(mosaicIds);
+  mosaicIdsRef.current = mosaicIds;
+
   const stats = useMemo(() => {
     const totalMovies = watchedMovies.size;
     const totalHours = totalMovies * 2;
@@ -2473,6 +2532,27 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
   // Persist pinned movie
   useEffect(() => { saveToStorage("cc_stats_pinned", pinnedId); }, [pinnedId]);
 
+  // Mosaic rotation — swap one random poster every 6s
+  useEffect(() => {
+    if (allPosterMovies.length < 2) return;
+    const timer = setInterval(() => {
+      const cur = mosaicIdsRef.current;
+      if (cur.length === 0) return;
+      const curSet = new Set(cur);
+      const pool = allPosterMovies.filter((m) => !curSet.has(m.id));
+      const src = pool.length > 0 ? pool : allPosterMovies;
+      const cell = Math.floor(Math.random() * cur.length);
+      const pick = src[Math.floor(Math.random() * src.length)];
+      if (!pick || pick.id === cur[cell]) return;
+      setMosaicSwap({ idx: cell, newId: pick.id });
+      setTimeout(() => {
+        setMosaicIds((prev) => { const n = [...prev]; n[cell] = pick.id; return n; });
+        setMosaicSwap(null);
+      }, 800);
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [allPosterMovies]);
+
   if (stats.totalMovies === 0) {
     return <div className="rankings-empty">Watch some movies to see your profile here.</div>;
   }
@@ -2481,13 +2561,6 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
   const topGenre = stats.genres[0]?.name || "Film";
   const identity = IDENTITY_MAP[topGenre] || "The Eclectic Explorer";
   const topThreeGenres = stats.genres.slice(0, 3);
-
-  // #1 movie for banner backdrop — fallback chain: backdrop → poster → gradient (CSS)
-  const topMovie = stats.highest?.movie;
-  const backdropSrc = topMovie?.backdrop_path
-    ? `${IMG_BASE}/w1280${topMovie.backdrop_path}`
-    : topMovie?.poster_path ? `${IMG_BASE}/w780${topMovie.poster_path}` : null;
-  const posterFallbackSrc = topMovie?.poster_path ? `${IMG_BASE}/w780${topMovie.poster_path}` : null;
 
   // Pinned favorite
   const pinnedMovie = pinnedId && watchedMovies.has(pinnedId) ? watchedMovies.get(pinnedId) : stats.highest?.movie;
@@ -2507,13 +2580,25 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
 
   return (
     <div className="sp-profile">
-      {/* ── SECTION 1: Profile Header Banner ── */}
-      <div className="sp-hero">
-        {backdropSrc && <img src={backdropSrc} alt="" className="sp-hero-bg" onError={(e) => {
-          if (posterFallbackSrc && e.target.src !== posterFallbackSrc) { e.target.src = posterFallbackSrc; }
-          else { e.target.style.display = "none"; }
-        }} />}
-        <div className="sp-hero-gradient" />
+      {/* ── SECTION 1: Mosaic Banner ── */}
+      <div className="sp-hero sp-stagger sp-stagger-1">
+        <div className="sp-mosaic">
+          {mosaicIds.map((movieId, idx) => {
+            const movie = watchedMovies.get(movieId);
+            if (!movie?.poster_path) return <div key={idx} className="sp-mosaic-cell" />;
+            const isSwapping = mosaicSwap?.idx === idx;
+            const swapMovie = isSwapping ? watchedMovies.get(mosaicSwap.newId) : null;
+            return (
+              <div key={idx} className="sp-mosaic-cell">
+                <img src={`${IMG_BASE}/w342${movie.poster_path}`} alt="" className="sp-mosaic-img" />
+                {isSwapping && swapMovie?.poster_path && (
+                  <img src={`${IMG_BASE}/w342${swapMovie.poster_path}`} alt="" className="sp-mosaic-img sp-mosaic-entering" />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="sp-hero-overlay" />
         <div className="sp-hero-content">
           <div className="sp-identity">{identity}</div>
           <div className="sp-genre-pills">
@@ -2535,10 +2620,12 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
 
       {/* ── SECTION 2: Pinned Favorite ── */}
       {pinnedMovie && (
-        <div className="sp-section">
+        <div className="sp-section sp-stagger sp-stagger-2">
           <div className="sp-section-header">
             <span className="sp-section-label">Pinned</span>
-            <button className="sp-section-action" onClick={() => setShowPinnedPicker(true)}>Change</button>
+            <button className="sp-pinned-change-btn" onClick={() => setShowPinnedPicker(true)} title="Change pinned movie">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+            </button>
           </div>
           <div className="sp-pinned-card">
             <div className="sp-pinned-poster">
@@ -2581,7 +2668,7 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
       )}
 
       {/* ── SECTION 3: Showcase Badges ── */}
-      <div className="sp-section sp-showcase-section">
+      <div className="sp-section sp-showcase-section sp-stagger sp-stagger-3">
         <div className="sp-section-header">
           <span className="sp-section-label">Showcase</span>
         </div>
@@ -2596,6 +2683,7 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
             const Icon = badge.icon;
             return (
               <div key={badge.id} className="sp-showcase-slot" data-tier={tierKey}>
+                <div className="sp-showcase-ring" style={{ borderColor: tierColor }} />
                 <div className="sp-showcase-icon" style={{ color: tierColor }}><Icon /></div>
                 <div className="sp-showcase-name">{badge.title}</div>
                 <div className="sp-showcase-tier" style={{ color: tierColor }}>{TIER_NAMES[badge.tier]}</div>
@@ -2641,12 +2729,12 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
 
       {/* ── SECTION 4: Best vs Worst ── */}
       {stats.highest && stats.lowest && (
-        <div className="sp-section">
+        <div className="sp-section sp-stagger sp-stagger-4">
           <div className="sp-section-header">
             <span className="sp-section-label">Best vs Worst</span>
           </div>
           <div className="sp-bvw">
-            <div className="sp-bvw-side">
+            <div className="sp-bvw-side sp-bvw-best">
               <div className="sp-bvw-poster">
                 <PosterImage posterPath={stats.highest.movie.poster_path} title={stats.highest.movie.title} />
               </div>
@@ -2656,8 +2744,8 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
               </div>
               <ScoreRing score={stats.highest.score} size={34} />
             </div>
-            <div className="sp-bvw-divider">vs</div>
-            <div className="sp-bvw-side">
+            <div className="sp-bvw-divider">VS</div>
+            <div className="sp-bvw-side sp-bvw-worst">
               <div className="sp-bvw-poster">
                 <PosterImage posterPath={stats.lowest.movie.poster_path} title={stats.lowest.movie.title} />
               </div>
@@ -2829,7 +2917,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
       const text = data.content?.[0]?.text?.trim();
       if (text) {
         const result = { type: insightType, text, ts: Date.now() };
-        localStorage.setItem("cc_aiInsight", JSON.stringify(result));
+        saveToStorage("cc_aiInsight", result);
         setInsight({ type: insightType, text });
         onSetTasteProfile(text);
       } else {
@@ -2844,7 +2932,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   }, [movies, watchedRatings, onSetTasteProfile]);
 
   const refreshInsight = useCallback(() => {
-    localStorage.removeItem("cc_aiInsight");
+    removeFromStorage("cc_aiInsight");
     setInsight(null);
     fetchInsight();
   }, [fetchInsight]);
@@ -3203,7 +3291,7 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [smartMode, setSmartMode] = useState(() => {
-    try { return JSON.parse(localStorage.getItem("cinno-smart-mode")) || false; } catch { return false; }
+    return loadFromStorage("cinno-smart-mode", false);
   });
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
@@ -3239,7 +3327,7 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
   const toggleSmartMode = () => {
     setSmartMode((prev) => {
       const next = !prev;
-      try { localStorage.setItem("cinno-smart-mode", JSON.stringify(next)); } catch {}
+      saveToStorage("cinno-smart-mode", next);
       return next;
     });
   };
@@ -4605,33 +4693,128 @@ function sanitizeText(str) {
 
 function LoginScreen() {
   const { signInWithGoogle, continueAsGuest, signInCooldown, signInError } = useAuth();
+  const [movies, setMovies] = useState([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [showcaseReady, setShowcaseReady] = useState(false);
+  const [formReady, setFormReady] = useState(false);
+  const intervalRef = useRef(null);
+
+  // Detect system theme for login screen (independent of app theme)
+  const [systemDark, setSystemDark] = useState(() =>
+    window.matchMedia?.("(prefers-color-scheme: dark)").matches !== false
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e) => setSystemDark(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  // Fetch trending movies on mount
+  useEffect(() => {
+    getTrending(1).then(({ movies: results }) => {
+      const withBackdrops = results.filter((m) => m.backdrop_path).slice(0, 10);
+      setMovies(withBackdrops);
+      // Preload first two images
+      withBackdrops.slice(0, 2).forEach((m) => {
+        const img = new Image();
+        img.src = `${IMG_BASE}/w1280${m.backdrop_path}`;
+      });
+      // Stagger entrance
+      setTimeout(() => setShowcaseReady(true), 100);
+      setTimeout(() => setFormReady(true), 400);
+    }).catch(() => {
+      setShowcaseReady(true);
+      setTimeout(() => setFormReady(true), 200);
+    });
+  }, []);
+
+  // Auto-rotate backdrops every 5 seconds
+  useEffect(() => {
+    if (movies.length < 2) return;
+    intervalRef.current = setInterval(() => {
+      setActiveIndex((i) => (i + 1) % movies.length);
+    }, 5000);
+    return () => clearInterval(intervalRef.current);
+  }, [movies]);
+
+  // Preload next image
+  useEffect(() => {
+    if (movies.length < 2) return;
+    const nextIdx = (activeIndex + 1) % movies.length;
+    const next = movies[nextIdx];
+    if (next?.backdrop_path) {
+      const img = new Image();
+      img.src = `${IMG_BASE}/w1280${next.backdrop_path}`;
+    }
+  }, [activeIndex, movies]);
+
+  const current = movies[activeIndex];
 
   return (
-    <div className="login-screen">
-      <div className="login-card">
-        <CinnoLogo size={64} />
-        <h1 className="login-title">Welcome to Cinno</h1>
-        <p className="login-subtitle">Your personal movie companion</p>
+    <div className={`login-screen ${systemDark ? "login-dark" : "login-light"}`}>
+      {/* Left / Top — Cinematic Showcase */}
+      <div className={`login-showcase ${showcaseReady ? "login-visible" : ""}`}>
+        {movies.map((movie, i) => (
+          <div key={movie.id} className={`login-backdrop ${i === activeIndex ? "login-backdrop-active" : ""}`}>
+            <img
+              src={`${IMG_BASE}/w1280${movie.backdrop_path}`}
+              alt=""
+              className="login-backdrop-img"
+              loading={i < 2 ? "eager" : "lazy"}
+            />
+          </div>
+        ))}
+        <div className="login-showcase-gradient" />
+        {current && (
+          <div className="login-showcase-meta" key={activeIndex}>
+            <h2 className="login-showcase-title">{current.title}</h2>
+            <p className="login-showcase-info">{current.genre} · {current.year}</p>
+          </div>
+        )}
+        {movies.length > 1 && (
+          <div className="login-showcase-dots">
+            {movies.map((_, i) => (
+              <button
+                key={i}
+                className={`login-showcase-dot ${i === activeIndex ? "login-dot-active" : ""}`}
+                onClick={() => { setActiveIndex(i); clearInterval(intervalRef.current); }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
-        <button
-          className="login-google-btn"
-          onClick={signInWithGoogle}
-          disabled={signInCooldown}
-        >
-          <svg viewBox="0 0 24 24" width="20" height="20">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-          </svg>
-          {signInCooldown ? "Please wait..." : "Sign in with Google"}
-        </button>
+      {/* Right / Bottom — Login Form */}
+      <div className={`login-form-side ${formReady ? "login-visible" : ""}`}>
+        <div className="login-form-inner">
+          <div className="login-stagger login-stagger-1"><CinnoLogo size={64} /></div>
+          <h1 className="login-title login-stagger login-stagger-2">Welcome to Cinno</h1>
+          <p className="login-subtitle login-stagger login-stagger-3">
+            Your movie companion for discovering, tracking, and debriefing films.
+          </p>
 
-        {signInError && <p className="login-error">{signInError}</p>}
+          <button
+            className="login-google-btn login-stagger login-stagger-4"
+            onClick={signInWithGoogle}
+            disabled={signInCooldown}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" className="login-google-icon">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+            </svg>
+            {signInCooldown ? "Please wait..." : "Sign in with Google"}
+          </button>
 
-        <button className="login-guest-btn" onClick={continueAsGuest}>
-          Continue as guest
-        </button>
+          {signInError && <p className="login-error login-stagger login-stagger-4">{signInError}</p>}
+
+          <button className="login-guest-btn login-stagger login-stagger-5" onClick={continueAsGuest}>
+            Continue as guest
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -4740,6 +4923,14 @@ export default function App() {
 
 function MainApp() {
   const { user, isGuest, signOut, signInWithGoogle, registerSignOutCallback } = useAuth();
+
+  // ── Set user-scoped localStorage prefix BEFORE any useState initializers ──
+  const userId = user?.id || null;
+  if (userId && _storageUserId !== userId) {
+    migrateGuestDataToUser(userId);
+  }
+  _storageUserId = userId;
+
   const { guardAction, guestModal } = useGuestGate();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
@@ -4821,9 +5012,12 @@ function MainApp() {
 
   const toggleTheme = () => setTheme((t) => t === "dark" ? "light" : "dark");
 
-  const clearAllData = useCallback(() => {
-    const keys = ["cc_savedIds", "cc_savedMovies", "cc_watchedIds", "cc_watchedMovies", "cc_watchedNotes", "cc_watchedRatings", "cc_tasteProfile", "cc_aiInsight", "cc_moodPlaylist", "cc_chats", "cc_activeChatId", "cc_collections", "cc_badges", "cc_watchedDates", "cc_discover_swipe_weights", "cc_discover_seen", "cc_discover_maybe_later", "cc_discover_swipe_history", "cc_shownMilestones", "cc_rankSort", "cc_journalSort", "cc_runtimeCache"];
-    keys.forEach((k) => localStorage.removeItem(k));
+  // Reset React state only — does NOT touch localStorage.
+  // Used on sign-out so the user's data stays in their prefixed keys.
+  const resetAppState = useCallback(() => {
+    // Null the prefix FIRST so any save-effects triggered by the state
+    // resets below write to non-prefixed (throwaway) keys, not the user's.
+    _storageUserId = null;
     setSavedIds(new Set());
     setSavedMovies(new Map());
     setWatchedIds(new Set());
@@ -4842,10 +5036,33 @@ function MainApp() {
     setActiveChatId(newId);
   }, []);
 
-  // Register callback so signOut clears all app state
+  // Delete user's localStorage data AND reset React state.
+  // Used by the "Clear all data" button in Settings.
+  const clearAllData = useCallback(() => {
+    USER_DATA_KEYS.forEach((k) => localStorage.removeItem(scopedKey(k)));
+    // Reset state (keeps _storageUserId so subsequent saves stay scoped)
+    setSavedIds(new Set());
+    setSavedMovies(new Map());
+    setWatchedIds(new Set());
+    setWatchedMovies(new Map());
+    setWatchedNotes(new Map());
+    setWatchedRatings(new Map());
+    setTasteProfile("");
+    setCollections([
+      { id: "favourites", name: "Favourites", movieIds: [], isDefault: true },
+      { id: "must_watch", name: "Must Watch", movieIds: [], isDefault: true },
+    ]);
+    setUnlockedBadges([]);
+    setWatchedDates(new Map());
+    const newId = Date.now().toString();
+    setChats([{ id: newId, title: "New chat", messages: [] }]);
+    setActiveChatId(newId);
+  }, []);
+
+  // Register sign-out callback — preserves localStorage, only resets React state
   useEffect(() => {
-    registerSignOutCallback(clearAllData);
-  }, [registerSignOutCallback, clearAllData]);
+    registerSignOutCallback(resetAppState);
+  }, [registerSignOutCallback, resetAppState]);
 
   const requestClearAllData = () => {
     setConfirmDialog({
