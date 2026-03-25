@@ -646,6 +646,46 @@ const BadgeIconCollector = () => (
   </svg>
 );
 
+const BadgeIconNightOwl = () => (
+  <svg viewBox="0 0 40 40" fill="none">
+    <circle cx="20" cy="22" r="12" stroke="currentColor" strokeWidth="1.5" />
+    <circle cx="16" cy="19" r="2.5" fill="currentColor" />
+    <circle cx="24" cy="19" r="2.5" fill="currentColor" />
+    <path d="M14 26c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    <path d="M8 12c2-3 5-5 9-5 1.5 0 3 .3 4 .8M28 8c1 1.5 1.5 3 1.5 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity="0.5" />
+    <circle cx="10" cy="8" r="1.5" fill="currentColor" opacity="0.3" />
+    <circle cx="32" cy="12" r="1" fill="currentColor" opacity="0.3" />
+    <circle cx="28" cy="6" r="1.2" fill="currentColor" opacity="0.3" />
+  </svg>
+);
+
+const BadgeIconMarathon = () => (
+  <svg viewBox="0 0 40 40" fill="none">
+    <rect x="4" y="14" width="7" height="11" rx="1" stroke="currentColor" strokeWidth="1" />
+    <rect x="12" y="12" width="7" height="13" rx="1" stroke="currentColor" strokeWidth="1" />
+    <rect x="20" y="10" width="7" height="15" rx="1" stroke="currentColor" strokeWidth="1" fill="currentColor" fillOpacity="0.1" />
+    <rect x="28" y="12" width="7" height="13" rx="1" stroke="currentColor" strokeWidth="1" />
+    <path d="M7 30h26" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.4" />
+    <path d="M20 28v2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+  </svg>
+);
+
+const BadgeIconContrarian = () => (
+  <svg viewBox="0 0 40 40" fill="none">
+    <circle cx="20" cy="20" r="14" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M14 24l6-14 6 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M26 16l-6 14-6-14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.3" />
+  </svg>
+);
+
+const BadgeIconDebrief = () => (
+  <svg viewBox="0 0 40 40" fill="none">
+    <rect x="8" y="8" width="24" height="20" rx="3" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M14 15h12M14 19h8M14 23h10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity="0.6" />
+    <path d="M20 28l-4 4v-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 // ─── Badge Definitions (Tiered) ─────────────────────────────────────────────────
 const ALL_GENRES = Object.keys(GENRE_COLORS).filter((g) => g !== "Film");
 
@@ -662,6 +702,11 @@ const BADGE_DEFS = [
   { id: "binge_watcher",  title: "Binge Watcher",  desc: "Movies in one day",       tiers: [2, 3, 5],    icon: BadgeIconBinge },
   { id: "collector",      title: "Collector",       desc: "Collections created",     tiers: [2, 5, 10],   icon: BadgeIconCollector },
   { id: "genre_explorer", title: "Explorer",        desc: "Genres watched",          tiers: [3, 6, 10],   icon: BadgeIconExplorer },
+  // Secret badges
+  { id: "night_owl",      title: "Night Owl",      desc: "Late-night movies",       tiers: [3, 8, 15],   icon: BadgeIconNightOwl,   secret: true },
+  { id: "marathon_runner", title: "Marathon Runner", desc: "Movies in one day",      tiers: [5, 7, 10],   icon: BadgeIconMarathon,   secret: true },
+  { id: "contrarian",     title: "The Contrarian",  desc: "Disagree with TMDB",     tiers: [3, 8, 15],   icon: BadgeIconContrarian, secret: true },
+  { id: "first_debrief",  title: "Debriefer",       desc: "AI debriefs completed",  tiers: [1, 5, 10],   icon: BadgeIconDebrief,    secret: true },
 ];
 
 function computeBadgeProgress(badgeId, { watchedMovies, watchedRatings, collections, watchedDates }) {
@@ -686,6 +731,36 @@ function computeBadgeProgress(badgeId, { watchedMovies, watchedRatings, collecti
       watchedMovies.forEach((m) => { if (m.genre && m.genre !== "Film") seen.add(m.genre); });
       return seen.size;
     }
+    case "night_owl": {
+      let count = 0;
+      watchedDates.forEach((dateStr) => {
+        const hour = parseInt(dateStr.slice(11, 13));
+        if (hour >= 23 || hour < 5) count++;
+      });
+      return count;
+    }
+    case "marathon_runner": {
+      const dayCounts = {};
+      watchedDates.forEach((dateStr) => { const day = dateStr.slice(0, 10); dayCounts[day] = (dayCounts[day] || 0) + 1; });
+      return Object.values(dayCounts).reduce((mx, v) => Math.max(mx, v), 0);
+    }
+    case "contrarian": {
+      let count = 0;
+      watchedRatings.forEach((userScore, id) => {
+        const movie = watchedMovies.get(id);
+        if (movie?.rating && movie.rating !== "—") {
+          const tmdbScore = parseFloat(movie.rating) * 10;
+          if (Math.abs(userScore - tmdbScore) > 30) count++;
+        }
+      });
+      return count;
+    }
+    case "first_debrief": {
+      try {
+        const chats = JSON.parse(localStorage.getItem(scopedKey("cc_chats")) || "[]");
+        return chats.filter((c) => c.messages && c.messages.length >= 2).length;
+      } catch { return 0; }
+    }
     default: return 0;
   }
 }
@@ -699,6 +774,26 @@ function getBadgeTier(progress, tiers) {
 }
 
 const TIER_NAMES = ["", "Bronze", "Silver", "Gold"];
+
+const BADGE_RARITY = {
+  first_watch:     { 1: { label: "Common",    pct: 95, color: "#7A7878" }, 2: { label: "Uncommon", pct: 55, color: "#4CAF50" }, 3: { label: "Rare",      pct: 18, color: "#2196F3" } },
+  critic:          { 1: { label: "Uncommon",  pct: 40, color: "#4CAF50" }, 2: { label: "Rare",     pct: 12, color: "#2196F3" }, 3: { label: "Epic",      pct: 3,  color: "#9C27B0" } },
+  horror_fan:      { 1: { label: "Uncommon",  pct: 35, color: "#4CAF50" }, 2: { label: "Rare",     pct: 12, color: "#2196F3" }, 3: { label: "Epic",      pct: 4,  color: "#9C27B0" } },
+  binge_watcher:   { 1: { label: "Uncommon",  pct: 30, color: "#4CAF50" }, 2: { label: "Rare",     pct: 15, color: "#2196F3" }, 3: { label: "Epic",      pct: 5,  color: "#9C27B0" } },
+  collector:       { 1: { label: "Common",    pct: 50, color: "#7A7878" }, 2: { label: "Uncommon", pct: 25, color: "#4CAF50" }, 3: { label: "Rare",      pct: 8,  color: "#2196F3" } },
+  genre_explorer:  { 1: { label: "Common",    pct: 60, color: "#7A7878" }, 2: { label: "Uncommon", pct: 30, color: "#4CAF50" }, 3: { label: "Epic",      pct: 5,  color: "#9C27B0" } },
+  night_owl:       { 1: { label: "Rare",      pct: 12, color: "#2196F3" }, 2: { label: "Epic",     pct: 5,  color: "#9C27B0" }, 3: { label: "Legendary", pct: 2,  color: "#D4A843" } },
+  marathon_runner: { 1: { label: "Rare",      pct: 10, color: "#2196F3" }, 2: { label: "Epic",     pct: 3,  color: "#9C27B0" }, 3: { label: "Legendary", pct: 1,  color: "#D4A843" } },
+  contrarian:      { 1: { label: "Uncommon",  pct: 25, color: "#4CAF50" }, 2: { label: "Rare",     pct: 10, color: "#2196F3" }, 3: { label: "Epic",      pct: 3,  color: "#9C27B0" } },
+  first_debrief:   { 1: { label: "Uncommon",  pct: 40, color: "#4CAF50" }, 2: { label: "Rare",     pct: 15, color: "#2196F3" }, 3: { label: "Epic",      pct: 5,  color: "#9C27B0" } },
+};
+
+const SECRET_HINTS = {
+  night_owl: "Keep exploring different hours...",
+  marathon_runner: "Can you watch even more in one day?",
+  contrarian: "Trust your own ratings...",
+  first_debrief: "Have you tried the AI chat?",
+};
 
 const MASTERY_LEVELS = [
   { min: 0,  label: "Novice" },
@@ -2462,7 +2557,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
   );
 }
 
-// ─── Stats View ────────────────────────────────────────────────────────────────
+// ─── Stats View (Bento Magazine Grid) ──────────────────────────────────────────
 
 const IDENTITY_MAP = {
   Action: "The Thrill Seeker", Thriller: "The Thrill Seeker",
@@ -2473,43 +2568,22 @@ const IDENTITY_MAP = {
   Adventure: "The Explorer", Mystery: "The Puzzle Chaser",
 };
 
-function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges, collections }) {
-  const [pinnedId, setPinnedId] = useState(() => loadFromStorage("cc_stats_pinned", null));
+function StatsView({ watchedMovies, watchedRatings, watchedDates, collections, showToast }) {
   const [showAllBadges, setShowAllBadges] = useState(false);
-  const [showPinnedPicker, setShowPinnedPicker] = useState(false);
-
-  // ── Mosaic banner — living poster wall ──
-  const allPosterMovies = useMemo(() =>
-    [...watchedMovies.values()].filter((m) => m.poster_path), [watchedMovies]
-  );
-  const [mosaicIds, setMosaicIds] = useState(() => {
-    const shuffled = [...watchedMovies.values()]
-      .filter((m) => m.poster_path)
-      .sort(() => Math.random() - 0.5);
-    const ids = [];
-    for (let i = 0; i < 8 && shuffled.length > 0; i++) ids.push(shuffled[i % shuffled.length].id);
-    return ids;
-  });
-  const [mosaicSwap, setMosaicSwap] = useState(null);
-  const mosaicIdsRef = useRef(mosaicIds);
-  mosaicIdsRef.current = mosaicIds;
 
   const stats = useMemo(() => {
     const totalMovies = watchedMovies.size;
     const totalHours = totalMovies * 2;
-    const totalGenresExplored = new Set();
-    watchedMovies.forEach((m) => totalGenresExplored.add(m.genre || "Other"));
     const avgRating = watchedRatings.size > 0
       ? Math.round([...watchedRatings.values()].reduce((s, v) => s + v, 0) / watchedRatings.size)
       : 0;
 
-    let highest = null, lowest = null, highScore = -1, lowScore = 101;
-    watchedRatings.forEach((score, id) => {
-      const movie = watchedMovies.get(id);
-      if (!movie) return;
-      if (score > highScore) { highScore = score; highest = movie; }
-      if (score < lowScore) { lowScore = score; lowest = movie; }
-    });
+    const ratedMovies = [...watchedRatings.entries()]
+      .map(([id, score]) => ({ movie: watchedMovies.get(id), score }))
+      .filter((e) => e.movie)
+      .sort((a, b) => b.score - a.score);
+    const top3 = ratedMovies.slice(0, 3);
+    const lowest = ratedMovies.length > 1 ? ratedMovies[ratedMovies.length - 1] : null;
 
     const genreCounts = {};
     watchedMovies.forEach((movie) => {
@@ -2520,205 +2594,243 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
       .sort((a, b) => b[1] - a[1])
       .map(([name, count]) => ({ name, count }));
 
-    return {
-      totalMovies, totalHours, avgRating,
-      genreCount: totalGenresExplored.size,
-      highest: highest ? { movie: highest, score: highScore } : null,
-      lowest: lowest ? { movie: lowest, score: lowScore } : null,
-      genres,
-    };
+    return { totalMovies, totalHours, avgRating, genreCount: genres.length, top3, lowest, genres };
   }, [watchedMovies, watchedRatings]);
 
-  // Persist pinned movie
-  useEffect(() => { saveToStorage("cc_stats_pinned", pinnedId); }, [pinnedId]);
-
-  // Mosaic rotation — swap one random poster every 6s
-  useEffect(() => {
-    if (allPosterMovies.length < 2) return;
-    const timer = setInterval(() => {
-      const cur = mosaicIdsRef.current;
-      if (cur.length === 0) return;
-      const curSet = new Set(cur);
-      const pool = allPosterMovies.filter((m) => !curSet.has(m.id));
-      const src = pool.length > 0 ? pool : allPosterMovies;
-      const cell = Math.floor(Math.random() * cur.length);
-      const pick = src[Math.floor(Math.random() * src.length)];
-      if (!pick || pick.id === cur[cell]) return;
-      setMosaicSwap({ idx: cell, newId: pick.id });
-      setTimeout(() => {
-        setMosaicIds((prev) => { const n = [...prev]; n[cell] = pick.id; return n; });
-        setMosaicSwap(null);
-      }, 800);
-    }, 6000);
-    return () => clearInterval(timer);
-  }, [allPosterMovies]);
-
   if (stats.totalMovies === 0) {
-    return <div className="rankings-empty">Watch some movies to see your profile here.</div>;
+    return <div className="rankings-empty">Watch some movies to see your stats here.</div>;
   }
 
-  // Identity from top genre
   const topGenre = stats.genres[0]?.name || "Film";
   const identity = IDENTITY_MAP[topGenre] || "The Eclectic Explorer";
   const topThreeGenres = stats.genres.slice(0, 3);
 
-  // Pinned favorite
-  const pinnedMovie = pinnedId && watchedMovies.has(pinnedId) ? watchedMovies.get(pinnedId) : stats.highest?.movie;
-  const pinnedScore = pinnedMovie ? watchedRatings.get(pinnedMovie.id) : null;
+  const [showcaseIds, setShowcaseIds] = useState(() => loadFromStorage("cc_badge_showcase", []));
+  const [flippedBadges, setFlippedBadges] = useState(new Set());
 
-  // Badges — sorted by tier descending, top 3 unlocked for showcase
-  const badgeCtx = { watchedMovies, watchedRatings, collections: collections || [], watchedDates: watchedDates || new Map() };
-  const badgesWithTier = BADGE_DEFS.map((b) => {
-    const progress = computeBadgeProgress(b.id, badgeCtx);
-    const tier = getBadgeTier(progress, b.tiers);
-    return { ...b, progress, tier };
-  });
-  const showcaseBadges = badgesWithTier
-    .filter((b) => b.tier > 0)
-    .sort((a, b) => b.tier - a.tier)
-    .slice(0, 3);
+  const badgesWithTier = useMemo(() => {
+    const ctx = { watchedMovies, watchedRatings, collections: collections || [], watchedDates: watchedDates || new Map() };
+    return BADGE_DEFS.map((b) => {
+      const progress = computeBadgeProgress(b.id, ctx);
+      const tier = getBadgeTier(progress, b.tiers);
+      return { ...b, progress, tier };
+    });
+  }, [watchedMovies, watchedRatings, collections, watchedDates]);
+
+  const showcaseBadges = useMemo(() => {
+    if (showcaseIds.length > 0) {
+      const selected = showcaseIds.map((id) => badgesWithTier.find((b) => b.id === id)).filter(Boolean).filter((b) => b.tier > 0);
+      if (selected.length > 0) return selected.slice(0, 3);
+    }
+    return badgesWithTier.filter((b) => b.tier > 0).sort((a, b) => b.tier - a.tier).slice(0, 3);
+  }, [badgesWithTier, showcaseIds]);
+
+  const toggleShowcase = useCallback((badgeId) => {
+    setShowcaseIds((prev) => {
+      const next = prev.includes(badgeId) ? prev.filter((id) => id !== badgeId) : [...prev.filter((id) => id !== badgeId), badgeId].slice(-3);
+      saveToStorage("cc_badge_showcase", next);
+      return next;
+    });
+  }, []);
+
+  const toggleFlip = useCallback((badgeId) => {
+    setFlippedBadges((prev) => {
+      const next = new Set(prev);
+      next.has(badgeId) ? next.delete(badgeId) : next.add(badgeId);
+      return next;
+    });
+  }, []);
 
   return (
-    <div className="sp-profile">
-      {/* ── SECTION 1: Mosaic Banner ── */}
-      <div className="sp-hero sp-stagger sp-stagger-1">
-        <div className="sp-mosaic">
-          {mosaicIds.map((movieId, idx) => {
-            const movie = watchedMovies.get(movieId);
-            if (!movie?.poster_path) return <div key={idx} className="sp-mosaic-cell" />;
-            const isSwapping = mosaicSwap?.idx === idx;
-            const swapMovie = isSwapping ? watchedMovies.get(mosaicSwap.newId) : null;
-            return (
-              <div key={idx} className="sp-mosaic-cell">
-                <img src={`${IMG_BASE}/w342${movie.poster_path}`} alt="" className="sp-mosaic-img" />
-                {isSwapping && swapMovie?.poster_path && (
-                  <img src={`${IMG_BASE}/w342${swapMovie.poster_path}`} alt="" className="sp-mosaic-img sp-mosaic-entering" />
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <div className="sp-hero-overlay" />
-        <div className="sp-hero-content">
-          <div className="sp-identity">{identity}</div>
-          <div className="sp-genre-pills">
+    <div className="bento-stats">
+      {/* Share button */}
+      <button className="bento-share-btn" onClick={() => showToast && showToast("Share feature coming soon")} title="Share stats">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
+        </svg>
+      </button>
+
+      {/* CARD 1 — MOVIE IDENTITY */}
+      <div className="bento-card bento-identity" style={{ '--delay': '0' }}>
+        <div className="bento-identity-content">
+          <div className="bento-identity-label">Your Movie Identity</div>
+          <div className="bento-identity-title">{identity}</div>
+          <div className="bento-identity-genres">
             {topThreeGenres.map((g) => (
-              <span key={g.name} className="sp-genre-pill" style={{ background: `${GENRE_COLORS[g.name] || "#7A7878"}30`, color: GENRE_COLORS[g.name] || "#7A7878" }}>{g.name}</span>
+              <span key={g.name} className="bento-genre-pill" style={{ background: `${GENRE_COLORS[g.name] || "#7A7878"}25`, color: GENRE_COLORS[g.name] || "#7A7878" }}>{g.name}</span>
             ))}
-          </div>
-          <div className="sp-stats-line">
-            <span><strong>{stats.totalMovies}</strong> movies</span>
-            <span className="sp-stats-dot" />
-            <span><strong>{stats.totalHours}h</strong> watched</span>
-            <span className="sp-stats-dot" />
-            <span><strong>{stats.avgRating}</strong> avg</span>
-            <span className="sp-stats-dot" />
-            <span><strong>{stats.genreCount}</strong> genres</span>
           </div>
         </div>
       </div>
 
-      {/* ── SECTION 2: Pinned Favorite ── */}
-      {pinnedMovie && (
-        <div className="sp-section sp-stagger sp-stagger-2">
-          <div className="sp-section-header">
-            <span className="sp-section-label">Pinned</span>
-            <button className="sp-pinned-change-btn" onClick={() => setShowPinnedPicker(true)} title="Change pinned movie">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-            </button>
-          </div>
-          <div className="sp-pinned-card">
-            <div className="sp-pinned-poster">
-              <PosterImage posterPath={pinnedMovie.poster_path} title={pinnedMovie.title} />
+      {/* CARD 2 — TOP FILM (#1 rated) */}
+      <div className="bento-card bento-top-film" style={{ '--delay': '1' }}>
+        {stats.top3[0]?.movie?.poster_path ? (
+          <>
+            <img src={`${IMG_BASE}/w500${stats.top3[0].movie.poster_path}`} alt="" className="bento-film-bg" />
+            <div className="bento-film-overlay" />
+            <div className="bento-film-content">
+              <div className="bento-film-badge">#1 Film</div>
+              <div className="bento-film-title">{stats.top3[0].movie.title}</div>
+              <div className="bento-film-meta">{stats.top3[0].movie.year}</div>
+              <ScoreRing score={stats.top3[0].score} size={48} />
             </div>
-            <div className="sp-pinned-info">
-              <div className="sp-pinned-title">{pinnedMovie.title}</div>
-              <div className="sp-pinned-meta">{pinnedMovie.genre} · {pinnedMovie.year}</div>
-            </div>
-            {pinnedScore != null && <ScoreRing score={pinnedScore} size={38} />}
+          </>
+        ) : (
+          <div className="bento-film-empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}>
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" /><line x1="7" y1="2" x2="7" y2="22" /><line x1="17" y1="2" x2="17" y2="22" /><line x1="2" y1="12" x2="22" y2="12" /><line x1="2" y1="7" x2="7" y2="7" /><line x1="2" y1="17" x2="7" y2="17" /><line x1="17" y1="17" x2="22" y2="17" /><line x1="17" y1="7" x2="22" y2="7" />
+            </svg>
+            <span>Rate movies to see your #1</span>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Pinned picker modal */}
-      {showPinnedPicker && (
-        <div className="sp-picker-overlay" onClick={() => setShowPinnedPicker(false)}>
-          <div className="sp-picker-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="sp-picker-title">Choose Pinned Movie</div>
-            <div className="sp-picker-list">
-              {[...watchedMovies.entries()].map(([id, movie]) => (
-                <button
-                  key={id}
-                  className={`sp-picker-item ${id === pinnedMovie?.id ? "active" : ""}`}
-                  onClick={() => { setPinnedId(id); setShowPinnedPicker(false); }}
-                >
-                  <div className="sp-picker-item-poster">
-                    <PosterImage posterPath={movie.poster_path} title={movie.title} />
-                  </div>
-                  <div className="sp-picker-item-info">
-                    <div className="sp-picker-item-title">{movie.title}</div>
-                    <div className="sp-picker-item-meta">{movie.genre} · {movie.year}</div>
-                  </div>
-                  {watchedRatings.has(id) && <ScoreRing score={watchedRatings.get(id)} size={30} />}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* CARD 3 — MOVIES WATCHED */}
+      <div className="bento-card bento-stat bento-stat-a" style={{ '--delay': '2' }}>
+        <div className="bento-stat-number">{stats.totalMovies}</div>
+        <div className="bento-stat-label">movies</div>
+      </div>
 
-      {/* ── SECTION 3: Showcase Badges ── */}
-      <div className="sp-section sp-showcase-section sp-stagger sp-stagger-3">
-        <div className="sp-section-header">
-          <span className="sp-section-label">Showcase</span>
-        </div>
-        <div className="sp-showcase-row">
+      {/* CARD 4 — HOURS OF CINEMA */}
+      <div className="bento-card bento-stat bento-stat-b bento-hours" style={{ '--delay': '3' }}>
+        <div className="bento-stat-number">{stats.totalHours}h</div>
+        <div className="bento-stat-label">watched</div>
+      </div>
+
+      {/* CARD 5 — #2 FILM */}
+      <div className="bento-card bento-film-small bento-film-2" style={{ '--delay': '4' }}>
+        {stats.top3[1]?.movie?.poster_path ? (
+          <>
+            <img src={`${IMG_BASE}/w342${stats.top3[1].movie.poster_path}`} alt="" className="bento-film-bg" />
+            <div className="bento-film-overlay" />
+            <div className="bento-film-content">
+              <div className="bento-film-badge">#2</div>
+              <div className="bento-film-title bento-film-title-sm">{stats.top3[1].movie.title}</div>
+              <ScoreRing score={stats.top3[1].score} size={36} />
+            </div>
+          </>
+        ) : (
+          <div className="bento-film-empty"><span>#2</span></div>
+        )}
+      </div>
+
+      {/* CARD 6 — #3 FILM */}
+      <div className="bento-card bento-film-small bento-film-3" style={{ '--delay': '5' }}>
+        {stats.top3[2]?.movie?.poster_path ? (
+          <>
+            <img src={`${IMG_BASE}/w342${stats.top3[2].movie.poster_path}`} alt="" className="bento-film-bg" />
+            <div className="bento-film-overlay" />
+            <div className="bento-film-content">
+              <div className="bento-film-badge">#3</div>
+              <div className="bento-film-title bento-film-title-sm">{stats.top3[2].movie.title}</div>
+              <ScoreRing score={stats.top3[2].score} size={36} />
+            </div>
+          </>
+        ) : (
+          <div className="bento-film-empty"><span>#3</span></div>
+        )}
+      </div>
+
+      {/* CARD 7 — AVG RATING */}
+      <div className="bento-card bento-stat bento-avg" style={{ '--delay': '6' }}>
+        <ScoreRing score={stats.avgRating} size={56} />
+        <div className="bento-stat-label">average score</div>
+      </div>
+
+      {/* CARD 8 — GENRES EXPLORED */}
+      <div className="bento-card bento-stat bento-stat-b bento-genres" style={{ '--delay': '7' }}>
+        <div className="bento-stat-number">{stats.genreCount}</div>
+        <div className="bento-stat-label">genres</div>
+      </div>
+
+      {/* CARD 9 — ACHIEVEMENTS */}
+      <div className="bento-card bento-achievements" style={{ '--delay': '8' }}>
+        <div className="bento-achievements-row">
           {[0, 1, 2].map((i) => {
             const badge = showcaseBadges[i];
-            if (!badge) {
-              return <div key={i} className="sp-showcase-slot sp-showcase-empty" />;
-            }
+            if (!badge) return <div key={i} className="bento-badge-empty" />;
             const tierKey = ["bronze", "silver", "gold"][badge.tier - 1];
             const tierColor = TIER_COLORS[tierKey];
             const Icon = badge.icon;
             return (
-              <div key={badge.id} className="sp-showcase-slot" data-tier={tierKey}>
-                <div className="sp-showcase-ring" style={{ borderColor: tierColor }} />
-                <div className="sp-showcase-icon" style={{ color: tierColor }}><Icon /></div>
-                <div className="sp-showcase-name">{badge.title}</div>
-                <div className="sp-showcase-tier" style={{ color: tierColor }}>{TIER_NAMES[badge.tier]}</div>
+              <div key={badge.id} className="bento-badge-slot" data-tier={tierKey}>
+                {showcaseIds.includes(badge.id) && <div className="bento-badge-star">★</div>}
+                <div className="bento-badge-glow" style={{ background: tierColor }} />
+                <div className="bento-badge-icon" style={{ color: tierColor }}><Icon /></div>
+                <div className="bento-badge-name">{badge.title}</div>
+                <div className="bento-badge-tier" style={{ color: tierColor }}>{TIER_NAMES[badge.tier]}</div>
               </div>
             );
           })}
         </div>
-        <button className="sp-see-all-btn" onClick={() => setShowAllBadges(!showAllBadges)}>
-          {showAllBadges ? "Hide badges" : "See all badges →"}
+        <button className="bento-see-all" onClick={() => setShowAllBadges(!showAllBadges)}>
+          {showAllBadges ? "Hide badges" : "See all →"}
         </button>
         {showAllBadges && (
           <div className="badge-grid-inline" style={{ marginTop: 12 }}>
-            {BADGE_DEFS.map((badge) => {
-              const progress = computeBadgeProgress(badge.id, badgeCtx);
-              const tier = getBadgeTier(progress, badge.tiers);
+            {badgesWithTier.map((badge) => {
+              const { progress, tier, secret } = badge;
+              const isHiddenSecret = secret && tier === 0;
               const tierColor = tier > 0 ? TIER_COLORS[["bronze", "silver", "gold"][tier - 1]] : null;
               const nextTier = Math.min(tier + 1, 3);
               const nextTarget = badge.tiers[nextTier - 1];
               const prevTarget = tier > 0 ? badge.tiers[tier - 1] : 0;
               const pct = tier >= 3 ? 100 : Math.min(((progress - prevTarget) / (nextTarget - prevTarget)) * 100, 100);
               const Icon = badge.icon;
+              const isFlipped = flippedBadges.has(badge.id);
+              const rarity = tier > 0 ? BADGE_RARITY[badge.id]?.[tier] : null;
+
               return (
-                <div key={badge.id} className={`badge-inline ${tier > 0 ? "unlocked" : "locked"}`}>
-                  <div className="badge-inline-icon" style={tierColor ? { color: tierColor } : undefined}>
-                    {tier > 0 && <div className="badge-tier-ring" style={{ borderColor: tierColor, boxShadow: tier === 3 ? `0 0 8px ${tierColor}44` : "none" }} />}
-                    {tier === 0 && <div className="badge-inline-lock"><LockIcon /></div>}
-                    <Icon />
-                  </div>
-                  <div className="badge-inline-name">{badge.title}</div>
-                  {tier > 0 && <div className="badge-tier-label" style={{ color: tierColor }}>{TIER_NAMES[tier]}</div>}
-                  <div className="badge-inline-progress">
-                    <div className="badge-inline-track">
-                      <div className="badge-inline-fill" style={{ width: `${pct}%`, background: tierColor || undefined }} />
+                <div key={badge.id} className={`badge-flip-container ${isFlipped ? "flipped" : ""}`} onClick={() => toggleFlip(badge.id)}>
+                  {/* FRONT */}
+                  <div className={`badge-flip-front badge-inline ${tier > 0 ? "unlocked" : "locked"}`}>
+                    <div className="badge-inline-icon" style={tierColor ? { color: tierColor } : undefined}>
+                      {tier > 0 && <div className="badge-tier-ring" style={{ borderColor: tierColor, boxShadow: tier === 3 ? `0 0 8px ${tierColor}44` : "none" }} />}
+                      {tier === 0 && <div className="badge-inline-lock"><LockIcon /></div>}
+                      {isHiddenSecret ? (
+                        <svg viewBox="0 0 40 40" fill="none"><text x="20" y="25" textAnchor="middle" fill="currentColor" fontSize="18" fontWeight="700">?</text></svg>
+                      ) : (
+                        <Icon />
+                      )}
                     </div>
-                    <span className="badge-inline-frac">{progress}/{tier >= 3 ? badge.tiers[2] : nextTarget}</span>
+                    <div className="badge-inline-name">{isHiddenSecret ? "???" : badge.title}</div>
+                    {tier > 0 && <div className="badge-tier-label" style={{ color: tierColor }}>{TIER_NAMES[tier]}</div>}
+                    <div className="badge-inline-progress">
+                      <div className="badge-inline-track">
+                        <div className="badge-inline-fill" style={{ width: `${isHiddenSecret ? 0 : pct}%`, background: tierColor || undefined }} />
+                      </div>
+                      {!isHiddenSecret && <span className="badge-inline-frac">{progress}/{tier >= 3 ? badge.tiers[2] : nextTarget}</span>}
+                    </div>
+                  </div>
+                  {/* BACK */}
+                  <div className="badge-flip-back">
+                    {isHiddenSecret ? (
+                      <div className="badge-back-secret">
+                        <div className="badge-back-q">???</div>
+                        <div className="badge-back-hint">{SECRET_HINTS[badge.id] || "Keep exploring..."}</div>
+                      </div>
+                    ) : tier > 0 ? (
+                      <div className="badge-back-unlocked">
+                        <div className="badge-back-earned">Earned by</div>
+                        <div className="badge-back-desc">{badge.desc}</div>
+                        {rarity && (
+                          <div className="badge-rarity-tag" style={{ background: rarity.color + "22", color: rarity.color }}>
+                            {rarity.label} — {rarity.pct}%
+                          </div>
+                        )}
+                        {tier < 3 && <div className="badge-back-next">Next: {nextTarget} for {TIER_NAMES[tier + 1]}</div>}
+                        <button className="badge-showcase-btn" onClick={(e) => { e.stopPropagation(); toggleShowcase(badge.id); }}>
+                          {showcaseIds.includes(badge.id) ? "★ In Showcase" : "Set as Showcase"}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="badge-back-locked">
+                        <div className="badge-back-earned">To unlock</div>
+                        <div className="badge-back-desc">{badge.desc}: {badge.tiers[0]}</div>
+                        <div className="badge-back-remaining">{badge.tiers[0] - progress} more to go</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -2727,34 +2839,29 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, unlockedBadges
         )}
       </div>
 
-      {/* ── SECTION 4: Best vs Worst ── */}
-      {stats.highest && stats.lowest && (
-        <div className="sp-section sp-stagger sp-stagger-4">
-          <div className="sp-section-header">
-            <span className="sp-section-label">Best vs Worst</span>
+      {/* CARD 10 — BEST VS WORST */}
+      {stats.top3[0] && stats.lowest && stats.top3[0].movie.id !== stats.lowest.movie.id && (
+        <div className="bento-card bento-vs" style={{ '--delay': '9' }}>
+          <div className="bento-vs-half bento-vs-best">
+            <div className="bento-vs-poster">
+              <PosterImage posterPath={stats.top3[0].movie.poster_path} title={stats.top3[0].movie.title} />
+            </div>
+            <div className="bento-vs-info">
+              <div className="bento-vs-tag best">Best</div>
+              <div className="bento-vs-name">{stats.top3[0].movie.title}</div>
+            </div>
+            <ScoreRing score={stats.top3[0].score} size={34} />
           </div>
-          <div className="sp-bvw">
-            <div className="sp-bvw-side sp-bvw-best">
-              <div className="sp-bvw-poster">
-                <PosterImage posterPath={stats.highest.movie.poster_path} title={stats.highest.movie.title} />
-              </div>
-              <div className="sp-bvw-info">
-                <div className="sp-bvw-label-tag best">Best</div>
-                <div className="sp-bvw-title">{stats.highest.movie.title}</div>
-              </div>
-              <ScoreRing score={stats.highest.score} size={34} />
+          <div className="bento-vs-center">VS</div>
+          <div className="bento-vs-half bento-vs-worst">
+            <div className="bento-vs-poster">
+              <PosterImage posterPath={stats.lowest.movie.poster_path} title={stats.lowest.movie.title} />
             </div>
-            <div className="sp-bvw-divider">VS</div>
-            <div className="sp-bvw-side sp-bvw-worst">
-              <div className="sp-bvw-poster">
-                <PosterImage posterPath={stats.lowest.movie.poster_path} title={stats.lowest.movie.title} />
-              </div>
-              <div className="sp-bvw-info">
-                <div className="sp-bvw-label-tag worst">Worst</div>
-                <div className="sp-bvw-title">{stats.lowest.movie.title}</div>
-              </div>
-              <ScoreRing score={stats.lowest.score} size={34} />
+            <div className="bento-vs-info">
+              <div className="bento-vs-tag worst">Worst</div>
+              <div className="bento-vs-name">{stats.lowest.movie.title}</div>
             </div>
+            <ScoreRing score={stats.lowest.score} size={34} />
           </div>
         </div>
       )}
@@ -3244,7 +3351,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
             )}
 
             {view === "stats" && (
-              <StatsView watchedMovies={watchedMovies} watchedRatings={watchedRatings} watchedDates={watchedDates} unlockedBadges={unlockedBadges} collections={collections} />
+              <StatsView watchedMovies={watchedMovies} watchedRatings={watchedRatings} watchedDates={watchedDates} collections={collections} showToast={showToast} />
             )}
           </>
         )}
@@ -3758,18 +3865,104 @@ function ConfirmDialog({ dialog, onCancel }) {
   );
 }
 
-function BadgeToast({ badge, visible }) {
+function BadgeUnlockCelebration({ badge, onDismiss }) {
+  const canvasRef = useRef(null);
+  const animRef = useRef(null);
+
+  useEffect(() => {
+    if (!badge) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const tierNum = badge.tierNum || 1;
+    const tierKey = ["bronze", "silver", "gold"][tierNum - 1];
+    const baseColor = TIER_COLORS[tierKey] || TIER_COLORS.bronze;
+    const r = parseInt(baseColor.slice(1, 3), 16);
+    const g = parseInt(baseColor.slice(3, 5), 16);
+    const b = parseInt(baseColor.slice(5, 7), 16);
+
+    const particles = [];
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2 - 40;
+    for (let i = 0; i < 60; i++) {
+      const angle = (Math.PI * 2 * i) / 60 + (Math.random() - 0.5) * 0.5;
+      const speed = 2 + Math.random() * 5;
+      const lightness = 0.6 + Math.random() * 0.4;
+      particles.push({
+        x: cx, y: cy,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 2,
+        size: 2 + Math.random() * 4,
+        color: `rgba(${Math.round(r * lightness)}, ${Math.round(g * lightness)}, ${Math.round(b * lightness)}, `,
+        life: 0.7 + Math.random() * 0.3,
+        decay: 0.012 + Math.random() * 0.008,
+      });
+    }
+
+    const start = performance.now();
+    function draw(now) {
+      const elapsed = (now - start) / 1000;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (elapsed < 0.8) {
+        // Glowing orb phase
+        const orbProgress = Math.min(elapsed / 0.6, 1);
+        const orbSize = 20 + orbProgress * 15;
+        const pulse = 1 + Math.sin(elapsed * 12) * 0.15;
+        const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, orbSize * pulse * 2);
+        gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${0.8 * (1 - elapsed / 0.8)})`);
+        gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${0.3 * (1 - elapsed / 0.8)})`);
+        gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(cx, cy, orbSize * pulse * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (elapsed > 0.5) {
+        // Particle burst phase
+        particles.forEach((p) => {
+          if (p.life <= 0) return;
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += 0.08;
+          p.vx *= 0.98;
+          p.life -= p.decay;
+          ctx.fillStyle = p.color + Math.max(p.life, 0) + ")";
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.size * Math.max(p.life, 0.1), 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+      if (elapsed < 2.5) {
+        animRef.current = requestAnimationFrame(draw);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+    animRef.current = requestAnimationFrame(draw);
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, [badge]);
+
   if (!badge) return null;
-  const Icon = badge.icon;
   const tierNum = badge.tierNum || 1;
   const tierName = TIER_NAMES[tierNum] || "Bronze";
   const tierColor = TIER_COLORS[["bronze", "silver", "gold"][tierNum - 1]] || TIER_COLORS.bronze;
+  const Icon = badge.icon;
+
   return createPortal(
-    <div className={`badge-toast ${visible ? "show" : "hide"}`}>
-      <div className="badge-toast-icon" style={{ color: tierColor, borderColor: tierColor }}><Icon /></div>
-      <div className="badge-toast-content">
-        <div className="badge-toast-label" style={{ color: tierColor }}>{tierName} Unlocked</div>
-        <div className="badge-toast-title">{badge.title}</div>
+    <div className="badge-unlock-overlay" onClick={onDismiss}>
+      <canvas ref={canvasRef} className="badge-unlock-canvas" />
+      <div className="badge-unlock-content">
+        <div className="badge-unlock-icon-wrap" style={{ '--tier-color': tierColor }}>
+          <div className="badge-unlock-icon" style={{ color: tierColor }}><Icon /></div>
+        </div>
+        <div className="badge-unlock-label">UNLOCKED</div>
+        <div className="badge-unlock-title">{badge.title}</div>
+        <div className="badge-unlock-tier" style={{ color: tierColor }}>{tierName}</div>
+        <div className="badge-unlock-desc">{badge.desc}</div>
+        <div className="badge-unlock-hint">Tap anywhere to dismiss</div>
       </div>
     </div>,
     document.body
@@ -4790,7 +4983,7 @@ function LoginScreen() {
       <div className={`login-form-side ${formReady ? "login-visible" : ""}`}>
         <div className="login-form-inner">
           <div className="login-stagger login-stagger-1"><CinnoLogo size={64} /></div>
-          <h1 className="login-title login-stagger login-stagger-2">Welcome to Cinno</h1>
+          <h1 className="login-title login-stagger login-stagger-2">Cinno</h1>
           <p className="login-subtitle login-stagger login-stagger-3">
             Your movie companion for discovering, tracking, and debriefing films.
           </p>
@@ -5267,18 +5460,24 @@ function MainApp() {
   useEffect(() => { saveToStorage("cc_activeChatId", activeChatId);      }, [activeChatId]);
 
   // ── Badge checking effect ──────────────────────────────────
-  const badgeToastQueue = useRef([]);
-  const badgeToastTimer = useRef(null);
+  const badgeCelebrationQueue = useRef([]);
 
-  const showNextToast = useCallback(() => {
-    if (badgeToastQueue.current.length === 0) return;
-    const badge = badgeToastQueue.current.shift();
+  const showNextCelebration = useCallback(() => {
+    if (badgeCelebrationQueue.current.length === 0) return;
+    const badge = badgeCelebrationQueue.current.shift();
     setBadgeToast(badge);
-    badgeToastTimer.current = setTimeout(() => {
-      setBadgeToast(null);
-      setTimeout(() => showNextToast(), 300);
-    }, 3000);
   }, []);
+
+  const dismissCelebration = useCallback(() => {
+    setBadgeToast(null);
+    // Mark as seen
+    if (badgeToast) {
+      const seenKey = `${badgeToast.id}_t${badgeToast.tierNum}`;
+      const seen = loadFromStorage("cc_badge_seen", []);
+      if (!seen.includes(seenKey)) saveToStorage("cc_badge_seen", [...seen, seenKey]);
+    }
+    setTimeout(() => showNextCelebration(), 400);
+  }, [badgeToast, showNextCelebration]);
 
   useEffect(() => {
     const ctx = { watchedMovies, watchedRatings, collections, watchedDates };
@@ -5294,24 +5493,22 @@ function MainApp() {
     });
     if (newlyUnlocked.length > 0) {
       setUnlockedBadges((prev) => [...prev, ...newlyUnlocked]);
-      // Show toast for highest new tier per badge only
+      const seen = loadFromStorage("cc_badge_seen", []);
       const toastBadges = new Map();
       newlyUnlocked.forEach((tierId) => {
         const badgeId = tierId.replace(/_t\d+$/, "");
         const tierNum = parseInt(tierId.slice(-1));
-        if (!toastBadges.has(badgeId) || tierNum > toastBadges.get(badgeId)) {
+        if (!seen.includes(tierId) && (!toastBadges.has(badgeId) || tierNum > toastBadges.get(badgeId))) {
           toastBadges.set(badgeId, tierNum);
         }
       });
       toastBadges.forEach((tierNum, badgeId) => {
         const badge = BADGE_DEFS.find((b) => b.id === badgeId);
-        if (badge) badgeToastQueue.current.push({ ...badge, tierNum });
+        if (badge) badgeCelebrationQueue.current.push({ ...badge, tierNum });
       });
-      if (!badgeToastTimer.current) showNextToast();
+      if (!badgeToast) showNextCelebration();
     }
-  }, [watchedMovies, watchedRatings, collections, watchedDates, unlockedBadges, showNextToast]);
-
-  useEffect(() => () => clearTimeout(badgeToastTimer.current), []);
+  }, [watchedMovies, watchedRatings, collections, watchedDates, unlockedBadges, showNextCelebration, badgeToast, chats]);
   useEffect(() => () => clearTimeout(globalToastTimer.current), []);
 
   // ── Milestone celebration check ────────────────────────────
@@ -5529,7 +5726,7 @@ function MainApp() {
         />
       )}
 
-      <BadgeToast badge={badgeToast} visible={!!badgeToast} />
+      <BadgeUnlockCelebration badge={badgeToast} onDismiss={dismissCelebration} />
       <MilestoneCelebration milestone={activeMilestone} onDismiss={() => setActiveMilestone(null)} />
       <GlobalToast toast={globalToast} onDismiss={dismissToast} />
       <ConfirmDialog dialog={confirmDialog} onCancel={() => setConfirmDialog(null)} />

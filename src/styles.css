@@ -3019,496 +3019,357 @@ body {
   color: var(--rating-low);
 }
 
-/* ── Social Profile (Stats redesign) ───────────── */
-.sp-profile {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
+/* ══════════════════════════════════════════════════════════════════════════════
+   BENTO STATS GRID — Magazine-style editorial layout
+   ══════════════════════════════════════════════════════════════════════════════ */
 
-/* ── Stagger entrance ── */
-.sp-stagger { opacity: 0; }
-.sp-stagger-1 { animation: spReveal 400ms ease-out forwards; }
-.sp-stagger-2 { animation: spReveal 400ms ease-out 200ms forwards; }
-.sp-stagger-3 { animation: spReveal 400ms ease-out 400ms forwards; }
-.sp-stagger-4 { animation: spReveal 400ms ease-out 600ms forwards; }
-
-@keyframes spReveal {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* ── Mosaic Hero Banner ── */
-.sp-hero {
+.bento-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding-bottom: 32px;
   position: relative;
+}
+
+/* ── Share button ── */
+.bento-share-btn {
+  position: absolute;
+  top: -4px;
+  right: 0;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.bento-share-btn:hover {
+  color: var(--accent);
+  transform: scale(1.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* ── Card base — entrance animation + hover ── */
+.bento-card {
   border-radius: 16px;
   overflow: hidden;
-  height: 240px;
-  margin-bottom: 16px;
-  background: linear-gradient(135deg, #3D1020 0%, #8B2040 40%, #5A1530 100%);
-}
-
-.sp-mosaic {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  gap: 3px;
-  position: absolute;
-  inset: 0;
-}
-
-.sp-mosaic-cell {
   position: relative;
-  overflow: hidden;
+  opacity: 0;
+  animation: bentoReveal 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--delay, 0) * 80ms);
+  transition: transform 200ms ease, box-shadow 200ms ease;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
-.sp-mosaic-cell:nth-child(1) { grid-column: 1 / 3; }
-.sp-mosaic-cell:nth-child(2) { grid-column: 3; grid-row: 1 / 3; }
-.sp-mosaic-cell:nth-child(4) { grid-column: 1; grid-row: 2 / 4; }
-.sp-mosaic-cell:nth-child(6) { grid-column: 4; grid-row: 2 / 4; }
+.bento-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+@keyframes bentoReveal {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
 
-.sp-mosaic-img {
+/* ──────────────────────────────────────────────────────────────────────────────
+   CARD 1 — Movie Identity (spans 2 cols)
+   ────────────────────────────────────────────────────────────────────────────── */
+.bento-identity {
+  grid-column: 1 / -1;
+  background: linear-gradient(135deg, #3D1020 0%, #8B2040 50%, #5A1530 100%);
+  padding: 28px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 140px;
+}
+.bento-identity-content {
+  position: relative;
+  z-index: 1;
+}
+.bento-identity-label {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2.5px;
+  color: rgba(245, 240, 235, 0.45);
+  margin-bottom: 8px;
+}
+.bento-identity-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 34px;
+  font-weight: 800;
+  color: #F5F0EB;
+  letter-spacing: -1.5px;
+  line-height: 1.05;
+  margin-bottom: 14px;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.4);
+}
+.bento-identity-genres {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.bento-genre-pill {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 20px;
+  letter-spacing: 0.3px;
+}
+
+/* Light theme: identity stays dark (always cinematic) */
+[data-theme="light"] .bento-identity {
+  background: linear-gradient(135deg, #3D1020 0%, #8B3A4A 50%, #5A1530 100%);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   CARD 2 — Top Film hero (spans 2 cols, tall)
+   ────────────────────────────────────────────────────────────────────────────── */
+.bento-top-film {
+  grid-column: 1 / -1;
+  min-height: 360px;
+  background: var(--bg-card);
+}
+.bento-film-bg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-
-.sp-mosaic-entering {
-  animation: spMosaicIn 800ms ease forwards;
-}
-
-@keyframes spMosaicIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-.sp-hero-overlay {
+.bento-film-overlay {
   position: absolute;
   inset: 0;
   background: linear-gradient(
     to top,
-    rgba(10, 5, 8, 0.92) 0%,
-    rgba(10, 5, 8, 0.72) 40%,
-    rgba(10, 5, 8, 0.60) 100%
+    rgba(0, 0, 0, 0.88) 0%,
+    rgba(0, 0, 0, 0.35) 45%,
+    rgba(0, 0, 0, 0.08) 100%
   );
-  z-index: 1;
 }
-
-.sp-hero-content {
+.bento-film-content {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 20px;
-  z-index: 2;
+  padding: 24px 20px;
+  z-index: 1;
 }
-
-.sp-identity {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 26px;
-  font-weight: 800;
-  color: #F5F0EB;
-  letter-spacing: -0.5px;
-  line-height: 1.15;
-  margin-bottom: 10px;
-  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.6);
-}
-
-.sp-genre-pills {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-
-.sp-genre-pill {
+.bento-film-badge {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 10px;
-  font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 20px;
-  letter-spacing: 0.3px;
-  backdrop-filter: blur(4px);
-}
-
-.sp-stats-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 11px;
-  color: rgba(245, 240, 235, 0.5);
-  flex-wrap: wrap;
-}
-
-.sp-stats-line strong {
-  color: #F5F0EB;
-  font-weight: 700;
-}
-
-.sp-stats-dot {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: rgba(245, 240, 235, 0.25);
-  flex-shrink: 0;
-}
-
-[data-theme="light"] .sp-hero-overlay {
-  background: linear-gradient(
-    to top,
-    rgba(0, 0, 0, 0.85) 0%,
-    rgba(0, 0, 0, 0.60) 40%,
-    rgba(0, 0, 0, 0.45) 100%
-  );
-}
-
-/* Sections — tight spacing, thin dividers */
-.sp-section {
-  padding: 14px 0;
-  border-top: 1px solid var(--border);
-}
-
-.sp-section:first-of-type {
-  border-top: none;
-}
-
-.sp-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.sp-section-label {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: var(--text-muted);
+  letter-spacing: 2.5px;
+  color: var(--accent);
+  margin-bottom: 8px;
 }
-
-/* Pinned Favorite — visual card */
-.sp-pinned-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  background: linear-gradient(135deg, rgba(139, 32, 64, 0.08) 0%, rgba(201, 168, 76, 0.04) 100%);
-  border-radius: 12px;
-  border: 1px solid var(--border);
-}
-
-[data-theme="light"] .sp-pinned-card {
-  background: linear-gradient(135deg, rgba(139, 58, 74, 0.06) 0%, rgba(201, 168, 76, 0.03) 100%);
-}
-
-.sp-pinned-poster {
-  width: 80px;
-  height: 120px;
-  border-radius: 10px;
-  overflow: hidden;
-  flex-shrink: 0;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.04);
-}
-
-.sp-pinned-poster img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.sp-pinned-info {
-  flex: 1;
-  min-width: 0;
-  margin-right: 4px;
-}
-
-.sp-pinned-title {
+.bento-film-title {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1.2;
+  font-size: 24px;
+  font-weight: 800;
+  color: #F5F0EB;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
   margin-bottom: 4px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
-
-.sp-pinned-meta {
+.bento-film-title-sm {
+  font-size: 16px;
+  letter-spacing: 0;
+  margin-bottom: 6px;
+}
+.bento-film-meta {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 11px;
-  color: var(--text-muted);
+  font-size: 13px;
+  color: rgba(245, 240, 235, 0.55);
+  margin-bottom: 10px;
 }
-
-.sp-pinned-change-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg-elevated);
-  color: var(--text-muted);
-  cursor: pointer;
+.bento-film-empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  transition: color 0.15s, background 0.15s;
-}
-
-.sp-pinned-change-btn:hover {
-  color: var(--accent);
+  gap: 12px;
+  height: 100%;
+  min-height: 200px;
+  color: var(--text-muted);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
   background: var(--bg-card);
 }
 
-/* Pinned Picker Modal */
-.sp-picker-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  z-index: 2000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-
-.sp-picker-modal {
-  background: var(--bg-secondary);
-  border-radius: 16px;
-  max-width: 380px;
-  width: 100%;
-  max-height: 70vh;
+/* ──────────────────────────────────────────────────────────────────────────────
+   CARDS 3, 4, 7, 8 — Stat number cards
+   ────────────────────────────────────────────────────────────────────────────── */
+.bento-stat {
+  padding: 20px 16px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 16px 64px rgba(0, 0, 0, 0.5);
-}
-
-.sp-picker-title {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-  padding: 16px 16px 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.sp-picker-list {
-  overflow-y: auto;
-  padding: 8px;
-  flex: 1;
-}
-
-.sp-picker-item {
-  display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 10px;
-  padding: 8px;
-  border-radius: 10px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  width: 100%;
-  text-align: left;
-  transition: background 0.15s;
+  min-height: 120px;
+  text-align: center;
 }
-
-.sp-picker-item:hover {
-  background: var(--bg-elevated);
+.bento-stat-number {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 52px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -2px;
+  margin-bottom: 6px;
 }
-
-.sp-picker-item.active {
-  background: var(--accent-dim);
-}
-
-.sp-picker-item-poster {
-  width: 36px;
-  height: 54px;
-  border-radius: 6px;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.sp-picker-item-poster img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.sp-picker-item-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.sp-picker-item-title {
+.bento-stat-label {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
 }
 
-.sp-picker-item-meta {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 10px;
-  color: var(--text-muted);
+/* Variant A — clean elevated */
+.bento-stat-a {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+.bento-stat-a .bento-stat-number { color: var(--text-primary); }
+.bento-stat-a .bento-stat-label { color: var(--text-muted); }
+
+/* Variant B — warm golden tint */
+.bento-stat-b {
+  background: linear-gradient(135deg, var(--bg-card) 0%, rgba(201, 168, 76, 0.08) 100%);
+  border: 1px solid rgba(201, 168, 76, 0.15);
+}
+.bento-stat-b .bento-stat-number { color: var(--accent); }
+.bento-stat-b .bento-stat-label { color: var(--text-muted); }
+
+/* Variant — AVG rating (dark with gold accent) */
+.bento-avg {
+  background: linear-gradient(145deg, #1A0A14 0%, #2A1520 100%);
+  border: 1px solid var(--border);
+  gap: 8px;
+}
+.bento-avg .bento-stat-label {
+  color: rgba(245, 240, 235, 0.45);
 }
 
-/* Showcase section — subtle tinted background */
-.sp-showcase-section {
-  background: var(--bg-card-alt, var(--bg-card));
-  margin: 0 -16px;
-  padding: 14px 16px;
-  border-radius: 0;
+/* Light theme stat card overrides */
+[data-theme="light"] .bento-stat-a {
+  background: #FFFFFF;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+[data-theme="light"] .bento-stat-b {
+  background: linear-gradient(135deg, #FFF9F0 0%, #FFF5E6 100%);
+  border-color: rgba(201, 168, 76, 0.2);
+}
+[data-theme="light"] .bento-avg {
+  background: linear-gradient(145deg, #2A1520 0%, #3D1020 100%);
 }
 
-/* Showcase Badges */
-.sp-showcase-row {
+/* ──────────────────────────────────────────────────────────────────────────────
+   CARDS 5, 6 — #2 and #3 Film poster cards (tall)
+   ────────────────────────────────────────────────────────────────────────────── */
+.bento-film-small {
+  min-height: 260px;
+  background: var(--bg-card);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   CARD 9 — Achievements
+   ────────────────────────────────────────────────────────────────────────────── */
+.bento-achievements {
+  grid-column: 1 / -1;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  padding: 16px;
+}
+.bento-achievements-row {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
   gap: 8px;
   margin-bottom: 8px;
 }
-
-.sp-showcase-slot {
+.bento-badge-slot {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 12px 6px;
-  background: var(--bg-card);
+  padding: 14px 8px 12px;
+  background: var(--bg-elevated);
   border-radius: 12px;
-  border: 1px solid transparent;
-  min-height: 0;
-  justify-content: center;
   overflow: hidden;
-  cursor: default;
+  transition: transform 200ms ease;
 }
+.bento-badge-slot:hover { transform: scale(1.03); }
 
-.sp-showcase-slot[data-tier="gold"] {
-  background: rgba(212, 176, 92, 0.08);
-  border-color: rgba(212, 168, 67, 0.2);
-}
-
-.sp-showcase-slot[data-tier="silver"] {
-  background: rgba(180, 180, 190, 0.08);
-  border-color: rgba(168, 168, 168, 0.2);
-}
-
-.sp-showcase-slot[data-tier="bronze"] {
-  background: rgba(180, 120, 80, 0.08);
-  border-color: rgba(184, 115, 51, 0.2);
-}
-
-/* Gradient accent bottom bar */
-.sp-showcase-slot[data-tier]::after {
-  content: '';
+/* Tier glow accent */
+.bento-badge-glow {
   position: absolute;
   bottom: 0;
   left: 20%;
   right: 20%;
   height: 2px;
   border-radius: 1px;
+  opacity: 0.6;
 }
-.sp-showcase-slot[data-tier="gold"]::after {
-  background: linear-gradient(90deg, transparent, #D4A843, transparent);
+.bento-badge-slot[data-tier="gold"] {
+  background: rgba(212, 176, 92, 0.08);
+  border: 1px solid rgba(212, 168, 67, 0.2);
 }
-.sp-showcase-slot[data-tier="silver"]::after {
-  background: linear-gradient(90deg, transparent, #A8A8A8, transparent);
+.bento-badge-slot[data-tier="silver"] {
+  background: rgba(180, 180, 190, 0.08);
+  border: 1px solid rgba(168, 168, 168, 0.2);
 }
-.sp-showcase-slot[data-tier="bronze"]::after {
-  background: linear-gradient(90deg, transparent, #B87333, transparent);
+.bento-badge-slot[data-tier="bronze"] {
+  background: rgba(180, 120, 80, 0.08);
+  border: 1px solid rgba(184, 115, 51, 0.2);
 }
-
-/* Tier ring around icon — shimmers/pulses */
-.sp-showcase-ring {
-  position: absolute;
-  top: 6px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  border: 2px solid;
-  pointer-events: none;
-  opacity: 0.7;
+.bento-badge-slot[data-tier="gold"] .bento-badge-glow {
+  box-shadow: 0 0 12px rgba(212, 168, 67, 0.4);
 }
-
-.sp-showcase-slot[data-tier="gold"] .sp-showcase-ring {
-  animation: spRingGold 3.5s ease-in-out infinite;
+.bento-badge-slot[data-tier="silver"] .bento-badge-glow {
+  box-shadow: 0 0 10px rgba(168, 168, 180, 0.3);
 }
-.sp-showcase-slot[data-tier="silver"] .sp-showcase-ring {
-  animation: spRingSilver 4s ease-in-out infinite;
+.bento-badge-slot[data-tier="bronze"] .bento-badge-glow {
+  box-shadow: 0 0 10px rgba(184, 115, 51, 0.3);
 }
-.sp-showcase-slot[data-tier="bronze"] .sp-showcase-ring {
-  animation: spRingBronze 3.5s ease-in-out infinite;
-}
-
-@keyframes spRingGold {
-  0%, 100% { box-shadow: 0 0 6px rgba(212, 168, 67, 0.2); opacity: 0.6; }
-  50%      { box-shadow: 0 0 16px rgba(212, 168, 67, 0.55); opacity: 1; }
-}
-@keyframes spRingSilver {
-  0%, 100% { box-shadow: 0 0 6px rgba(168, 168, 180, 0.15); opacity: 0.5; }
-  50%      { box-shadow: 0 0 14px rgba(168, 168, 180, 0.45); opacity: 0.9; }
-}
-@keyframes spRingBronze {
-  0%, 100% { box-shadow: 0 0 6px rgba(184, 115, 51, 0.15); opacity: 0.5; }
-  50%      { box-shadow: 0 0 14px rgba(184, 115, 51, 0.45); opacity: 0.9; }
-}
-
-.sp-showcase-empty {
-  background: none;
-  border: 1.5px dashed var(--border);
-}
-
-.sp-showcase-icon {
-  width: 44px;
-  height: 44px;
+.bento-badge-icon {
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 200ms ease;
-  position: relative;
-  z-index: 1;
 }
-
-.sp-showcase-slot:hover .sp-showcase-icon {
-  transform: scale(1.1);
-}
-
-.sp-showcase-icon svg {
-  width: 32px;
-  height: 32px;
-}
-
-.sp-showcase-name {
+.bento-badge-icon svg { width: 28px; height: 28px; }
+.bento-badge-name {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 10px;
   font-weight: 600;
   color: var(--text-primary);
   text-align: center;
 }
-
-.sp-showcase-tier {
+.bento-badge-tier {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 1px;
 }
-
-.sp-see-all-btn {
+.bento-badge-empty {
+  padding: 14px 8px 12px;
+  border-radius: 12px;
+  border: 1.5px dashed var(--border);
+  min-height: 80px;
+}
+.bento-see-all {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 11px;
   font-weight: 600;
@@ -3517,76 +3378,55 @@ body {
   border: none;
   cursor: pointer;
   padding: 4px 0;
-  transition: color 0.15s;
+  transition: color 150ms;
 }
+.bento-see-all:hover { color: var(--accent); }
 
-.sp-see-all-btn:hover {
-  color: var(--accent);
-}
-
-/* Best vs Worst */
-.sp-bvw {
+/* ──────────────────────────────────────────────────────────────────────────────
+   CARD 10 — Best vs Worst
+   ────────────────────────────────────────────────────────────────────────────── */
+.bento-vs {
+  grid-column: 1 / -1;
   display: flex;
   align-items: stretch;
-  gap: 0;
   background: var(--bg-card);
-  border-radius: 12px;
+  border: 1px solid var(--border);
   overflow: hidden;
 }
-
-.sp-bvw-side {
+.bento-vs-half {
   flex: 1;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 14px 12px;
   min-width: 0;
-  border-radius: 12px;
-  transition: transform 200ms ease, box-shadow 200ms ease;
+  transition: transform 200ms ease;
 }
-
-.sp-bvw-side:hover {
+.bento-vs-half:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  z-index: 1;
 }
-
-.sp-bvw-best {
-  background: rgba(76, 175, 80, 0.06);
-}
-
-.sp-bvw-worst {
-  background: rgba(229, 57, 53, 0.06);
-}
-
-[data-theme="light"] .sp-bvw-best {
-  background: rgba(76, 175, 80, 0.08);
-}
-[data-theme="light"] .sp-bvw-worst {
-  background: rgba(229, 57, 53, 0.08);
-}
-
-.sp-bvw-poster {
+.bento-vs-best { background: rgba(76, 175, 80, 0.06); }
+.bento-vs-worst { background: rgba(229, 57, 53, 0.06); }
+[data-theme="light"] .bento-vs-best { background: rgba(76, 175, 80, 0.08); }
+[data-theme="light"] .bento-vs-worst { background: rgba(229, 57, 53, 0.08); }
+.bento-vs-poster {
   width: 42px;
   height: 63px;
   border-radius: 6px;
   overflow: hidden;
   flex-shrink: 0;
 }
-
-.sp-bvw-poster img {
+.bento-vs-poster img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
-
-.sp-bvw-info {
+.bento-vs-info {
   flex: 1;
   min-width: 0;
 }
-
-.sp-bvw-label-tag {
+.bento-vs-tag {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 9px;
   font-weight: 700;
@@ -3594,11 +3434,9 @@ body {
   letter-spacing: 1px;
   margin-bottom: 2px;
 }
-
-.sp-bvw-label-tag.best { color: var(--success); }
-.sp-bvw-label-tag.worst { color: var(--rating-low); }
-
-.sp-bvw-title {
+.bento-vs-tag.best { color: var(--success); }
+.bento-vs-tag.worst { color: var(--rating-low); }
+.bento-vs-name {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 12px;
   font-weight: 600;
@@ -3609,8 +3447,7 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-
-.sp-bvw-divider {
+.bento-vs-center {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 13px;
   font-weight: 800;
@@ -3623,9 +3460,8 @@ body {
   align-items: center;
   position: relative;
 }
-
-.sp-bvw-divider::before,
-.sp-bvw-divider::after {
+.bento-vs-center::before,
+.bento-vs-center::after {
   content: '';
   position: absolute;
   left: 50%;
@@ -3633,15 +3469,32 @@ body {
   background: var(--border);
   transform: translateX(-50%);
 }
-.sp-bvw-divider::before {
-  top: 0;
-  bottom: 50%;
-  margin-bottom: 16px;
-}
-.sp-bvw-divider::after {
-  top: 50%;
-  margin-top: 16px;
-  bottom: 0;
+.bento-vs-center::before { top: 0; bottom: 50%; margin-bottom: 16px; }
+.bento-vs-center::after { top: 50%; margin-top: 16px; bottom: 0; }
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   Desktop 4-column layout (>600px)
+   ────────────────────────────────────────────────────────────────────────────── */
+@media (min-width: 600px) {
+  .bento-stats {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-areas:
+      "identity identity topfilm  topfilm"
+      "movies   hours    topfilm  topfilm"
+      "film2    film3    avgr     genres"
+      "film2    film3    achieve  achieve"
+      "vs       vs       vs       vs";
+  }
+  .bento-identity    { grid-area: identity; }
+  .bento-top-film    { grid-area: topfilm; min-height: 320px; }
+  .bento-stat-a      { grid-area: movies; }
+  .bento-hours       { grid-area: hours; }
+  .bento-film-2      { grid-area: film2; }
+  .bento-film-3      { grid-area: film3; }
+  .bento-avg         { grid-area: avgr; }
+  .bento-genres      { grid-area: genres; }
+  .bento-achievements { grid-area: achieve; }
+  .bento-vs          { grid-area: vs; }
 }
 
 /* ── Mood Playlist ──────────────────────────────── */
@@ -5548,6 +5401,136 @@ body {
   margin-bottom: 1px;
 }
 
+/* ── 3D Flip Badge Cards ── */
+.badge-flip-container {
+  perspective: 600px;
+  cursor: pointer;
+  min-height: 110px;
+}
+.badge-flip-container .badge-flip-front,
+.badge-flip-container .badge-flip-back {
+  backface-visibility: hidden;
+  transition: transform 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+}
+.badge-flip-container {
+  position: relative;
+  transform-style: preserve-3d;
+}
+.badge-flip-front {
+  transform: rotateY(0deg);
+}
+.badge-flip-back {
+  transform: rotateY(180deg);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  padding: 8px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.badge-flip-container.flipped .badge-flip-front {
+  transform: rotateY(-180deg);
+}
+.badge-flip-container.flipped .badge-flip-back {
+  transform: rotateY(0deg);
+}
+
+/* Badge back content */
+.badge-back-secret,
+.badge-back-unlocked,
+.badge-back-locked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 3px;
+  width: 100%;
+}
+.badge-back-q {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-muted);
+  letter-spacing: 2px;
+}
+.badge-back-hint {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 9px;
+  color: var(--text-muted);
+  font-style: italic;
+  line-height: 1.3;
+  padding: 0 2px;
+}
+.badge-back-earned {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+.badge-back-desc {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+.badge-back-next {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 8px;
+  color: var(--text-muted);
+}
+.badge-back-remaining {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+
+/* Rarity tag */
+.badge-rarity-tag {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+/* Showcase button on badge back */
+.badge-showcase-btn {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: none;
+  border-radius: 8px;
+  padding: 3px 8px;
+  cursor: pointer;
+  margin-top: 2px;
+  transition: background 150ms ease;
+}
+.badge-showcase-btn:hover {
+  background: rgba(201, 168, 76, 0.2);
+}
+
+/* Showcase star on bento badge slot */
+.bento-badge-star {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 10px;
+  color: var(--accent);
+  z-index: 2;
+  line-height: 1;
+}
+
 /* ── Genre Mastery ── */
 .genre-mastery-list {
   display: flex;
@@ -5612,82 +5595,108 @@ body {
 }
 
 /* ── Badge Toast Notification ─────────────────────── */
-.badge-toast {
+/* ── Badge Unlock Celebration Overlay ── */
+.badge-unlock-overlay {
   position: fixed;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--bg-elevated);
-  border: none;
-  border-radius: 16px;
-  padding: 14px 20px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(139, 58, 74, 0.2);
-  max-width: 340px;
-  width: max-content;
-  pointer-events: none;
-}
-
-.badge-toast.show {
-  animation: toastIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-}
-
-.badge-toast.hide {
-  animation: toastOut 0.3s ease forwards;
-}
-
-@keyframes toastIn {
-  0% { opacity: 0; transform: translateX(-50%) translateY(-24px) scale(0.9); }
-  100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
-}
-
-@keyframes toastOut {
-  0% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
-  100% { opacity: 0; transform: translateX(-50%) translateY(-16px) scale(0.95); }
-}
-
-.badge-toast-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--accent-dim);
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  color: var(--accent);
+  cursor: pointer;
+  animation: badgeOverlayIn 400ms ease forwards;
 }
-
-.badge-toast-icon svg {
-  width: 28px;
-  height: 28px;
+@keyframes badgeOverlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
-
-.badge-toast-content {
+.badge-unlock-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.badge-unlock-content {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 32px;
+  animation: badgeContentIn 600ms cubic-bezier(0.16, 1, 0.3, 1) 400ms both;
 }
-
-.badge-toast-label {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--accent);
+@keyframes badgeContentIn {
+  from { opacity: 0; transform: scale(0.8) translateY(20px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.badge-unlock-icon-wrap {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 3px solid var(--tier-color, #D4A843);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  box-shadow: 0 0 40px rgba(212, 168, 67, 0.3), inset 0 0 20px rgba(212, 168, 67, 0.1);
+  animation: badgeIconPulse 1.5s ease-in-out infinite;
+}
+@keyframes badgeIconPulse {
+  0%, 100% { box-shadow: 0 0 30px color-mix(in srgb, var(--tier-color, #D4A843) 30%, transparent); }
+  50%      { box-shadow: 0 0 50px color-mix(in srgb, var(--tier-color, #D4A843) 50%, transparent), 0 0 80px color-mix(in srgb, var(--tier-color, #D4A843) 20%, transparent); }
+}
+.badge-unlock-icon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.badge-unlock-icon svg {
+  width: 48px;
+  height: 48px;
+}
+.badge-unlock-label {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  line-height: 1;
-  margin-bottom: 3px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 4px;
+  color: rgba(245, 240, 235, 0.5);
+  margin-bottom: 8px;
 }
-
-.badge-toast-title {
+.badge-unlock-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 28px;
+  font-weight: 800;
+  color: #F5F0EB;
+  letter-spacing: -0.5px;
+  margin-bottom: 6px;
+}
+.badge-unlock-tier {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  line-height: 1.2;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 12px;
+}
+.badge-unlock-desc {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  color: rgba(245, 240, 235, 0.55);
+  margin-bottom: 24px;
+}
+.badge-unlock-hint {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  color: rgba(245, 240, 235, 0.25);
+  letter-spacing: 0.5px;
 }
 
 /* ── Light Theme ─────────────────────────────────── */
@@ -8730,9 +8739,9 @@ body {
 /* Title & subtitle */
 .login-title {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 26px;
-  font-weight: 800;
-  letter-spacing: -0.5px;
+  font-size: 38px;
+  font-weight: 900;
+  letter-spacing: -1.5px;
   margin-top: 20px;
   text-align: center;
 }
