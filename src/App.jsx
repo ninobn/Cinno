@@ -2,6 +2,9 @@ import React, { useState, useRef, useEffect, useMemo, useCallback, useId } from 
 import { createPortal } from "react-dom";
 import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getMovieKeywords, getSmartContext, tmdbToMovie, IMG_BASE } from "./tmdb.js";
 import { useAuth } from "./AuthContext.jsx";
+import { useFloating, offset, flip, shift, autoUpdate } from "@floating-ui/react";
+import AOS from "aos";
+import "aos/dist/aos.css";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -920,11 +923,14 @@ function ScrollRow({ children }) {
   const scroll = (dir) => {
     const el = rowRef.current;
     if (!el) return;
-    // scroll by 3 cards: find tile width from first child
     const tile = el.querySelector(".scroll-tile");
-    const gap = 8;
-    const cardW = tile ? tile.offsetWidth + gap : 128;
+    const style = tile ? getComputedStyle(el.querySelector(".scroll-row-inner")) : null;
+    const gap = style ? parseFloat(style.gap) || 12 : 12;
+    const cardW = tile ? tile.offsetWidth + gap : 140;
+    // Disable snap during programmatic scroll so it lands exactly 3 cards over
+    el.style.scrollSnapType = "none";
     el.scrollBy({ left: dir * cardW * 3, behavior: "smooth" });
+    setTimeout(() => { if (el) el.style.scrollSnapType = ""; }, 500);
   };
 
   const onMouseDown = (e) => {
@@ -976,11 +982,9 @@ function ScrollRow({ children }) {
 
   return (
     <div className="scroll-row-wrap">
-      {canLeft && (
-        <button className="scroll-arrow scroll-arrow-left" onClick={() => scroll(-1)} aria-label="Scroll left">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg>
-        </button>
-      )}
+      <button className={`scroll-arrow scroll-arrow-left${canLeft ? " visible" : ""}`} onClick={() => scroll(-1)} aria-label="Scroll left">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg>
+      </button>
       <div
         className="scroll-row"
         ref={rowRef}
@@ -992,11 +996,9 @@ function ScrollRow({ children }) {
           {children}
         </div>
       </div>
-      {canRight && (
-        <button className="scroll-arrow scroll-arrow-right" onClick={() => scroll(1)} aria-label="Scroll right">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 6 15 12 9 18" /></svg>
-        </button>
-      )}
+      <button className={`scroll-arrow scroll-arrow-right${canRight ? " visible" : ""}`} onClick={() => scroll(1)} aria-label="Scroll right">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 6 15 12 9 18" /></svg>
+      </button>
     </div>
   );
 }
@@ -1056,6 +1058,12 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
   const [detailsLoading, setDetailsLoading] = useState(true);
   const [collectionDropdown, setCollectionDropdown] = useState(false);
   const dropdownRef = useRef(null);
+  const collectionFloating = useFloating({
+    open: collectionDropdown,
+    placement: "top-start",
+    middleware: [offset(8), flip(), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
 
   useEffect(() => {
     if (!collectionDropdown) return;
@@ -1147,12 +1155,12 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
                 )}
                 {collections && toggleMovieInCollection && (
                   <div className="collection-dropdown-wrap" ref={dropdownRef}>
-                    <button className="modal-collection-btn" onClick={() => setCollectionDropdown((v) => !v)}>
+                    <button className="modal-collection-btn" ref={collectionFloating.refs.setReference} onClick={() => setCollectionDropdown((v) => !v)}>
                       <FolderIcon />
                       Collection
                     </button>
                     {collectionDropdown && (
-                      <div className="collection-dropdown">
+                      <div className="collection-dropdown" ref={collectionFloating.refs.setFloating} style={collectionFloating.floatingStyles}>
                         {collections.map((col) => {
                           const inCol = col.movieIds.includes(movie.id);
                           return (
@@ -1404,6 +1412,12 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
   const [searchTotalPages, setSearchTotalPages] = useState(1);
   const [selectedGenres, setSelectedGenres] = useState([]);
   const [genreDropdownOpen, setGenreDropdownOpen] = useState(false);
+  const genreFloating = useFloating({
+    open: genreDropdownOpen,
+    placement: "bottom-start",
+    middleware: [offset(8), flip(), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
   const [trendingMovies, setTrendingMovies] = useState([]);
   const [trendingLoading, setTrendingLoading] = useState(true);
   const [trendingError, setTrendingError] = useState(false);
@@ -1617,6 +1631,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
           <div className="genre-dropdown" ref={genreDropdownRef}>
             <button
               className={`genre-dropdown-trigger ${isGenreFiltered ? "active" : ""}`}
+              ref={genreFloating.refs.setReference}
               onClick={() => setGenreDropdownOpen((o) => !o)}
               aria-expanded={genreDropdownOpen}
             >
@@ -1626,7 +1641,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
               </svg>
             </button>
             {genreDropdownOpen && (
-              <div className="genre-dropdown-panel">
+              <div className="genre-dropdown-panel" ref={genreFloating.refs.setFloating} style={genreFloating.floatingStyles}>
                 {GENRE_FILTERS.map((g) => (
                   <button
                     key={g.id}
@@ -2570,10 +2585,45 @@ const IDENTITY_MAP = {
 
 function StatsView({ watchedMovies, watchedRatings, watchedDates, collections, showToast }) {
   const [showAllBadges, setShowAllBadges] = useState(false);
+  const [runtimeCache, setRuntimeCache] = useState(() => loadFromStorage("cc_runtimeCache", {}));
+
+  // Fetch runtimes for movies missing from the cache
+  useEffect(() => {
+    const missing = [];
+    watchedMovies.forEach((movie, id) => {
+      if (runtimeCache[id] === undefined) missing.push(id);
+    });
+    if (missing.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const updates = {};
+      // Fetch in small batches to avoid hammering the API
+      for (let i = 0; i < missing.length; i++) {
+        if (cancelled) return;
+        try {
+          const details = await getMovieDetails(missing[i]);
+          updates[missing[i]] = details?.runtime || 120;
+        } catch {
+          updates[missing[i]] = 120;
+        }
+      }
+      if (cancelled) return;
+      setRuntimeCache((prev) => {
+        const next = { ...prev, ...updates };
+        saveToStorage("cc_runtimeCache", next);
+        return next;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [watchedMovies]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = useMemo(() => {
     const totalMovies = watchedMovies.size;
-    const totalHours = totalMovies * 2;
+    let totalMinutes = 0;
+    watchedMovies.forEach((movie, id) => {
+      totalMinutes += runtimeCache[id] || 120;
+    });
+    const totalHours = Math.round(totalMinutes / 60);
     const avgRating = watchedRatings.size > 0
       ? Math.round([...watchedRatings.values()].reduce((s, v) => s + v, 0) / watchedRatings.size)
       : 0;
@@ -2595,7 +2645,7 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, collections, s
       .map(([name, count]) => ({ name, count }));
 
     return { totalMovies, totalHours, avgRating, genreCount: genres.length, top3, lowest, genres };
-  }, [watchedMovies, watchedRatings]);
+  }, [watchedMovies, watchedRatings, runtimeCache]);
 
   if (stats.totalMovies === 0) {
     return <div className="rankings-empty">Watch some movies to see your stats here.</div>;
@@ -3252,28 +3302,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                   <div className="rankings-empty">Rate movies in your journal to see them ranked here.</div>
                 ) : (
                   <>
-                    {/* Hero Banner — #1 Movie */}
-                    {rankSort === "rating_desc" && rankedMovies.length >= 1 && (
-                      <div className="rank-hero" onClick={() => setSelectedMovie(rankedMovies[0])}>
-                        <div className="rank-hero-backdrop">
-                          {(rankedMovies[0].backdrop_path || rankedMovies[0].poster_path) ? (
-                            <img src={`${IMG_BASE}/w1280${rankedMovies[0].backdrop_path || rankedMovies[0].poster_path}`} alt="" />
-                          ) : (
-                            <div style={{ width: "100%", height: "100%", background: "linear-gradient(135deg, var(--bg-elevated), var(--bg-card))" }} />
-                          )}
-                        </div>
-                        <div className="rank-hero-gradient" />
-                        <div className="rank-hero-content">
-                          <div className="rank-hero-badge">#1 Ranked</div>
-                          <div className="rank-hero-title">{rankedMovies[0].title}</div>
-                          <div className="rank-hero-meta">{rankedMovies[0].genre} · {rankedMovies[0].year}</div>
-                          <div className="rank-hero-score">
-                            <ScoreRing score={watchedRatings.get(rankedMovies[0].id)} size={48} />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
                     {/* Stat Row + Sort */}
                     <div className="rank-stat-row">
                       <div className="rank-stat-text">
@@ -4082,12 +4110,19 @@ const JOURNAL_SORT_OPTIONS = [
 
 function SortDropdown({ options, value, onChange }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const wrapRef = useRef(null);
+
+  const { refs, floatingStyles } = useFloating({
+    open,
+    placement: "bottom-end",
+    middleware: [offset(8), flip(), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
 
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -4096,13 +4131,13 @@ function SortDropdown({ options, value, onChange }) {
   const activeLabel = options.find((o) => o.value === value)?.label || "";
 
   return (
-    <div className="sort-dropdown" ref={ref}>
-      <button className="sort-dropdown-btn" onClick={() => setOpen(!open)}>
+    <div className="sort-dropdown" ref={wrapRef}>
+      <button className="sort-dropdown-btn" ref={refs.setReference} onClick={() => setOpen(!open)}>
         <span className="sort-dropdown-label">{activeLabel}</span>
         <svg className={`sort-dropdown-chevron${open ? " open" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
       </button>
       {open && (
-        <div className="sort-dropdown-menu">
+        <div className="sort-dropdown-menu" ref={refs.setFloating} style={floatingStyles}>
           {options.map((opt) => (
             <button
               key={opt.value}
@@ -4187,6 +4222,12 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   const [cardDetails, setCardDetails] = useState({});
   const [activeGenres, setActiveGenres] = useState(new Set());
   const [filterOpen, setFilterOpen] = useState(false);
+  const discoverGenreFloating = useFloating({
+    open: filterOpen,
+    placement: "bottom-start",
+    middleware: [offset(8), flip(), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
   const [maybeLater, setMaybeLater] = useState(() => loadFromStorage("cc_discover_maybe_later", []));
   const [watchedModal, setWatchedModal] = useState(null);
   const [watchedSlider, setWatchedSlider] = useState(75);
@@ -4710,6 +4751,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         <div className="genre-dropdown" ref={filterDropdownRef} style={{ marginTop: 0 }}>
           <button
             className={`genre-dropdown-trigger ${activeGenres.size > 0 ? "active" : ""}`}
+            ref={discoverGenreFloating.refs.setReference}
             onClick={() => setFilterOpen(f => !f)}
             aria-expanded={filterOpen}
           >
@@ -4719,7 +4761,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
             </svg>
           </button>
           {filterOpen && (
-            <div className="genre-dropdown-panel">
+            <div className="genre-dropdown-panel" ref={discoverGenreFloating.refs.setFloating} style={discoverGenreFloating.floatingStyles}>
               {GENRE_FILTERS.map((g) => (
                 <button
                   key={g.id}
@@ -5127,6 +5169,18 @@ function MainApp() {
   const { guardAction, guestModal } = useGuestGate();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
+  const headerMenuFloating = useFloating({
+    open: userMenuOpen,
+    placement: "bottom-end",
+    middleware: [offset(8), flip(), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
+  const sidebarMenuFloating = useFloating({
+    open: userMenuOpen,
+    placement: "right-start",
+    middleware: [offset(8), flip(), shift({ padding: 8 })],
+    whileElementsMounted: autoUpdate,
+  });
 
   // Close user menu on outside click
   useEffect(() => {
@@ -5137,6 +5191,11 @@ function MainApp() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [userMenuOpen]);
+
+  // Initialize AOS (Animate On Scroll) globally
+  useEffect(() => {
+    AOS.init({ duration: 600, easing: "ease-out", once: true });
+  }, []);
 
   const [activeTab, _setActiveTab] = useState("search");
   const prevTabRef = useRef("search");
@@ -5586,7 +5645,7 @@ function MainApp() {
         <div className="header-actions">
           {user ? (
             <div className="user-menu-wrapper" ref={userMenuRef}>
-              <button className="user-avatar-btn" onClick={() => setUserMenuOpen((v) => !v)}>
+              <button className="user-avatar-btn" ref={headerMenuFloating.refs.setReference} onClick={() => setUserMenuOpen((v) => !v)}>
                 {avatarUrl ? (
                   <img src={avatarUrl} alt="" className="user-avatar-img" referrerPolicy="no-referrer" />
                 ) : (
@@ -5594,7 +5653,7 @@ function MainApp() {
                 )}
               </button>
               {userMenuOpen && (
-                <div className="user-dropdown">
+                <div className="user-dropdown" ref={headerMenuFloating.refs.setFloating} style={headerMenuFloating.floatingStyles}>
                   <button className="user-dropdown-item" onClick={() => { setUserMenuOpen(false); setSettingsOpen(true); }}>
                     <GearIcon /> Settings
                   </button>
@@ -5680,6 +5739,7 @@ function MainApp() {
         <div className="sidebar-profile-wrapper" ref={userMenuRef}>
           <button
             className="sidebar-profile-btn"
+            ref={sidebarMenuFloating.refs.setReference}
             onClick={() => {
               if (user) {
                 setUserMenuOpen((v) => !v);
@@ -5695,7 +5755,7 @@ function MainApp() {
             )}
           </button>
           {userMenuOpen && (
-            <div className="user-dropdown sidebar-dropdown">
+            <div className="user-dropdown sidebar-dropdown" ref={sidebarMenuFloating.refs.setFloating} style={sidebarMenuFloating.floatingStyles}>
               <button className="user-dropdown-item" onClick={() => { setUserMenuOpen(false); setSettingsOpen(true); }}>
                 <GearIcon /> Settings
               </button>
