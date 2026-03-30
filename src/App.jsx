@@ -3,10 +3,42 @@ import { createPortal } from "react-dom";
 import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getMovieKeywords, getSmartContext, tmdbToMovie, IMG_BASE } from "./tmdb.js";
 import { useAuth } from "./AuthContext.jsx";
 import { useFloating, offset, flip, shift, autoUpdate } from "@floating-ui/react";
+import { DateTime } from "luxon";
 import AOS from "aos";
 import "aos/dist/aos.css";
+import Swal from "sweetalert2";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
+// ─── SweetAlert2 Toast mixin ───────────────────────────────────────────────────
+const Toast = Swal.mixin({
+  toast: true,
+  position: "bottom-end",
+  showConfirmButton: false,
+  timer: 2500,
+  timerProgressBar: true,
+  customClass: { popup: "cinno-swal-popup" },
+});
+
+function showToast(msg, onUndo) {
+  if (onUndo) {
+    Swal.fire({
+      toast: true,
+      position: "bottom-end",
+      icon: "success",
+      title: msg,
+      showConfirmButton: true,
+      confirmButtonText: "Undo",
+      timer: 5000,
+      timerProgressBar: true,
+      customClass: { popup: "cinno-swal-popup", confirmButton: "cinno-swal-undo-btn" },
+    }).then((result) => {
+      if (result.isConfirmed) onUndo();
+    });
+  } else {
+    Toast.fire({ icon: "success", title: msg });
+  }
+}
 
 const GENRE_COLORS = {
   Action: "#C4856A", Adventure: "#8BA88C", Animation: "#7AADA0", Comedy: "#C4B07A",
@@ -15,6 +47,45 @@ const GENRE_COLORS = {
   Mystery: "#8A7A70", Romance: "#B8707E", "Sci-Fi": "#6AA0A0", Thriller: "#7A6A90",
   War: "#7A8A6B", Western: "#AD8A5E", Film: "#7A7878",
 };
+
+// ─── Luxon date formatting helpers ──────────────────────────────────────────────
+
+function formatWatchDate(dateStr) {
+  if (!dateStr) return null;
+  const dt = DateTime.fromISO(dateStr);
+  if (!dt.isValid) return null;
+  const now = DateTime.now();
+  const diffDays = Math.floor(now.diff(dt, "days").days);
+  if (diffDays < 1 && dt.hasSame(now, "day")) return "today";
+  if (diffDays < 7) return dt.toRelative();
+  if (dt.year === now.year) return dt.toFormat("MMM d");
+  return dt.toFormat("MMM d, yyyy");
+}
+
+function formatChatTimestamp(ts) {
+  if (!ts) return null;
+  const dt = typeof ts === "number" ? DateTime.fromMillis(ts) : DateTime.fromISO(ts);
+  if (!dt.isValid) return null;
+  const now = DateTime.now();
+  const diffMins = now.diff(dt, "minutes").minutes;
+  if (diffMins < 60) return dt.toRelative();
+  if (dt.hasSame(now, "day")) return dt.toFormat("h:mm a");
+  if (dt.hasSame(now.minus({ days: 1 }), "day")) return `Yesterday, ${dt.toFormat("h:mm a")}`;
+  if (dt.year === now.year) return dt.toFormat("MMM d");
+  return dt.toFormat("MMM d, yyyy");
+}
+
+function formatAddedDate(dateStr) {
+  if (!dateStr) return null;
+  const dt = typeof dateStr === "number" ? DateTime.fromMillis(dateStr) : DateTime.fromISO(dateStr);
+  if (!dt.isValid) return null;
+  const now = DateTime.now();
+  const diffDays = Math.floor(now.diff(dt, "days").days);
+  if (diffDays < 1 && dt.hasSame(now, "day")) return "Added today";
+  if (diffDays < 7) return `Added ${dt.toRelative()}`;
+  if (dt.year === now.year) return `Added ${dt.toFormat("MMM d")}`;
+  return `Added ${dt.toFormat("MMM d, yyyy")}`;
+}
 
 function useSwipeToDismiss(onClose) {
   const startY = useRef(null);
@@ -1249,7 +1320,7 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
   );
 }
 
-function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggleSave, onToggleWatched, rating, onSetRating, onStartDebrief, showToast }) {
+function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggleSave, onToggleWatched, rating, onSetRating, onStartDebrief }) {
   const genreColor = GENRE_COLORS[movie.genre] || "#7A7878";
   const ratingColor = getRatingColor(movie.rating);
   const [tab, setTab] = useState("overview");
@@ -1340,7 +1411,7 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
                 max="100"
                 value={rating ?? 50}
                 onChange={(e) => onSetRating(movie.id, Number(e.target.value))}
-                onPointerUp={() => showToast && showToast("Rating updated")}
+                onPointerUp={() => Toast.fire({ icon: "success", title: "Rating updated" })}
               />
             </div>
             {rating && (
@@ -1510,6 +1581,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
     }
     setHeroMovies(shuffled);
     setHeroIndex(0);
+    setTimeout(() => AOS.refresh(), 50);
   }, [trendingMovies]);
 
   // Auto-rotate hero banner every 8 seconds
@@ -1554,6 +1626,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
         const result = await searchMovies(safeQ, 1);
         setSearchResults(result.movies);
         setSearchTotalPages(result.totalPages || 1);
+        setTimeout(() => AOS.refresh(), 50);
       } catch {
         setFetchError(true);
       } finally {
@@ -1686,7 +1759,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
         {isSearching && (
           <>
             {!loading && (
-              <div className="results-label">
+              <div className="results-label" data-aos="fade-right" data-aos-duration="300">
                 {searchResults.length} result{searchResults.length !== 1 ? "s" : ""} for "{query}"
               </div>
             )}
@@ -1734,7 +1807,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
         {/* ── Genre-filtered grid ── */}
         {isGenreFiltered && !isSearching && (
           <>
-            <div className="section-label">{browseLabel}</div>
+            <div className="section-label" data-aos="fade-right" data-aos-duration="300">{browseLabel}</div>
             {fetchError && !moviesLoading ? (
               <div className="error-card">
                 <div className="error-card-icon">📡</div>
@@ -1816,8 +1889,8 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
 
             {/* Browse Sections — stacked full-width */}
             <div className="browse-sections">
-              <div className="browse-section">
-                <div className="browse-section-header">
+              <div className="browse-section" data-aos="fade-up" data-aos-duration="500">
+                <div className="browse-section-header" data-aos="fade-right" data-aos-duration="400">
                   <div className="browse-section-title">Everyone's Watching</div>
                   <button className="desktop-refresh-btn" onClick={handleDesktopRefresh} disabled={refreshing} title="Refresh">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={refreshing ? "spinning" : ""}>
@@ -1848,8 +1921,8 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                 )}
               </div>
 
-              <div className="browse-section">
-                <div className="browse-section-header">
+              <div className="browse-section" data-aos="fade-up" data-aos-duration="500">
+                <div className="browse-section-header" data-aos="fade-right" data-aos-duration="400">
                   <div className="browse-section-title">Hidden Gems</div>
                 </div>
                 {gemsLoading ? (
@@ -1874,8 +1947,8 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                 )}
               </div>
 
-              <div className="browse-section">
-                <div className="browse-section-header">
+              <div className="browse-section" data-aos="fade-up" data-aos-duration="500">
+                <div className="browse-section-header" data-aos="fade-right" data-aos-duration="400">
                   <div className="browse-section-title">All-Time Greats</div>
                 </div>
                 {topRatedLoading ? (
@@ -1947,7 +2020,7 @@ const LinkIcon = () => (
 
 // ─── Share Watchlist Modal ──────────────────────────────────────────────────────
 
-function ShareWatchlistModal({ onClose, savedMovies, showToast }) {
+function ShareWatchlistModal({ onClose, savedMovies }) {
   const [copied, setCopied] = useState(false);
 
   const ids = Array.from(savedMovies.keys());
@@ -1962,7 +2035,7 @@ function ShareWatchlistModal({ onClose, savedMovies, showToast }) {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-      if (showToast) showToast("Copied to clipboard");
+      Toast.fire({ icon: "success", title: "Copied to clipboard" });
     } catch {
       const input = document.createElement("textarea");
       input.value = shareUrl;
@@ -1972,7 +2045,7 @@ function ShareWatchlistModal({ onClose, savedMovies, showToast }) {
       document.body.removeChild(input);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-      if (showToast) showToast("Copied to clipboard");
+      Toast.fire({ icon: "success", title: "Copied to clipboard" });
     }
   };
 
@@ -2323,7 +2396,7 @@ function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, w
   );
 }
 
-function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief, collections, createCollection, renameCollection, deleteCollection, toggleMovieInCollection, onStartMoviePicker, showToast, scrollPositions }) {
+function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief, collections, createCollection, renameCollection, deleteCollection, toggleMovieInCollection, onStartMoviePicker, scrollPositions }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [emptyMsg] = useState(() => pickRandom(EMPTY_WATCHLIST));
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -2366,12 +2439,12 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
   const handleShareCollection = async (e, collection) => {
     e.stopPropagation();
     const ids = collection.movieIds.filter((id) => savedMovies.has(id));
-    if (ids.length === 0) { showToast("Collection is empty"); return; }
+    if (ids.length === 0) { Toast.fire({ icon: "info", title: "Collection is empty" }); return; }
     const url = new URL(window.location.origin + window.location.pathname);
     url.searchParams.set("shared", ids.join(","));
     try {
       await navigator.clipboard.writeText(url.toString());
-      showToast(`Copied link for "${collection.name}"`);
+      Toast.fire({ icon: "success", title: `Copied link for "${collection.name}"` });
     } catch {
       const input = document.createElement("textarea");
       input.value = url.toString();
@@ -2379,7 +2452,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
       input.select();
       document.execCommand("copy");
       document.body.removeChild(input);
-      showToast(`Copied link for "${collection.name}"`);
+      Toast.fire({ icon: "success", title: `Copied link for "${collection.name}"` });
     }
   };
 
@@ -2429,6 +2502,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
                 <div className="upnext-banner-label">Up Next</div>
                 <div className="upnext-banner-title">{upNextMovie.title}</div>
                 <div className="upnext-banner-meta">{upNextMovie.genre} · {upNextMovie.year}</div>
+                {upNextMovie.savedAt && <div className="upnext-banner-added">{formatAddedDate(upNextMovie.savedAt)}</div>}
                 <div className="upnext-banner-prompt">Watch tonight?</div>
                 <div className="upnext-banner-actions">
                   <button className="upnext-banner-details-btn" onClick={(e) => { e.stopPropagation(); setSelectedMovie(upNextMovie); }}>More Info</button>
@@ -2449,7 +2523,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
           </div>
         ) : (
           <>
-            <div className="watchlist-header-row">
+            <div className="watchlist-header-row" data-aos="fade-right" data-aos-duration="300">
               <div className="watchlist-title-row">
                 <span className="watchlist-title">Watchlist</span>
                 <span className="watchlist-count-pill">{movies.length}</span>
@@ -2463,7 +2537,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
               </button>
             </div>
             {watchlistView === "grid" ? (
-              <div className="movies-grid">
+              <div className="movies-grid" data-aos="fade-up" data-aos-duration="400">
                 {movies.map((movie) => (
                   <MovieTile
                     key={movie.id}
@@ -2506,7 +2580,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
         {/* Collections — compact pill chips */}
         {collections.length > 0 && (
           <div className="collections-chips-section">
-            <div className="collections-chips-header">
+            <div className="collections-chips-header" data-aos="fade-right" data-aos-duration="300">
               <span className="collections-chips-title">Collections</span>
             </div>
             <div className="collections-chips-row">
@@ -2583,7 +2657,7 @@ const IDENTITY_MAP = {
   Adventure: "The Explorer", Mystery: "The Puzzle Chaser",
 };
 
-function StatsView({ watchedMovies, watchedRatings, watchedDates, collections, showToast }) {
+function StatsView({ watchedMovies, watchedRatings, watchedDates, collections }) {
   const [showAllBadges, setShowAllBadges] = useState(false);
   const [runtimeCache, setRuntimeCache] = useState(() => loadFromStorage("cc_runtimeCache", {}));
 
@@ -2694,7 +2768,7 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, collections, s
   return (
     <div className="bento-stats">
       {/* Share button */}
-      <button className="bento-share-btn" onClick={() => showToast && showToast("Share feature coming soon")} title="Share stats">
+      <button className="bento-share-btn" onClick={() => Toast.fire({ icon: "info", title: "Share feature coming soon" })} title="Share stats">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
         </svg>
@@ -2981,7 +3055,7 @@ const INSIGHT_PROMPTS = {
 
 const AI_INSIGHTS_ENABLED = false;
 
-function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections, showToast, scrollPositions }) {
+function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections, scrollPositions }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [view, _setView] = useState("journal");
   const prevViewRef = useRef("journal");
@@ -3077,6 +3151,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
         saveToStorage("cc_aiInsight", result);
         setInsight({ type: insightType, text });
         onSetTasteProfile(text);
+        setTimeout(() => AOS.refresh(), 50);
       } else {
         throw new Error("Empty response");
       }
@@ -3232,7 +3307,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
             {view === "journal" && (
               <>
                 {/* Unified toolbar card */}
-                <div className="journal-header-card">
+                <div className="journal-header-card" data-aos="fade-right" data-aos-duration="300">
                   <div className="journal-header-top">
                     <div className="journal-header-title">Your Journal</div>
                     <div className="journal-header-count">{filteredJournalMovies.length} watched</div>
@@ -3265,8 +3340,8 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                     });
                     return Object.entries(groups).map(([genre, gMovies]) => (
                       <div key={genre} className="journal-genre-group">
-                        <div className="journal-genre-header" style={{ color: GENRE_COLORS[genre] || "var(--text-secondary)" }}>{genre}</div>
-                        <div className="movies-grid">
+                        <div className="journal-genre-header" data-aos="fade-right" data-aos-duration="300" style={{ color: GENRE_COLORS[genre] || "var(--text-secondary)" }}>{genre}</div>
+                        <div className="movies-grid" data-aos="fade-up" data-aos-duration="400">
                           {gMovies.map((movie) => (
                             <MovieTile
                               key={movie.id}
@@ -3281,7 +3356,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                     ));
                   })()
                 ) : (
-                  <div className="movies-grid">
+                  <div className="movies-grid" data-aos="fade-up" data-aos-duration="400">
                     {filteredJournalMovies.map((movie) => (
                       <MovieTile
                         key={movie.id}
@@ -3303,7 +3378,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                 ) : (
                   <>
                     {/* Stat Row + Sort */}
-                    <div className="rank-stat-row">
+                    <div className="rank-stat-row" data-aos="fade-right" data-aos-duration="300">
                       <div className="rank-stat-text">
                         {rankingStats && (
                           <>
@@ -3320,7 +3395,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 
                     {/* Podium — Top 3 */}
                     {rankSort === "rating_desc" && rankedMovies.length >= 3 && (
-                      <div className="podium-v2">
+                      <div className="podium-v2" data-aos="fade-up" data-aos-duration="500">
                         {[1, 0, 2].map((idx) => {
                           const m = rankedMovies[idx];
                           const isFirst = idx === 0;
@@ -3346,14 +3421,14 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                       {(rankSort === "rating_desc" && rankedMovies.length >= 3 ? rankedMovies.slice(3) : rankedMovies).map((movie, i) => {
                         const rank = rankSort === "rating_desc" && rankedMovies.length >= 3 ? i + 4 : i + 1;
                         return (
-                          <div key={movie.id} className="ranking-item" onClick={() => setSelectedMovie(movie)} style={{ animationDelay: `${i * 30}ms` }}>
+                          <div key={movie.id} className="ranking-item" onClick={() => setSelectedMovie(movie)} data-aos={i < 10 ? "fade-up" : undefined} data-aos-duration={i < 10 ? "300" : undefined} data-aos-delay={i < 10 ? `${i * 30}` : undefined}>
                             <span className="ranking-num">{rank}</span>
                             <div className="ranking-poster">
                               <PosterImage posterPath={movie.poster_path} title={movie.title} />
                             </div>
                             <div className="ranking-info">
                               <div className="ranking-title">{movie.title}</div>
-                              <div className="ranking-meta">{movie.genre} · {movie.year}</div>
+                              <div className="ranking-meta">{movie.genre} · {movie.year}{watchedDates.get(movie.id) ? ` · ${formatWatchDate(watchedDates.get(movie.id))}` : ""}</div>
                             </div>
                             <ScoreRing score={watchedRatings.get(movie.id)} size={36} />
                           </div>
@@ -3379,7 +3454,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
             )}
 
             {view === "stats" && (
-              <StatsView watchedMovies={watchedMovies} watchedRatings={watchedRatings} watchedDates={watchedDates} collections={collections} showToast={showToast} />
+              <StatsView watchedMovies={watchedMovies} watchedRatings={watchedRatings} watchedDates={watchedDates} collections={collections} />
             )}
           </>
         )}
@@ -3409,7 +3484,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
           rating={watchedRatings.get(selectedMovie.id) ?? null}
           onSetRating={setWatchedRating}
           onStartDebrief={startDebrief}
-          showToast={showToast}
         />
       )}
     </>
@@ -3571,18 +3645,7 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
   }, [messages, loading, input, activeChat?.movieContext]);
 
   // Timestamp formatting
-  const formatTimestamp = useCallback((ts) => {
-    if (!ts) return null;
-    const d = new Date(ts);
-    const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
-    const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
-    const isYesterday = d.toDateString() === yesterday.toDateString();
-    const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    if (isToday) return `Today, ${time}`;
-    if (isYesterday) return `Yesterday, ${time}`;
-    return `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
-  }, []);
+  const formatTimestamp = useCallback((ts) => formatChatTimestamp(ts), []);
 
   // Decide whether to show a timestamp before message index i
   const shouldShowTimestamp = useCallback((msgs, i) => {
@@ -3859,39 +3922,6 @@ The user is using the movie picker — they want to decide what to watch right n
 }
 
 // ─── Settings Modal ────────────────────────────────────────────────────────────
-
-function GlobalToast({ toast, onDismiss }) {
-  if (!toast) return null;
-  const { message: msg, onUndo, id } = toast;
-  return createPortal(
-    <div className={`global-toast${onUndo ? " has-undo" : ""}`} key={id}>
-      <span>{msg}</span>
-      {onUndo && (
-        <button className="toast-undo-btn" onClick={() => { onUndo(); onDismiss(); }}>Undo</button>
-      )}
-    </div>,
-    document.body
-  );
-}
-
-function ConfirmDialog({ dialog, onCancel }) {
-  const { modalRef, overlayRef, swipeHandlers } = useSwipeToDismiss(onCancel);
-  if (!dialog) return null;
-  return createPortal(
-    <div className="confirm-overlay" ref={overlayRef} onClick={onCancel}>
-      <div className="confirm-dialog" ref={modalRef} {...swipeHandlers} onClick={(e) => e.stopPropagation()}>
-        <div className="confirm-handle"><div className="modal-handle" /></div>
-        <div className="confirm-title">{dialog.title}</div>
-        <div className="confirm-message">{dialog.message}</div>
-        <div className="confirm-actions">
-          <button className="confirm-cancel-btn" onClick={onCancel}>Cancel</button>
-          <button className="confirm-action-btn destructive" onClick={dialog.onConfirm}>{dialog.confirmLabel}</button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
 
 function BadgeUnlockCelebration({ badge, onDismiss }) {
   const canvasRef = useRef(null);
@@ -4205,7 +4235,7 @@ function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
 const GENRE_ID_TO_LABEL = {};
 GENRE_FILTERS.forEach((g) => { GENRE_ID_TO_LABEL[g.id] = g.label; });
 
-function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, setWatchedRating, showToast, watchedMovies, isGuest, guardAction }) {
+function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, setWatchedRating, watchedMovies, isGuest, guardAction }) {
   const SESSION_LIMIT = 30;
 
   // ─── STEP 1: STATE ───
@@ -4474,9 +4504,9 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
           if (prev.some((m) => m.id === movie.id)) return prev;
           return [{ ...movie, addedAt: Date.now() }, ...prev].slice(0, 50);
         });
-        showToast("Saved for later");
+        Toast.fire({ icon: "success", title: "Saved for later" });
       } else if (action === "skip") {
-        showToast("Movie skipped");
+        Toast.fire({ icon: "success", title: "Movie skipped" });
       }
 
       setSwipeCount((c) => c + 1);
@@ -4490,7 +4520,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       setDragX(0);
       swipingRef.current = false;
     }, 300);
-  }, [movies, currentIndex, savedIds, toggleSave, showToast, isGuest, guardAction]);
+  }, [movies, currentIndex, savedIds, toggleSave, isGuest, guardAction]);
 
   // Save from the "Already Watched" mini modal
   const handleWatchedSave = useCallback(() => {
@@ -5194,7 +5224,7 @@ function MainApp() {
 
   // Initialize AOS (Animate On Scroll) globally
   useEffect(() => {
-    AOS.init({ duration: 600, easing: "ease-out", once: true });
+    AOS.init({ duration: 600, easing: "ease-out", once: false });
   }, []);
 
   const [activeTab, _setActiveTab] = useState("search");
@@ -5205,6 +5235,7 @@ function MainApp() {
     setTabDir(MAIN_TAB_ORDER[t] > MAIN_TAB_ORDER[prevTabRef.current] ? "right" : "left");
     prevTabRef.current = t;
     _setActiveTab(t);
+    setTimeout(() => AOS.refresh(), 50);
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollPositions = useRef({});
@@ -5237,22 +5268,6 @@ function MainApp() {
   const [badgeToast, setBadgeToast] = useState(null);
   const [activeMilestone, setActiveMilestone] = useState(null);
   const prevWatchedCount = useRef(watchedIds.size);
-  const [globalToast, setGlobalToast] = useState(null);
-  const globalToastTimer = useRef(null);
-  const toastIdRef = useRef(0);
-  const [confirmDialog, setConfirmDialog] = useState(null);
-  const showToast = useCallback((msg, onUndo) => {
-    clearTimeout(globalToastTimer.current);
-    const id = ++toastIdRef.current;
-    setGlobalToast(onUndo ? { message: msg, onUndo, id } : { message: msg, id });
-    const duration = onUndo ? 5000 : 2500;
-    globalToastTimer.current = setTimeout(() => setGlobalToast(null), duration);
-  }, []);
-  const dismissToast = useCallback(() => {
-    clearTimeout(globalToastTimer.current);
-    setGlobalToast(null);
-  }, []);
-
   const defaultChatId = "default";
   const [chats, setChats] = useState(() => loadFromStorage("cc_chats", [{ id: defaultChatId, title: "New chat", messages: [] }]));
   const [activeChatId, setActiveChatId] = useState(() => loadFromStorage("cc_activeChatId", defaultChatId));
@@ -5317,16 +5332,21 @@ function MainApp() {
   }, [registerSignOutCallback, resetAppState]);
 
   const requestClearAllData = () => {
-    setConfirmDialog({
+    Swal.fire({
       title: "Clear all Cinno data?",
-      message: "This removes your watchlist, journal, ratings, and collections permanently.",
-      confirmLabel: "Clear",
-      onConfirm: () => {
+      text: "This removes your watchlist, journal, ratings, and collections permanently.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Clear",
+      confirmButtonColor: "#8B2040",
+      cancelButtonText: "Cancel",
+      customClass: { popup: "cinno-swal-popup" },
+    }).then((result) => {
+      if (result.isConfirmed) {
         clearAllData();
-        setConfirmDialog(null);
         setSettingsOpen(false);
-        showToast("All data cleared");
-      },
+        Toast.fire({ icon: "success", title: "All data cleared" });
+      }
     });
   };
 
@@ -5340,7 +5360,7 @@ function MainApp() {
     });
     setSavedMovies((prev) => {
       const next = new Map(prev);
-      if (next.has(id)) next.delete(id); else next.set(id, movie);
+      if (next.has(id)) next.delete(id); else next.set(id, { ...movie, savedAt: DateTime.now().toISO() });
       return next;
     });
     if (wasSaved) {
@@ -5357,18 +5377,23 @@ function MainApp() {
     const id = movie.id;
     const wasWatched = watchedIds.has(id);
     if (wasWatched) {
-      setConfirmDialog({
+      Swal.fire({
         title: `Remove "${movie.title}"?`,
-        message: "Remove from your journal? Your rating and notes will be lost.",
-        confirmLabel: "Remove",
-        onConfirm: () => {
+        text: "Remove from your journal? Your rating and notes will be lost.",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Remove",
+        confirmButtonColor: "#8B2040",
+        cancelButtonText: "Cancel",
+        customClass: { popup: "cinno-swal-popup" },
+      }).then((result) => {
+        if (result.isConfirmed) {
           const prevDate = watchedDates.get(id);
           const prevNote = watchedNotes.get(id);
           const prevRating = watchedRatings.get(id);
           setWatchedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
           setWatchedMovies((prev) => { const next = new Map(prev); next.delete(id); return next; });
           setWatchedDates((prev) => { const next = new Map(prev); next.delete(id); return next; });
-          setConfirmDialog(null);
           showToast("Removed from journal", () => {
             setWatchedIds((prev) => new Set(prev).add(id));
             setWatchedMovies((prev) => new Map(prev).set(id, movie));
@@ -5376,7 +5401,7 @@ function MainApp() {
             if (prevNote !== undefined) setWatchedNotes((prev) => new Map(prev).set(id, prevNote));
             if (prevRating !== undefined) setWatchedRatings((prev) => new Map(prev).set(id, prevRating));
           });
-        },
+        }
       });
       return;
     }
@@ -5390,7 +5415,7 @@ function MainApp() {
       next.set(id, movie);
       return next;
     });
-    setWatchedDates((prev) => new Map(prev).set(id, new Date().toISOString()));
+    setWatchedDates((prev) => new Map(prev).set(id, DateTime.now().toISO()));
     const wasSaved = savedIds.has(id);
     if (wasSaved) {
       setSavedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
@@ -5429,16 +5454,21 @@ function MainApp() {
   const deleteCollection = (collectionId, afterDelete) => {
     const col = collections.find((c) => c.id === collectionId);
     if (!col || col.isDefault) return;
-    setConfirmDialog({
+    Swal.fire({
       title: `Delete "${col.name}"?`,
-      message: "This can't be undone.",
-      confirmLabel: "Delete",
-      onConfirm: () => {
+      text: "This can't be undone.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Delete",
+      confirmButtonColor: "#8B2040",
+      cancelButtonText: "Cancel",
+      customClass: { popup: "cinno-swal-popup" },
+    }).then((result) => {
+      if (result.isConfirmed) {
         setCollections((prev) => prev.filter((c) => c.id !== collectionId));
-        setConfirmDialog(null);
-        showToast(`Deleted "${col.name}"`);
+        Toast.fire({ icon: "success", title: `Deleted "${col.name}"` });
         if (afterDelete) afterDelete();
-      },
+      }
     });
   };
 
@@ -5568,8 +5598,6 @@ function MainApp() {
       if (!badgeToast) showNextCelebration();
     }
   }, [watchedMovies, watchedRatings, collections, watchedDates, unlockedBadges, showNextCelebration, badgeToast, chats]);
-  useEffect(() => () => clearTimeout(globalToastTimer.current), []);
-
   // ── Milestone celebration check ────────────────────────────
   useEffect(() => {
     const count = watchedIds.size;
@@ -5687,7 +5715,6 @@ function MainApp() {
             renameCollection={renameCollection} deleteCollection={deleteCollection}
             toggleMovieInCollection={guardedToggleMovieInCollection}
             onStartMoviePicker={guardedStartMoviePicker}
-            showToast={showToast}
             scrollPositions={scrollPositions}
           />
         )}
@@ -5698,7 +5725,6 @@ function MainApp() {
             startDebrief={guardedStartDebrief}
             collections={collections} toggleMovieInCollection={guardedToggleMovieInCollection}
             setWatchedRating={guardedSetWatchedRating}
-            showToast={showToast}
             watchedMovies={watchedMovies}
             isGuest={isGuest}
             guardAction={guardAction}
@@ -5721,7 +5747,6 @@ function MainApp() {
             startDebrief={guardedStartDebrief}
             unlockedBadges={unlockedBadges}
             collections={collections}
-            showToast={showToast}
             scrollPositions={scrollPositions}
           />
         )}
@@ -5788,8 +5813,6 @@ function MainApp() {
 
       <BadgeUnlockCelebration badge={badgeToast} onDismiss={dismissCelebration} />
       <MilestoneCelebration milestone={activeMilestone} onDismiss={() => setActiveMilestone(null)} />
-      <GlobalToast toast={globalToast} onDismiss={dismissToast} />
-      <ConfirmDialog dialog={confirmDialog} onCancel={() => setConfirmDialog(null)} />
       {guestModal}
     </div>
   );

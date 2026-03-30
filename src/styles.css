@@ -2274,7 +2274,6 @@ body {
   padding: 12px 2px;
   cursor: pointer;
   transition: background 0.15s;
-  animation: cardIn 0.3s ease both;
 }
 
 .ranking-item:last-child {
@@ -4337,6 +4336,12 @@ body {
   color: rgba(245, 240, 235, 0.5);
   margin-bottom: 5px;
   letter-spacing: 0.3px;
+}
+
+.upnext-banner-added {
+  font-size: 11px;
+  color: rgba(245, 240, 235, 0.4);
+  margin-bottom: 2px;
 }
 
 .upnext-banner-prompt {
@@ -6997,10 +7002,6 @@ body {
   font-weight: 600;
 }
 
-.discover-header .genre-dropdown-panel {
-  /* Positioning handled by Floating UI */
-}
-
 /* ── Content Area ── */
 .discover-content {
   display: flex;
@@ -8316,189 +8317,56 @@ body {
   background: rgba(0, 0, 0, 0.04);
 }
 
-/* ── Global Toast ──────────────────────────────── */
-.global-toast {
-  position: fixed;
-  bottom: calc(var(--tab-height) + 16px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 150;
-  padding: 10px 22px;
-  border-radius: 20px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  pointer-events: none;
-  background: var(--text-primary);
-  color: var(--bg-primary);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  animation: globalToastIn 0.25s ease forwards, globalToastOut 0.3s ease 2.2s forwards;
-  display: flex;
-  align-items: center;
+/* ── SweetAlert2 Theme ─────────────────────────── */
+.cinno-swal-popup {
+  background: var(--bg-elevated) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 16px !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  color: var(--text-primary) !important;
 }
 
-.global-toast.has-undo {
-  pointer-events: auto;
-  cursor: default;
-  padding: 10px 14px 10px 22px;
-  animation: globalToastIn 0.25s ease forwards, globalToastOut 0.3s ease 4.7s forwards;
+.cinno-swal-popup .swal2-title {
+  color: var(--text-primary) !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-size: 15px !important;
 }
 
-.toast-undo-btn {
-  background: none;
-  border: none;
-  color: var(--accent);
-  font-weight: 700;
-  font-size: 13px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  cursor: pointer;
-  padding: 2px 0 2px 12px;
-  margin-left: 12px;
-  border-left: 1px solid rgba(128, 128, 128, 0.3);
-  white-space: nowrap;
+.cinno-swal-popup .swal2-html-container {
+  color: var(--text-secondary) !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  font-size: 13px !important;
 }
 
-.toast-undo-btn:active {
-  opacity: 0.7;
+.cinno-swal-popup .swal2-icon {
+  border-color: var(--border) !important;
 }
 
-@keyframes globalToastIn {
-  0% { opacity: 0; transform: translateX(-50%) translateY(12px); }
-  100% { opacity: 1; transform: translateX(-50%) translateY(0); }
+.cinno-swal-popup .swal2-cancel {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  border-radius: 10px !important;
+  font-weight: 600 !important;
 }
 
-@keyframes globalToastOut {
-  0% { opacity: 1; transform: translateX(-50%) translateY(0); }
-  100% { opacity: 0; transform: translateX(-50%) translateY(6px); }
+.cinno-swal-popup .swal2-confirm {
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+  border-radius: 10px !important;
+  font-weight: 600 !important;
 }
 
-@media (min-width: 768px) {
-  .global-toast {
-    bottom: 24px;
-    left: calc(50% + var(--sidebar-width) / 2);
-  }
+.cinno-swal-undo-btn {
+  background: none !important;
+  border: none !important;
+  color: var(--accent) !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  box-shadow: none !important;
+  padding: 2px 8px !important;
 }
 
-/* ── Confirm Dialog ──────────────────────────────── */
-.confirm-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  animation: overlayFadeIn 0.2s ease;
-}
-
-.confirm-dialog {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 24px;
-  max-width: 320px;
-  width: calc(100% - 48px);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-  animation: confirmScaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes confirmScaleIn {
-  0% { opacity: 0; transform: scale(0.92); }
-  100% { opacity: 1; transform: scale(1); }
-}
-
-.confirm-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 8px;
-}
-
-.confirm-message {
-  font-size: 13px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  margin-bottom: 20px;
-}
-
-.confirm-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-}
-
-.confirm-cancel-btn {
-  padding: 10px 18px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-primary);
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.confirm-cancel-btn:hover {
-  background: var(--bg-card);
-}
-
-.confirm-action-btn {
-  padding: 10px 18px;
-  border-radius: 10px;
-  border: none;
-  background: var(--accent);
-  color: #fff;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-
-.confirm-action-btn:hover {
-  opacity: 0.9;
-}
-
-.confirm-action-btn.destructive {
-  background: #8B2040;
-}
-
-.confirm-action-btn.destructive:hover {
-  background: #9B2850;
-}
-
-.confirm-handle {
-  display: flex;
-  justify-content: center;
-  padding: 0 0 8px;
-}
-
-.confirm-handle .modal-handle {
-  margin: 0;
-}
-
-/* Hide confirm handle on non-touch devices */
-@media (pointer: fine) {
-  .confirm-handle {
-    display: none;
-  }
-}
-
-[data-theme="light"] .confirm-overlay {
-  background: rgba(0, 0, 0, 0.3);
-}
-
-[data-theme="light"] .confirm-dialog {
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.06);
-}
-
-[data-theme="light"] .confirm-action-btn.destructive {
-  background: #A0304F;
+[data-theme="light"] .cinno-swal-popup {
+  background: #fff !important;
+  border-color: #e0e0e0 !important;
 }
 
 /* ── Login Screen ─────────────────────────────── */
