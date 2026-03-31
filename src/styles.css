@@ -24,6 +24,11 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+/* Global smooth transitions for interactive elements */
+button, a, [role="button"] {
+  transition: background 200ms ease, color 200ms ease, opacity 200ms ease, transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
@@ -55,8 +60,19 @@ body {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  opacity: 1;
+  transition: opacity 150ms ease-out;
 }
 
+.tab-panel.tab-fade-out { opacity: 0; }
+.tab-panel.tab-fade-in  { animation: tabFadeIn 200ms ease-out both; }
+
+@keyframes tabFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Legacy slide classes (kept for modal tabs) */
 .tab-panel.slide-right { animation: slideFromRight 200ms ease-out both; }
 .tab-panel.slide-left  { animation: slideFromLeft 200ms ease-out both; }
 
@@ -372,7 +388,13 @@ body {
 
 .movies-grid,
 .scroll-row-inner {
-  animation: groupFadeIn 0.3s ease-out;
+  animation: groupFadeIn 300ms ease-out;
+}
+
+/* Skeleton → content crossfade for loading states */
+.skeleton-grid,
+.saved-empty {
+  animation: groupFadeIn 200ms ease-out;
 }
 
 .movie-poster {
@@ -496,7 +518,7 @@ body {
   background: var(--bg-card);
   border-radius: 20px;
   padding: 24px;
-  animation: modalScaleIn 0.3s ease-out;
+  animation: modalScaleIn 250ms ease-out;
   max-height: 80vh;
   overflow-y: auto;
   position: relative;
@@ -504,13 +526,18 @@ body {
 }
 
 @keyframes modalScaleIn {
-  from { opacity: 0; transform: scale(0.95); }
+  from { opacity: 0; transform: scale(0.9); }
   to { opacity: 1; transform: scale(1); }
 }
 
 @keyframes slideUp {
   from { transform: translateY(100%); }
   to { transform: none; }
+}
+
+@keyframes modalScaleUp {
+  from { opacity: 0; transform: translateX(-50%) scale(0.95); }
+  to { opacity: 1; transform: translateX(-50%) scale(1); }
 }
 
 .modal-handle {
@@ -555,7 +582,7 @@ body {
 .modal-synopsis { font-size: 14px; color: var(--text-secondary); line-height: 1.7; }
 .modal-runtime { font-size: 12px; color: var(--text-muted); margin-top: 4px; display: block; }
 .modal-runtime-loading { font-size: 12px; color: var(--text-muted); margin-top: 4px; display: block; opacity: 0.5; }
-.modal-tagline { font-size: 14px; color: var(--text-muted); font-style: italic; margin: 0 0 8px 0; line-height: 1.5; }
+.modal-tagline { font-size: 14px; color: var(--text-muted); font-style: italic; margin: 0 0 8px 0; line-height: 1.5; animation: groupFadeIn 200ms ease-out; }
 .modal-tagline-loading { height: 14px; width: 60%; background: var(--bg-elevated); border-radius: 4px; margin-bottom: 8px; animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.8; } }
 
@@ -1328,6 +1355,7 @@ body {
   font-weight: 500;
   font-family: 'Plus Jakarta Sans', sans-serif;
   letter-spacing: 0.3px;
+  transition: color 200ms ease;
 }
 
 .tab-item.active .tab-label { color: var(--text-primary); }
@@ -1556,13 +1584,13 @@ body {
   gap: 4px;
   min-width: 280px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.15);
-  animation: dropdownSlideDown 0.15s ease-out;
-  transform-origin: top center;
+  animation: dropdownIn 150ms ease-out;
+  transform-origin: top left;
 }
 
-@keyframes dropdownSlideDown {
-  from { opacity: 0; transform: translateY(-8px) scaleY(0.95); }
-  to { opacity: 1; transform: translateY(0) scaleY(1); }
+@keyframes dropdownIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .genre-option {
@@ -2361,6 +2389,7 @@ body {
   position: relative;
   overflow: hidden;
   min-height: 72px;
+  animation: groupFadeIn 300ms ease-out;
 }
 
 .insight-card::before {
@@ -4214,7 +4243,7 @@ body {
 .upnext-banner-shuffle-btn,
 .collection-chip,
 .chat-followup-chip {
-  transition: all 0.15s, transform 0.1s;
+  transition: all 200ms ease, transform 120ms ease-out;
 }
 
 /* ── Up Next Banner — Immersive Backdrop ────────── */
@@ -5161,12 +5190,8 @@ body {
   padding: 6px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   z-index: 100;
-  animation: dropdownIn 0.15s ease;
-}
-
-@keyframes dropdownIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: none; }
+  animation: dropdownIn 150ms ease-out;
+  transform-origin: top left;
 }
 
 .collection-dropdown-item {
@@ -6581,6 +6606,7 @@ body {
 
 .browse-section {
   min-width: 0;
+  animation: groupFadeIn 300ms ease-out;
 }
 
 .browse-section-header {
@@ -6837,6 +6863,21 @@ body {
   -webkit-user-select: none;
   overflow: hidden;
   position: relative;
+}
+
+/* ── Discover Staggered Entrance ── */
+.discover-header.discover-enter   { animation: discoverFadeIn 200ms ease-out 0ms both; }
+.discover-content.discover-enter  { animation: discoverCardIn 300ms ease-out 100ms both; }
+.discover-actions.discover-enter  { animation: discoverFadeIn 200ms ease-out 200ms both; }
+
+@keyframes discoverFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes discoverCardIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 /* ── Header: Undo + Counter + Shuffle + Filter ── */
@@ -7261,11 +7302,11 @@ body {
 
 /* ── Swipe Animations ──────────────── */
 .discover-card-active.swipe-right {
-  animation: swipeRight 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: swipeRight 250ms ease-in forwards;
 }
 
 .discover-card-active.swipe-left {
-  animation: swipeLeft 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: swipeLeft 250ms ease-in forwards;
 }
 
 @keyframes swipeRight {
@@ -7278,14 +7319,14 @@ body {
   100% { transform: translateX(-140%) rotate(-12deg); opacity: 0; }
 }
 
-/* Card entrance after swipe — uses opacity only to avoid conflicting with inline transform */
+/* Card entrance after swipe — scale up + fade in */
 .discover-card-active.card-enter {
-  animation: cardEnter 0.15s ease-out forwards;
+  animation: cardEnter 200ms ease-out forwards;
 }
 
 @keyframes cardEnter {
-  from { opacity: 0.6; }
-  to { opacity: 1; }
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 /* Card fade-out during loading transition */
@@ -7629,6 +7670,7 @@ body {
   align-items: center;
   justify-content: center;
   flex: 1;
+  animation: groupFadeIn 300ms ease-out;
   text-align: center;
   gap: 10px;
   padding: 40px 24px;
@@ -8112,6 +8154,14 @@ body {
   padding-bottom: 140px !important;
 }
 
+.journal-view-panel {
+  opacity: 1;
+  transition: opacity 150ms ease-out;
+}
+.journal-view-panel.tab-fade-out { opacity: 0; }
+.journal-view-panel.tab-fade-in  { animation: tabFadeIn 200ms ease-out both; }
+
+/* Legacy slide kept for reference */
 .journal-view-panel.slide-right { animation: slideFromRight 200ms ease-out both; }
 .journal-view-panel.slide-left  { animation: slideFromLeft 200ms ease-out both; }
 
@@ -8737,14 +8787,9 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  animation: guest-modal-in 0.25s ease-out;
+  animation: modalScaleIn 250ms ease-out;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
   border: 1px solid var(--border);
-}
-
-@keyframes guest-modal-in {
-  from { opacity: 0; transform: scale(0.92); }
-  to   { opacity: 1; transform: none; }
 }
 
 .guest-modal-icon {
@@ -8838,12 +8883,8 @@ body {
   overflow: hidden;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   z-index: 100;
-  animation: dropdown-in 0.15s ease-out;
-}
-
-@keyframes dropdown-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: none; }
+  animation: dropdownIn 150ms ease-out;
+  transform-origin: top right;
 }
 
 .user-dropdown-item {

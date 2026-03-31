@@ -94,9 +94,28 @@ function useSwipeToDismiss(onClose) {
   const overlayRef = useRef(null);
   const isDragging = useRef(false);
   const dismissTimer = useRef(null);
+  const closingRef = useRef(false);
   const THRESHOLD = 120;
 
   useEffect(() => () => clearTimeout(dismissTimer.current), []);
+
+  // Animated close: scale down modal + fade overlay, then unmount
+  const animatedClose = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    const el = modalRef.current;
+    const ov = overlayRef.current;
+    if (el) {
+      el.style.transition = "transform 200ms ease-in, opacity 200ms ease-in";
+      el.style.transform = "scale(0.95)";
+      el.style.opacity = "0";
+    }
+    if (ov) {
+      ov.style.transition = "opacity 150ms ease-in 50ms";
+      ov.style.opacity = "0";
+    }
+    dismissTimer.current = setTimeout(() => onClose(), 200);
+  }, [onClose]);
 
   const onTouchStart = useCallback((e) => {
     const el = modalRef.current;
@@ -152,7 +171,7 @@ function useSwipeToDismiss(onClose) {
     }
   }, [onClose]);
 
-  return { modalRef, overlayRef, swipeHandlers: { onTouchStart, onTouchMove, onTouchEnd } };
+  return { modalRef, overlayRef, animatedClose, swipeHandlers: { onTouchStart, onTouchMove, onTouchEnd } };
 }
 
 function useScrollRestore(key, scrollPositions, existingRef) {
@@ -783,6 +802,12 @@ const BADGE_DEFS = [
   { id: "first_debrief",  title: "Debriefer",       desc: "AI debriefs completed",  tiers: [1, 5, 10],   icon: BadgeIconDebrief,    secret: true },
 ];
 
+function maxMoviesInOneDay(watchedDates) {
+  const dayCounts = {};
+  watchedDates.forEach((dateStr) => { const day = dateStr.slice(0, 10); dayCounts[day] = (dayCounts[day] || 0) + 1; });
+  return Object.values(dayCounts).reduce((mx, v) => Math.max(mx, v), 0);
+}
+
 function computeBadgeProgress(badgeId, { watchedMovies, watchedRatings, collections, watchedDates }) {
   switch (badgeId) {
     case "first_watch":    return watchedMovies.size;
@@ -792,11 +817,9 @@ function computeBadgeProgress(badgeId, { watchedMovies, watchedRatings, collecti
       watchedMovies.forEach((m) => { if (m.genre === "Horror") count++; });
       return count;
     }
-    case "binge_watcher": {
-      const dayCounts = {};
-      watchedDates.forEach((dateStr) => { const day = dateStr.slice(0, 10); dayCounts[day] = (dayCounts[day] || 0) + 1; });
-      return Object.values(dayCounts).reduce((mx, v) => Math.max(mx, v), 0);
-    }
+    case "binge_watcher":
+    case "marathon_runner":
+      return maxMoviesInOneDay(watchedDates);
     case "collector": {
       return collections.filter((c) => !c.isDefault).length;
     }
@@ -812,11 +835,6 @@ function computeBadgeProgress(badgeId, { watchedMovies, watchedRatings, collecti
         if (hour >= 23 || hour < 5) count++;
       });
       return count;
-    }
-    case "marathon_runner": {
-      const dayCounts = {};
-      watchedDates.forEach((dateStr) => { const day = dateStr.slice(0, 10); dayCounts[day] = (dayCounts[day] || 0) + 1; });
-      return Object.values(dayCounts).reduce((mx, v) => Math.max(mx, v), 0);
     }
     case "contrarian": {
       let count = 0;
@@ -1172,16 +1190,16 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
 
   const backdropUrl = movie.backdrop_path ? `${IMG_BASE}/w780${movie.backdrop_path}` : null;
   const posterBlurUrl = movie.poster_path ? `${IMG_BASE}/w342${movie.poster_path}` : null;
-  const { modalRef, overlayRef, swipeHandlers } = useSwipeToDismiss(onClose);
+  const { modalRef, overlayRef, animatedClose, swipeHandlers } = useSwipeToDismiss(onClose);
 
   return createPortal(
-    <div className="movie-modal-overlay" ref={overlayRef} onClick={onClose}>
+    <div className="movie-modal-overlay" ref={overlayRef} onClick={animatedClose}>
       <div className="movie-modal movie-modal-lg" ref={modalRef} {...swipeHandlers} onClick={(e) => e.stopPropagation()}>
         {posterBlurUrl && <div className="modal-poster-bg" style={{ backgroundImage: `url(${posterBlurUrl})` }} />}
         <div className="modal-handle-bar">
           <div className="modal-handle" />
         </div>
-        <button className="modal-close-btn" onClick={onClose}>✕</button>
+        <button className="modal-close-btn" onClick={animatedClose}>✕</button>
         <div className="modal-backdrop">
           {backdropUrl ? (
             <img src={backdropUrl} alt={movie.title} />
@@ -1345,16 +1363,16 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
     setTab(t);
   };
 
-  const { modalRef, overlayRef, swipeHandlers } = useSwipeToDismiss(onClose);
+  const { modalRef, overlayRef, animatedClose, swipeHandlers } = useSwipeToDismiss(onClose);
 
   return createPortal(
-    <div className="movie-modal-overlay" ref={overlayRef} onClick={onClose}>
+    <div className="movie-modal-overlay" ref={overlayRef} onClick={animatedClose}>
       <div className="movie-modal movie-modal-lg" ref={modalRef} {...swipeHandlers} onClick={(e) => e.stopPropagation()}>
         {posterBlurUrl && <div className="modal-poster-bg" style={{ backgroundImage: `url(${posterBlurUrl})` }} />}
         <div className="modal-handle-bar">
           <div className="modal-handle" />
         </div>
-        <button className="modal-close-btn" onClick={onClose}>✕</button>
+        <button className="modal-close-btn" onClick={animatedClose}>✕</button>
         <div className="modal-backdrop">
           {backdropUrl ? (
             <img src={backdropUrl} alt={movie.title} />
@@ -1889,8 +1907,8 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
 
             {/* Browse Sections — stacked full-width */}
             <div className="browse-sections">
-              <div className="browse-section" data-aos="fade-up" data-aos-duration="500">
-                <div className="browse-section-header" data-aos="fade-right" data-aos-duration="400">
+              <div className="browse-section">
+                <div className="browse-section-header">
                   <div className="browse-section-title">Everyone's Watching</div>
                   <button className="desktop-refresh-btn" onClick={handleDesktopRefresh} disabled={refreshing} title="Refresh">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={refreshing ? "spinning" : ""}>
@@ -1921,8 +1939,8 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                 )}
               </div>
 
-              <div className="browse-section" data-aos="fade-up" data-aos-duration="500">
-                <div className="browse-section-header" data-aos="fade-right" data-aos-duration="400">
+              <div className="browse-section">
+                <div className="browse-section-header">
                   <div className="browse-section-title">Hidden Gems</div>
                 </div>
                 {gemsLoading ? (
@@ -1947,8 +1965,8 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                 )}
               </div>
 
-              <div className="browse-section" data-aos="fade-up" data-aos-duration="500">
-                <div className="browse-section-header" data-aos="fade-right" data-aos-duration="400">
+              <div className="browse-section">
+                <div className="browse-section-header">
                   <div className="browse-section-title">All-Time Greats</div>
                 </div>
                 {topRatedLoading ? (
@@ -2049,13 +2067,13 @@ function ShareWatchlistModal({ onClose, savedMovies }) {
     }
   };
 
-  const { modalRef, overlayRef, swipeHandlers } = useSwipeToDismiss(onClose);
+  const { modalRef, overlayRef, animatedClose, swipeHandlers } = useSwipeToDismiss(onClose);
 
   return createPortal(
-    <div className="movie-modal-overlay" ref={overlayRef} onClick={onClose}>
+    <div className="movie-modal-overlay" ref={overlayRef} onClick={animatedClose}>
       <div className="share-modal" ref={modalRef} {...swipeHandlers} onClick={(e) => e.stopPropagation()}>
         <div className="modal-handle-bar"><div className="modal-handle" /></div>
-        <button className="modal-close-btn" onClick={onClose}>✕</button>
+        <button className="modal-close-btn" onClick={animatedClose}>✕</button>
         <div className="share-modal-icon">
           <LinkIcon />
         </div>
@@ -2220,7 +2238,7 @@ function CreateCollectionModal({ onClose, onCreate }) {
   const [name, setName] = useState("");
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.focus(); }, []);
-  const { modalRef, overlayRef, swipeHandlers } = useSwipeToDismiss(onClose);
+  const { modalRef, overlayRef, animatedClose, swipeHandlers } = useSwipeToDismiss(onClose);
 
   const handleSubmit = () => {
     const trimmed = name.trim();
@@ -2230,7 +2248,7 @@ function CreateCollectionModal({ onClose, onCreate }) {
   };
 
   return createPortal(
-    <div className="movie-modal-overlay" ref={overlayRef} onClick={onClose}>
+    <div className="movie-modal-overlay" ref={overlayRef} onClick={animatedClose}>
       <div className="collection-create-modal" ref={modalRef} {...swipeHandlers} onClick={(e) => e.stopPropagation()}>
         <div className="modal-handle-bar"><div className="modal-handle" /></div>
         <div className="collection-create-header">New Collection</div>
@@ -2660,6 +2678,8 @@ const IDENTITY_MAP = {
 function StatsView({ watchedMovies, watchedRatings, watchedDates, collections }) {
   const [showAllBadges, setShowAllBadges] = useState(false);
   const [runtimeCache, setRuntimeCache] = useState(() => loadFromStorage("cc_runtimeCache", {}));
+  const [showcaseIds, setShowcaseIds] = useState(() => loadFromStorage("cc_badge_showcase", []));
+  const [flippedBadges, setFlippedBadges] = useState(new Set());
 
   // Fetch runtimes for movies missing from the cache
   useEffect(() => {
@@ -2728,9 +2748,6 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, collections })
   const topGenre = stats.genres[0]?.name || "Film";
   const identity = IDENTITY_MAP[topGenre] || "The Eclectic Explorer";
   const topThreeGenres = stats.genres.slice(0, 3);
-
-  const [showcaseIds, setShowcaseIds] = useState(() => loadFromStorage("cc_badge_showcase", []));
-  const [flippedBadges, setFlippedBadges] = useState(new Set());
 
   const badgesWithTier = useMemo(() => {
     const ctx = { watchedMovies, watchedRatings, collections: collections || [], watchedDates: watchedDates || new Map() };
@@ -3060,18 +3077,24 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   const [view, _setView] = useState("journal");
   const prevViewRef = useRef("journal");
   const [viewDir, setViewDir] = useState(null);
+  const [viewFading, setViewFading] = useState(false);
+  const viewFadeTimer = useRef(null);
   const journalContentRef = useRef(null);
   const subScrollPositions = useRef({});
   const setView = useCallback((v) => {
-    const ORDER = { journal: 0, rankings: 1, stats: 2 };
     if (v === prevViewRef.current) return;
     // Save current sub-tab scroll
     if (journalContentRef.current) {
       subScrollPositions.current[prevViewRef.current] = journalContentRef.current.scrollTop;
     }
-    setViewDir(ORDER[v] > ORDER[prevViewRef.current] ? "right" : "left");
-    prevViewRef.current = v;
-    _setView(v);
+    if (viewFadeTimer.current) clearTimeout(viewFadeTimer.current);
+    setViewFading(true);
+    viewFadeTimer.current = setTimeout(() => {
+      setViewDir("fade-in");
+      prevViewRef.current = v;
+      _setView(v);
+      setViewFading(false);
+    }, 150);
   }, []);
   const [journalSearch, setJournalSearch] = useState("");
   const [rankSort, setRankSort] = useState(() => {
@@ -3274,7 +3297,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   return (
     <>
       <div className="content journal-content" ref={journalContentRef}>
-        <div className={`journal-view-panel ${viewDir ? `slide-${viewDir}` : ""}`} key={view}>
+        <div className={`journal-view-panel ${viewFading ? "tab-fade-out" : ""} ${viewDir === "fade-in" ? "tab-fade-in" : ""}`} key={view}>
 
         {movies.length === 0 && (
           <div className="saved-empty">
@@ -4187,15 +4210,15 @@ function SortDropdown({ options, value, onChange }) {
 }
 
 function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
-  const { modalRef, overlayRef, swipeHandlers } = useSwipeToDismiss(onClose);
+  const { modalRef, overlayRef, animatedClose, swipeHandlers } = useSwipeToDismiss(onClose);
 
   return (
-    <div className="movie-modal-overlay" ref={overlayRef} onClick={onClose}>
+    <div className="movie-modal-overlay" ref={overlayRef} onClick={animatedClose}>
       <div className="movie-modal settings-modal" ref={modalRef} {...swipeHandlers} onClick={(e) => e.stopPropagation()}>
         <div className="modal-handle" />
         <div className="settings-header">
           <div className="settings-title">Settings</div>
-          <button className="modal-close-btn" style={{ position: "static" }} onClick={onClose}>✕</button>
+          <button className="modal-close-btn" style={{ position: "static" }} onClick={animatedClose}>✕</button>
         </div>
 
         <div className="settings-section">
@@ -4317,8 +4340,6 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   const loadMoviesRef = useRef(null);
 
   const loadMovies = async (genreIds = [], append = false) => {
-    console.log("loadMovies called with genreIds:", genreIds);
-    console.log("Active genres ref:", [...activeGenresRef.current]);
     const version = ++fetchVersionRef.current;
 
     if (!append) {
@@ -4341,7 +4362,6 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         if (probeRes.ok) {
           const probeData = await probeRes.json();
           maxPage = Math.min(probeData.total_pages || 1, 500);
-          console.log("TMDB total_pages for this query:", probeData.total_pages, "-> capped maxPage:", maxPage);
         }
       } catch {
         // fallback to default maxPage
@@ -4354,7 +4374,6 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         const page = Math.floor(Math.random() * pageLimit) + 1;
         const fetchUrl1 = `${baseUrl}&page=${page}`;
         const fetchUrl2 = `${baseUrl}&page=${page + 1}`;
-        console.log(`[Attempt ${attempt + 1}] Fetching page ${page}/${page + 1} of ${maxPage}:`, fetchUrl1);
         try {
           const [res1, res2] = await Promise.all([
             fetch(fetchUrl1),
@@ -4363,8 +4382,6 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
           if (!res1.ok || !res2.ok) continue;
           const [data1, data2] = await Promise.all([res1.json(), res2.json()]);
           const combined = [...(data1?.results || []), ...(data2?.results || [])];
-          console.log(`Page ${page} returned ${data1?.results?.length || 0} raw results`);
-          console.log(`Page ${page + 1} returned ${data2?.results?.length || 0} raw results`);
           const seenIds = new Set();
           const batch = combined
             .filter((m) => {
@@ -4383,12 +4400,10 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
               return movie;
             });
 
-          console.log(`After filtering exclusions: ${batch.length} results`);
 
           if (batch.length > 0 && fetchVersionRef.current === version) {
             batch.sort(() => Math.random() - 0.5);
             const limited = batch.slice(0, SESSION_LIMIT);
-            console.log(`Final batch length: ${limited.length}`);
             if (append) {
               setMovies((prev) => {
                 const existingIds = new Set(prev.map((m) => m.id));
@@ -4410,8 +4425,6 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         }
       }
 
-      // All 3 attempts returned 0 results
-      console.log("All 3 attempts returned 0 usable results for genreIds:", genreIds);
       if (fetchVersionRef.current === version && !append) {
         setMovies([]);
         setCurrentIndex(0);
@@ -4496,7 +4509,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     if (action === "skip") setShowStamp("nope");
     else setShowStamp("like");
 
-    setTimeout(() => {
+    setTimeout(() => { // matches 250ms swipe-out animation
       if (action === "save") {
         if (!savedIds.has(movie.id)) toggleSave(movie);
       } else if (action === "maybe") {
@@ -4519,7 +4532,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       setShowStamp(null);
       setDragX(0);
       swipingRef.current = false;
-    }, 300);
+    }, 250);
   }, [movies, currentIndex, savedIds, toggleSave, isGuest, guardAction]);
 
   // Save from the "Already Watched" mini modal
@@ -4765,7 +4778,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   return (
     <div className="discover-container">
       {/* Header: undo + counter + filter icon */}
-      <div className="discover-header">
+      <div className="discover-header discover-enter">
         <button
           className={`discover-undo-btn ${undoHistory.length === 0 ? "disabled" : ""}`}
           onClick={handleUndo}
@@ -4813,7 +4826,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       </div>
 
       {/* Content: card */}
-      <div className="discover-content">
+      <div className="discover-content discover-enter">
         {/* Card stack */}
         <div className="discover-stack">
           {thirdMovie && (
@@ -4834,7 +4847,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
               className={`discover-card discover-card-active ${swipeDir ? `swipe-${swipeDir}` : "card-enter"}`}
               style={{
                 transform: swipeDir ? undefined : `translateX(${dragX}px) rotate(${rotation}deg)`,
-                transition: isDragging ? "none" : "transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+                transition: isDragging ? "none" : "transform 300ms cubic-bezier(0.175, 0.885, 0.32, 1.275)",
               }}
               onTouchStart={handleTouchStart}
               onTouchMove={handleTouchMove}
@@ -4899,7 +4912,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       )}
 
       {/* Action buttons */}
-      <div className="discover-actions">
+      <div className="discover-actions discover-enter">
         <div className="discover-action-group">
           <button className="discover-action-btn discover-skip-btn" onClick={() => handleAction("skip")} aria-label="Skip">
             <SwipeXIcon />
@@ -5087,10 +5100,27 @@ function LoginScreen() {
 
 function GuestRestrictionModal({ onClose }) {
   const { signInWithGoogle, signInCooldown, signInError } = useAuth();
+  const guestOverlayRef = useRef(null);
+  const guestModalRef = useRef(null);
+  const guestClosing = useRef(false);
+  const handleGuestClose = useCallback(() => {
+    if (guestClosing.current) return;
+    guestClosing.current = true;
+    if (guestModalRef.current) {
+      guestModalRef.current.style.transition = "transform 200ms ease-in, opacity 200ms ease-in";
+      guestModalRef.current.style.transform = "scale(0.95)";
+      guestModalRef.current.style.opacity = "0";
+    }
+    if (guestOverlayRef.current) {
+      guestOverlayRef.current.style.transition = "opacity 150ms ease-in 50ms";
+      guestOverlayRef.current.style.opacity = "0";
+    }
+    setTimeout(() => onClose(), 200);
+  }, [onClose]);
 
   return createPortal(
-    <div className="guest-modal-overlay" onClick={onClose}>
-      <div className="guest-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="guest-modal-overlay" ref={guestOverlayRef} onClick={handleGuestClose}>
+      <div className="guest-modal" ref={guestModalRef} onClick={(e) => e.stopPropagation()}>
         <div className="guest-modal-icon">
           <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round">
             <rect x="3" y="11" width="18" height="11" rx="2" />
@@ -5116,7 +5146,7 @@ function GuestRestrictionModal({ onClose }) {
 
         {signInError && <p className="login-error">{signInError}</p>}
 
-        <button className="guest-modal-dismiss" onClick={onClose}>
+        <button className="guest-modal-dismiss" onClick={handleGuestClose}>
           Continue browsing
         </button>
       </div>
@@ -5230,12 +5260,19 @@ function MainApp() {
   const [activeTab, _setActiveTab] = useState("search");
   const prevTabRef = useRef("search");
   const [tabDir, setTabDir] = useState(null);
+  const [tabFading, setTabFading] = useState(false);
+  const tabFadeTimer = useRef(null);
   const setActiveTab = useCallback((t) => {
     if (t === prevTabRef.current) return;
-    setTabDir(MAIN_TAB_ORDER[t] > MAIN_TAB_ORDER[prevTabRef.current] ? "right" : "left");
-    prevTabRef.current = t;
-    _setActiveTab(t);
-    setTimeout(() => AOS.refresh(), 50);
+    if (tabFadeTimer.current) clearTimeout(tabFadeTimer.current);
+    setTabFading(true);
+    tabFadeTimer.current = setTimeout(() => {
+      setTabDir("fade-in");
+      prevTabRef.current = t;
+      _setActiveTab(t);
+      setTabFading(false);
+      setTimeout(() => AOS.refresh(), 50);
+    }, 150);
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollPositions = useRef({});
@@ -5279,12 +5316,7 @@ function MainApp() {
 
   const toggleTheme = () => setTheme((t) => t === "dark" ? "light" : "dark");
 
-  // Reset React state only — does NOT touch localStorage.
-  // Used on sign-out so the user's data stays in their prefixed keys.
-  const resetAppState = useCallback(() => {
-    // Null the prefix FIRST so any save-effects triggered by the state
-    // resets below write to non-prefixed (throwaway) keys, not the user's.
-    _storageUserId = null;
+  const resetReactState = useCallback(() => {
     setSavedIds(new Set());
     setSavedMovies(new Map());
     setWatchedIds(new Set());
@@ -5303,28 +5335,21 @@ function MainApp() {
     setActiveChatId(newId);
   }, []);
 
+  // Reset React state only — does NOT touch localStorage.
+  // Used on sign-out so the user's data stays in their prefixed keys.
+  const resetAppState = useCallback(() => {
+    // Null the prefix FIRST so any save-effects triggered by the state
+    // resets below write to non-prefixed (throwaway) keys, not the user's.
+    _storageUserId = null;
+    resetReactState();
+  }, [resetReactState]);
+
   // Delete user's localStorage data AND reset React state.
   // Used by the "Clear all data" button in Settings.
   const clearAllData = useCallback(() => {
     USER_DATA_KEYS.forEach((k) => localStorage.removeItem(scopedKey(k)));
-    // Reset state (keeps _storageUserId so subsequent saves stay scoped)
-    setSavedIds(new Set());
-    setSavedMovies(new Map());
-    setWatchedIds(new Set());
-    setWatchedMovies(new Map());
-    setWatchedNotes(new Map());
-    setWatchedRatings(new Map());
-    setTasteProfile("");
-    setCollections([
-      { id: "favourites", name: "Favourites", movieIds: [], isDefault: true },
-      { id: "must_watch", name: "Must Watch", movieIds: [], isDefault: true },
-    ]);
-    setUnlockedBadges([]);
-    setWatchedDates(new Map());
-    const newId = Date.now().toString();
-    setChats([{ id: newId, title: "New chat", messages: [] }]);
-    setActiveChatId(newId);
-  }, []);
+    resetReactState();
+  }, [resetReactState]);
 
   // Register sign-out callback — preserves localStorage, only resets React state
   useEffect(() => {
@@ -5703,7 +5728,7 @@ function MainApp() {
         </div>
       </div>
 
-      <div className={`tab-panel ${tabDir ? `slide-${tabDir}` : ""}`} key={activeTab}>
+      <div className={`tab-panel ${tabFading ? "tab-fade-out" : ""} ${tabDir === "fade-in" ? "tab-fade-in" : ""}`} key={activeTab}>
         {activeTab === "search" && (
           <SearchTab savedIds={savedIds} toggleSave={guardedToggleSave} watchedIds={watchedIds} toggleWatched={guardedToggleWatched} startDebrief={guardedStartDebrief} collections={collections} toggleMovieInCollection={guardedToggleMovieInCollection} scrollPositions={scrollPositions} />
         )}
