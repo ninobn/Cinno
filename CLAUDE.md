@@ -44,7 +44,9 @@
 
 &#x20; - collection\_movies (id, collection\_id, tmdb\_id, created\_at)
 
-&#x20; - chat\_conversations (id, user\_id, title, messages jsonb, created\_at, updated\_at)
+&#x20; - conversations (id uuid, user\_id uuid, title text, metadata jsonb, created\_at timestamptz, updated\_at timestamptz)
+
+&#x20; - messages (id uuid, conversation\_id uuid, role text, content text, timestamp timestamptz)
 
 &#x20; - user\_preferences (id, user\_id, theme, discover\_weights jsonb, pinned\_movie\_id, showcase\_badges jsonb, smart\_mode boolean)
 

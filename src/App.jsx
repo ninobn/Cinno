@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback, useId } from "react";
 import { createPortal } from "react-dom";
-import { getTrending, getPopular, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getMovieKeywords, getSmartContext, tmdbToMovie, IMG_BASE } from "./tmdb.js";
+import { getTrending, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getSmartContext, tmdbToMovie, IMG_BASE } from "./tmdb.js";
 import { useAuth } from "./AuthContext.jsx";
 import { useFloating, offset, flip, shift, autoUpdate } from "@floating-ui/react";
 import { DateTime } from "luxon";
 import AOS from "aos";
 import "aos/dist/aos.css";
 import Swal from "sweetalert2";
+import * as chatService from "./services/chatService.js";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -848,10 +849,7 @@ function computeBadgeProgress(badgeId, { watchedMovies, watchedRatings, collecti
       return count;
     }
     case "first_debrief": {
-      try {
-        const chats = JSON.parse(localStorage.getItem(scopedKey("cc_chats")) || "[]");
-        return chats.filter((c) => c.messages && c.messages.length >= 2).length;
-      } catch { return 0; }
+      return (ctx.chats || []).filter((c) => c.messages && c.messages.length >= 2).length;
     }
     default: return 0;
   }
@@ -2675,7 +2673,7 @@ const IDENTITY_MAP = {
   Adventure: "The Explorer", Mystery: "The Puzzle Chaser",
 };
 
-function StatsView({ watchedMovies, watchedRatings, watchedDates, collections }) {
+function StatsView({ watchedMovies, watchedRatings, watchedDates, collections, chats }) {
   const [showAllBadges, setShowAllBadges] = useState(false);
   const [runtimeCache, setRuntimeCache] = useState(() => loadFromStorage("cc_runtimeCache", {}));
   const [showcaseIds, setShowcaseIds] = useState(() => loadFromStorage("cc_badge_showcase", []));
@@ -2750,7 +2748,7 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, collections })
   const topThreeGenres = stats.genres.slice(0, 3);
 
   const badgesWithTier = useMemo(() => {
-    const ctx = { watchedMovies, watchedRatings, collections: collections || [], watchedDates: watchedDates || new Map() };
+    const ctx = { watchedMovies, watchedRatings, collections: collections || [], watchedDates: watchedDates || new Map(), chats: chats || [] };
     return BADGE_DEFS.map((b) => {
       const progress = computeBadgeProgress(b.id, ctx);
       const tier = getBadgeTier(progress, b.tiers);
@@ -3072,7 +3070,7 @@ const INSIGHT_PROMPTS = {
 
 const AI_INSIGHTS_ENABLED = false;
 
-function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections, scrollPositions }) {
+function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections, scrollPositions, chats }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [view, _setView] = useState("journal");
   const prevViewRef = useRef("journal");
@@ -3477,7 +3475,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
             )}
 
             {view === "stats" && (
-              <StatsView watchedMovies={watchedMovies} watchedRatings={watchedRatings} watchedDates={watchedDates} collections={collections} />
+              <StatsView watchedMovies={watchedMovies} watchedRatings={watchedRatings} watchedDates={watchedDates} collections={collections} chats={chats} />
             )}
           </>
         )}
@@ -3515,7 +3513,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 
 // ─── Chat Tab ──────────────────────────────────────────────────────────────────
 
-function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile, debriefPayload, onDebriefHandled }) {
+function ChatTab({ chats, activeChatId, setActiveChatId, onCreateChat, onDeleteChat, onRenameChat, onSaveMessage, tasteProfile, debriefPayload, onDebriefHandled }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [typingHint, setTypingHint] = useState(null);
@@ -3594,32 +3592,25 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
     return [tmdbContext, webContext].filter(Boolean).join("\n\n");
   };
 
-  const updateMessages = (newMsgs) => {
-    setChats((prev) => prev.map((c) => (c.id === activeChatId ? { ...c, messages: newMsgs } : c)));
-  };
-
-  const createNewChat = () => {
-    const newId = Date.now().toString();
-    setChats((prev) => [{ id: newId, title: "New chat", messages: [] }, ...prev]);
+  const createNewChat = async () => {
+    const newId = await onCreateChat();
     setActiveChatId(newId);
     setSidebarOpen(false);
   };
 
   const selectChat = (id) => { setActiveChatId(id); setSidebarOpen(false); };
 
-  const deleteChat = (id) => {
-    setChats((prev) => {
-      const next = prev.filter((c) => c.id !== id);
-      if (id === activeChatId) {
-        if (next.length > 0) setActiveChatId(next[0].id);
-        else {
-          const newId = Date.now().toString();
-          next.push({ id: newId, title: "New chat", messages: [] });
-          setActiveChatId(newId);
-        }
+  const deleteChat = async (id) => {
+    const remaining = chats.filter((c) => c.id !== id);
+    if (id === activeChatId) {
+      if (remaining.length > 0) {
+        setActiveChatId(remaining[0].id);
+      } else {
+        const newId = await onCreateChat();
+        setActiveChatId(newId);
       }
-      return next;
-    });
+    }
+    onDeleteChat(id);
   };
 
   const startRename = (e, id, currentTitle) => {
@@ -3630,12 +3621,12 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
 
   const commitRename = () => {
     if (renamingId && renameValue.trim()) {
-      setChats((prev) => prev.map((c) => (c.id === renamingId ? { ...c, title: renameValue.trim() } : c)));
+      onRenameChat(renamingId, renameValue.trim());
     }
     setRenamingId(null);
   };
 
-  const generateTitle = async (userMsg, assistantMsg) => {
+  const generateTitle = async (chatId, userMsg, assistantMsg) => {
     try {
       const resp = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
@@ -3648,10 +3639,10 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
       });
       const data = await resp.json();
       const title = data.content?.[0]?.text?.trim();
-      if (title) setChats((prev) => prev.map((c) => (c.id === activeChatId ? { ...c, title } : c)));
+      if (title) onRenameChat(chatId, title);
     } catch {
       const fallback = userMsg.length > 28 ? userMsg.slice(0, 28) + "…" : userMsg;
-      setChats((prev) => prev.map((c) => (c.id === activeChatId ? { ...c, title: fallback } : c)));
+      onRenameChat(chatId, fallback);
     }
   };
 
@@ -3685,12 +3676,18 @@ function ChatTab({ chats, setChats, activeChatId, setActiveChatId, tasteProfile,
     const userMsg = sanitizeText(text || input.trim()).slice(0, 2000);
     if (!userMsg || loading) return;
 
+    const chatId = activeChatId;
     setInput("");
     setError("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
 
-    const newMessages = [...messages, { role: "user", content: userMsg, ts: Date.now() }];
-    updateMessages(newMessages);
+    // Build the messages array locally for the API call
+    const userMessageObj = { role: "user", content: userMsg, ts: Date.now() };
+    const newMessages = [...messages, userMessageObj];
+
+    // Optimistic: show user message immediately + persist to Supabase in background
+    onSaveMessage(chatId, "user", userMsg);
+
     const isFirstMessage = messages.length === 0;
     const TYPING_HINTS = [
       "Replaying that moment...", "Thinking about that scene...", "Processing your take...",
@@ -3764,9 +3761,9 @@ The user is using the movie picker — they want to decide what to watch right n
       if (data.error) throw new Error(data.error.message || data.error.type || "API error");
 
       const assistantText = data.content?.filter((b) => b.type === "text").map((b) => b.text).join("\n") || "I couldn't generate a response. Please try again.";
-      updateMessages([...newMessages, { role: "assistant", content: assistantText, ts: Date.now() }]);
+      onSaveMessage(chatId, "assistant", assistantText);
 
-      if (isFirstMessage && !activeChat?.movieContext && !activeChat?.pickerMode) generateTitle(userMsg, assistantText);
+      if (isFirstMessage && !activeChat?.movieContext && !activeChat?.pickerMode) generateTitle(chatId, userMsg, assistantText);
     } catch {
       setError("Chat is temporarily unavailable. Please try again in a moment.");
     } finally {
@@ -5305,9 +5302,9 @@ function MainApp() {
   const [badgeToast, setBadgeToast] = useState(null);
   const [activeMilestone, setActiveMilestone] = useState(null);
   const prevWatchedCount = useRef(watchedIds.size);
-  const defaultChatId = "default";
-  const [chats, setChats] = useState(() => loadFromStorage("cc_chats", [{ id: defaultChatId, title: "New chat", messages: [] }]));
-  const [activeChatId, setActiveChatId] = useState(() => loadFromStorage("cc_activeChatId", defaultChatId));
+  const [chats, setChats] = useState([]);
+  const [activeChatId, setActiveChatId] = useState(null);
+  const [chatsLoading, setChatsLoading] = useState(true);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -5330,9 +5327,9 @@ function MainApp() {
     ]);
     setUnlockedBadges([]);
     setWatchedDates(new Map());
-    const newId = Date.now().toString();
-    setChats([{ id: newId, title: "New chat", messages: [] }]);
-    setActiveChatId(newId);
+    setChats([]);
+    setActiveChatId(null);
+    setChatsLoading(true);
   }, []);
 
   // Reset React state only — does NOT touch localStorage.
@@ -5355,6 +5352,115 @@ function MainApp() {
   useEffect(() => {
     registerSignOutCallback(resetAppState);
   }, [registerSignOutCallback, resetAppState]);
+
+  // ── Load chats from Supabase (authenticated) or localStorage (guest) ──
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (user) {
+        try {
+          // Migrate localStorage chat data to Supabase on first login
+          const localChats = loadFromStorage("cc_chats", []);
+          if (localChats.length > 0) {
+            const migrated = await chatService.migrateLocalStorageChats(user.id, localChats);
+            if (migrated && migrated.length > 0) {
+              removeFromStorage("cc_chats");
+              removeFromStorage("cc_activeChatId");
+            }
+          }
+          // Fetch all conversations + messages from Supabase
+          const loaded = await chatService.loadAllChats(user.id);
+          if (cancelled) return;
+          if (loaded.length > 0) {
+            setChats(loaded);
+            const storedActiveId = loadFromStorage("cc_activeChatId", null);
+            const validActive = loaded.find((c) => c.id === storedActiveId);
+            setActiveChatId(validActive ? storedActiveId : loaded[0].id);
+          } else {
+            // No chats yet — create a default empty one
+            const conv = await chatService.createConversation(user.id, "New chat");
+            if (cancelled) return;
+            setChats([{ id: conv.id, title: "New chat", messages: [] }]);
+            setActiveChatId(conv.id);
+          }
+        } catch (e) {
+          console.error("Failed to load chats from Supabase, falling back to localStorage:", e);
+          if (cancelled) return;
+          const fallbackId = "default";
+          const local = loadFromStorage("cc_chats", [{ id: fallbackId, title: "New chat", messages: [] }]);
+          setChats(local);
+          setActiveChatId(loadFromStorage("cc_activeChatId", local[0]?.id || fallbackId));
+        }
+      } else {
+        // Guest — use localStorage
+        const fallbackId = "default";
+        const local = loadFromStorage("cc_chats", [{ id: fallbackId, title: "New chat", messages: [] }]);
+        setChats(local);
+        setActiveChatId(loadFromStorage("cc_activeChatId", local[0]?.id || fallbackId));
+      }
+      if (!cancelled) setChatsLoading(false);
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // ── Chat CRUD handlers (Supabase-first for authenticated, localStorage for guest) ──
+
+  const handleCreateChat = useCallback(async (title = "New chat", metadata = {}) => {
+    if (user) {
+      try {
+        const conv = await chatService.createConversation(user.id, title, metadata);
+        const newChat = { id: conv.id, title, messages: [], ...metadata };
+        setChats((prev) => [newChat, ...prev]);
+        return conv.id;
+      } catch (e) {
+        console.error("Failed to create conversation:", e);
+      }
+    }
+    // Guest fallback
+    const newId = Date.now().toString();
+    setChats((prev) => [{ id: newId, title, messages: [], ...metadata }, ...prev]);
+    return newId;
+  }, [user]);
+
+  const handleDeleteChat = useCallback(async (id) => {
+    if (user) {
+      try { await chatService.deleteConversation(id); }
+      catch (e) { console.error("Failed to delete conversation:", e); }
+    }
+    setChats((prev) => prev.filter((c) => c.id !== id));
+  }, [user]);
+
+  const handleRenameChat = useCallback(async (id, title) => {
+    setChats((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)));
+    if (user) {
+      try { await chatService.updateConversationTitle(id, title); }
+      catch (e) { console.error("Failed to rename conversation:", e); }
+    }
+  }, [user]);
+
+  const handleSaveMessage = useCallback(async (chatId, role, content) => {
+    const ts = Date.now();
+    // Optimistic update — show message immediately
+    setChats((prev) => prev.map((c) =>
+      c.id === chatId ? { ...c, messages: [...c.messages, { role, content, ts }] } : c
+    ));
+    if (user) {
+      try { await chatService.saveMessage(chatId, role, content); }
+      catch (e) { console.error("Failed to save message:", e); }
+    }
+    return ts;
+  }, [user]);
+
+  const handleUpdateChatMetadata = useCallback(async (chatId, metadata) => {
+    setChats((prev) => prev.map((c) =>
+      c.id === chatId ? { ...c, ...metadata } : c
+    ));
+    if (user) {
+      try { await chatService.updateConversationMetadata(chatId, metadata); }
+      catch (e) { console.error("Failed to update conversation metadata:", e); }
+    }
+  }, [user]);
 
   const requestClearAllData = () => {
     Swal.fire({
@@ -5519,23 +5625,19 @@ function MainApp() {
     }
   };
 
-  const startDebrief = (movie) => {
-    const chatId = Date.now().toString();
+  const startDebrief = async (movie) => {
     const rating = watchedRatings.get(movie.id);
     const notes = watchedNotes.get(movie.id);
     const opener = DEBRIEF_OPENERS[Math.floor(Math.random() * DEBRIEF_OPENERS.length)];
     const userMsg = opener(movie.title, rating, notes ? notes.trim() : null);
-    setChats((prev) => [{
-      id: chatId, title: movie.title, messages: [],
-      movieContext: { title: movie.title, year: movie.year, genre: movie.genre, tmdbRating: movie.rating, synopsis: movie.synopsis },
-    }, ...prev]);
+    const metadata = { movieContext: { title: movie.title, year: movie.year, genre: movie.genre, tmdbRating: movie.rating, synopsis: movie.synopsis } };
+    const chatId = await handleCreateChat(movie.title, metadata);
     setActiveChatId(chatId);
     setActiveTab("chat");
     setDebriefPayload({ chatId, message: userMsg });
   };
 
-  const startMoviePicker = () => {
-    const chatId = Date.now().toString();
+  const startMoviePicker = async () => {
     // Build context from user's watchlist and journal
     const watchedList = Array.from(watchedMovies.values()).slice(-30);
     const watchedLines = watchedList.map((m) => {
@@ -5551,11 +5653,7 @@ function MainApp() {
       tasteProfile: tasteProfile || "",
     };
 
-    setChats((prev) => [{
-      id: chatId, title: "Movie Picker", messages: [],
-      pickerMode: true,
-      pickerContext,
-    }, ...prev]);
+    const chatId = await handleCreateChat("Movie Picker", { pickerMode: true, pickerContext });
     setActiveChatId(chatId);
     setActiveTab("chat");
   };
@@ -5570,8 +5668,8 @@ function MainApp() {
   useEffect(() => { saveToStorage("cc_collections",   collections);       }, [collections]);
   useEffect(() => { saveToStorage("cc_badges",       unlockedBadges);    }, [unlockedBadges]);
   useEffect(() => { saveToStorage("cc_watchedDates", [...watchedDates]); }, [watchedDates]);
-  useEffect(() => { saveToStorage("cc_chats",        chats);             }, [chats]);
-  useEffect(() => { saveToStorage("cc_activeChatId", activeChatId);      }, [activeChatId]);
+  useEffect(() => { if (!user) saveToStorage("cc_chats", chats); }, [chats, user]);
+  useEffect(() => { if (activeChatId) saveToStorage("cc_activeChatId", activeChatId); }, [activeChatId]);
 
   // ── Badge checking effect ──────────────────────────────────
   const badgeCelebrationQueue = useRef([]);
@@ -5594,7 +5692,7 @@ function MainApp() {
   }, [badgeToast, showNextCelebration]);
 
   useEffect(() => {
-    const ctx = { watchedMovies, watchedRatings, collections, watchedDates };
+    const ctx = { watchedMovies, watchedRatings, collections, watchedDates, chats };
     const newlyUnlocked = [];
     BADGE_DEFS.forEach((badge) => {
       const progress = computeBadgeProgress(badge.id, ctx);
@@ -5773,11 +5871,14 @@ function MainApp() {
             unlockedBadges={unlockedBadges}
             collections={collections}
             scrollPositions={scrollPositions}
+            chats={chats}
           />
         )}
-        {activeTab === "chat" && (
+        {activeTab === "chat" && !chatsLoading && (
           <ChatTab
-            chats={chats} setChats={setChats} activeChatId={activeChatId} setActiveChatId={setActiveChatId}
+            chats={chats} activeChatId={activeChatId} setActiveChatId={setActiveChatId}
+            onCreateChat={handleCreateChat} onDeleteChat={handleDeleteChat}
+            onRenameChat={handleRenameChat} onSaveMessage={handleSaveMessage}
             tasteProfile={tasteProfile}
             debriefPayload={debriefPayload} onDebriefHandled={() => setDebriefPayload(null)}
           />
