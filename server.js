@@ -14,6 +14,8 @@ const ALLOWED_ORIGINS = [
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    // Allow local network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x) for mobile dev
+    if (/^http:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(origin)) return cb(null, true);
     cb(new Error("Not allowed by CORS"));
   },
 }));

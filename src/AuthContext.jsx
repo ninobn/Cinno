@@ -65,8 +65,14 @@ export function AuthProvider({ children }) {
       return;
     }
 
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Check for existing session (wrapped in try/catch for mobile OAuth redirect edge cases)
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.warn("getSession error (may happen on OAuth redirect):", error.message);
+        // Don't block — onAuthStateChange will pick up the session
+        setLoading(false);
+        return;
+      }
       // If session exists but user was inactive too long, force sign out
       if (session?.user && checkInactivityTimeout()) {
         supabase.auth.signOut();
@@ -82,6 +88,9 @@ export function AuthProvider({ children }) {
         recordActivity();
         resetInactivityTimer();
       }
+    }).catch((err) => {
+      console.warn("getSession threw:", err);
+      setLoading(false);
     });
 
     // Listen for auth state changes including token refresh failures

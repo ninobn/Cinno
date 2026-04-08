@@ -8,6 +8,7 @@ import AOS from "aos";
 import "aos/dist/aos.css";
 import Swal from "sweetalert2";
 import * as chatService from "./services/chatService.js";
+import * as preferencesService from "./services/preferencesService.js";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -20,6 +21,29 @@ const Toast = Swal.mixin({
   timerProgressBar: true,
   customClass: { popup: "cinno-swal-popup" },
 });
+
+// ─── Error Boundary ───────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 32, textAlign: "center", color: "#F5F0EB", background: "#1A0A14", minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+          <h2 style={{ marginBottom: 8 }}>Something went wrong</h2>
+          <p style={{ color: "#A89B9E", marginBottom: 16, maxWidth: 360 }}>{this.state.error?.message}</p>
+          <button onClick={() => window.location.reload()} style={{ padding: "10px 24px", background: "#C9A84C", color: "#1A0A14", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>Reload</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function showToast(msg, onUndo) {
   if (onUndo) {
@@ -435,6 +459,7 @@ const USER_DATA_KEYS = [
   "cc_runtimeCache", "cc_discover_maybe_later", "cc_shownMilestones",
   "cc_aiInsight", "cc_moodPlaylist", "cc_discover_swipe_weights",
   "cc_discover_seen", "cc_discover_swipe_history", "cinno-smart-mode",
+  "cc_badge_showcase",
 ];
 
 // On first login: migrate any non-prefixed (pre-auth or guest) data to user-scoped keys
@@ -809,7 +834,7 @@ function maxMoviesInOneDay(watchedDates) {
   return Object.values(dayCounts).reduce((mx, v) => Math.max(mx, v), 0);
 }
 
-function computeBadgeProgress(badgeId, { watchedMovies, watchedRatings, collections, watchedDates }) {
+function computeBadgeProgress(badgeId, { watchedMovies, watchedRatings, collections, watchedDates, chats }) {
   switch (badgeId) {
     case "first_watch":    return watchedMovies.size;
     case "critic":         return watchedRatings.size;
@@ -832,6 +857,7 @@ function computeBadgeProgress(badgeId, { watchedMovies, watchedRatings, collecti
     case "night_owl": {
       let count = 0;
       watchedDates.forEach((dateStr) => {
+        if (typeof dateStr !== "string") return;
         const hour = parseInt(dateStr.slice(11, 13));
         if (hour >= 23 || hour < 5) count++;
       });
@@ -849,7 +875,7 @@ function computeBadgeProgress(badgeId, { watchedMovies, watchedRatings, collecti
       return count;
     }
     case "first_debrief": {
-      return (ctx.chats || []).filter((c) => c.messages && c.messages.length >= 2).length;
+      return (chats || []).filter((c) => c.messages && c.messages.length >= 2).length;
     }
     default: return 0;
   }
@@ -2674,10 +2700,26 @@ const IDENTITY_MAP = {
 };
 
 function StatsView({ watchedMovies, watchedRatings, watchedDates, collections, chats }) {
+  const { user } = useAuth();
   const [showAllBadges, setShowAllBadges] = useState(false);
   const [runtimeCache, setRuntimeCache] = useState(() => loadFromStorage("cc_runtimeCache", {}));
   const [showcaseIds, setShowcaseIds] = useState(() => loadFromStorage("cc_badge_showcase", []));
   const [flippedBadges, setFlippedBadges] = useState(new Set());
+
+  // Sync showcaseIds from Supabase on login
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    preferencesService.getPreferences(user.id).then((prefs) => {
+      if (cancelled) return;
+      const remote = prefs.ui_toggles?.badgeShowcase;
+      if (Array.isArray(remote) && remote.length > 0) {
+        setShowcaseIds(remote);
+        saveToStorage("cc_badge_showcase", remote);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [user]);
 
   // Fetch runtimes for movies missing from the cache
   useEffect(() => {
@@ -2768,9 +2810,10 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, collections, c
     setShowcaseIds((prev) => {
       const next = prev.includes(badgeId) ? prev.filter((id) => id !== badgeId) : [...prev.filter((id) => id !== badgeId), badgeId].slice(-3);
       saveToStorage("cc_badge_showcase", next);
+      if (user) preferencesService.updateUIToggles(user.id, { badgeShowcase: next });
       return next;
     });
-  }, []);
+  }, [user]);
 
   const toggleFlip = useCallback((badgeId) => {
     setFlippedBadges((prev) => {
@@ -3071,6 +3114,7 @@ const INSIGHT_PROMPTS = {
 const AI_INSIGHTS_ENABLED = false;
 
 function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections, scrollPositions, chats }) {
+  const { user } = useAuth();
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [view, _setView] = useState("journal");
   const prevViewRef = useRef("journal");
@@ -3111,6 +3155,19 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   const [emptyJournal] = useState(() => pickRandom(EMPTY_JOURNAL));
   const [emptyRankings] = useState(() => pickRandom(EMPTY_RANKINGS));
   const [emptyStats] = useState(() => pickRandom(EMPTY_STATS));
+
+  // Sync sort preferences from Supabase on login
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    preferencesService.getPreferences(user.id).then((prefs) => {
+      if (cancelled) return;
+      const t = prefs.ui_toggles;
+      if (t?.rankSort && RANK_SORT_OPTIONS.some((o) => o.value === t.rankSort)) setRankSort(t.rankSort);
+      if (t?.journalSort && JOURNAL_SORT_OPTIONS.some((o) => o.value === t.journalSort)) setJournalSort(t.journalSort);
+    });
+    return () => { cancelled = true; };
+  }, [user]);
 
   // Restore sub-tab scroll after view switch (skip initial mount — handled by main tab restore)
   const viewMounted = useRef(false);
@@ -3197,8 +3254,14 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   }, [movies.length >= 3 ? "ready" : "waiting"]);
 
   // Persist sort preferences
-  useEffect(() => { saveToStorage("cc_rankSort", rankSort); }, [rankSort]);
-  useEffect(() => { saveToStorage("cc_journalSort", journalSort); }, [journalSort]);
+  useEffect(() => {
+    saveToStorage("cc_rankSort", rankSort);
+    if (user) preferencesService.updateUIToggles(user.id, { rankSort });
+  }, [rankSort]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    saveToStorage("cc_journalSort", journalSort);
+    if (user) preferencesService.updateUIToggles(user.id, { journalSort });
+  }, [journalSort]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { saveToStorage("cc_runtimeCache", runtimeCache); }, [runtimeCache]);
 
   // Fetch runtimes when runtime sort is active
@@ -3514,6 +3577,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 // ─── Chat Tab ──────────────────────────────────────────────────────────────────
 
 function ChatTab({ chats, activeChatId, setActiveChatId, onCreateChat, onDeleteChat, onRenameChat, onSaveMessage, tasteProfile, debriefPayload, onDebriefHandled }) {
+  const { user } = useAuth();
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [typingHint, setTypingHint] = useState(null);
@@ -3530,6 +3594,21 @@ function ChatTab({ chats, activeChatId, setActiveChatId, onCreateChat, onDeleteC
   const messagesContainerRef = useRef(null);
   const textareaRef = useRef(null);
   const debriefHandledRef = useRef(null);
+
+  // Sync smartMode from Supabase on login
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    preferencesService.getPreferences(user.id).then((prefs) => {
+      if (cancelled) return;
+      const remote = prefs.ui_toggles?.smartMode;
+      if (remote !== undefined) {
+        setSmartMode(remote);
+        saveToStorage("cinno-smart-mode", remote);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [user]);
 
   const activeChat = chats.find((c) => c.id === activeChatId);
   const messages = activeChat ? activeChat.messages : [];
@@ -3558,6 +3637,7 @@ function ChatTab({ chats, activeChatId, setActiveChatId, onCreateChat, onDeleteC
     setSmartMode((prev) => {
       const next = !prev;
       saveToStorage("cinno-smart-mode", next);
+      if (user) preferencesService.updateUIToggles(user.id, { smartMode: next });
       return next;
     });
   };
@@ -4256,6 +4336,7 @@ const GENRE_ID_TO_LABEL = {};
 GENRE_FILTERS.forEach((g) => { GENRE_ID_TO_LABEL[g.id] = g.label; });
 
 function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, setWatchedRating, watchedMovies, isGuest, guardAction }) {
+  const { user } = useAuth();
   const SESSION_LIMIT = 30;
 
   // ─── STEP 1: STATE ───
@@ -4279,6 +4360,22 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     whileElementsMounted: autoUpdate,
   });
   const [maybeLater, setMaybeLater] = useState(() => loadFromStorage("cc_discover_maybe_later", []));
+
+  // Sync maybeLater from Supabase on login
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    preferencesService.getPreferences(user.id).then((prefs) => {
+      if (cancelled) return;
+      const remote = prefs.genre_preferences?.discoverMaybeLater;
+      if (Array.isArray(remote) && remote.length > 0) {
+        setMaybeLater(remote);
+        saveToStorage("cc_discover_maybe_later", remote);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [user]);
+
   const [watchedModal, setWatchedModal] = useState(null);
   const [watchedSlider, setWatchedSlider] = useState(75);
   const [cardKey, setCardKey] = useState(0);
@@ -4318,8 +4415,11 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     return `${topDecade - 5}-01-01`;
   }, [watchedMovies]);
 
-  // Only persist maybeLater to localStorage
-  useEffect(() => { saveToStorage("cc_discover_maybe_later", maybeLater); }, [maybeLater]);
+  // Persist maybeLater
+  useEffect(() => {
+    saveToStorage("cc_discover_maybe_later", maybeLater);
+    if (user) preferencesService.updateGenrePreferences(user.id, { discoverMaybeLater: maybeLater });
+  }, [maybeLater]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close genre dropdown on outside click
   useEffect(() => {
@@ -5206,7 +5306,7 @@ function AuthGate() {
     return <LoginScreen />;
   }
 
-  return <MainApp />;
+  return <ErrorBoundary><MainApp /></ErrorBoundary>;
 }
 
 export default function App() {
@@ -5309,7 +5409,8 @@ function MainApp() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     saveToStorage("cc_theme", theme);
-  }, [theme]);
+    if (user) preferencesService.updateThemeSettings(user.id, { theme });
+  }, [theme]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleTheme = () => setTheme((t) => t === "dark" ? "light" : "dark");
 
@@ -5403,6 +5504,53 @@ function MainApp() {
     load();
     return () => { cancelled = true; };
   }, [user]);
+
+  // ── Load user preferences from Supabase (authenticated) ──
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        // Gather localStorage preference values for potential migration
+        const localPrefs = {
+          theme_settings: { theme: loadFromStorage("cc_theme", "dark") },
+          ui_toggles: {
+            smartMode: loadFromStorage("cinno-smart-mode", false),
+            badgeShowcase: loadFromStorage("cc_badge_showcase", []),
+            rankSort: loadFromStorage("cc_rankSort", "rating_desc"),
+            journalSort: loadFromStorage("cc_journalSort", "date_desc"),
+          },
+          genre_preferences: {
+            tasteProfile: loadFromStorage("cc_tasteProfile", ""),
+            discoverMaybeLater: loadFromStorage("cc_discover_maybe_later", []),
+          },
+        };
+
+        // Attempt one-time migration (no-ops if row already exists)
+        await preferencesService.migrateLocalPreferences(user.id, localPrefs);
+
+        // Fetch authoritative preferences from Supabase
+        const prefs = await preferencesService.getPreferences(user.id);
+        if (cancelled) return;
+
+        // Apply Supabase values → React state + localStorage cache
+        const t = prefs.theme_settings?.theme;
+        if (t && t !== theme) {
+          setTheme(t);
+        }
+
+        const tp = prefs.genre_preferences?.tasteProfile;
+        if (tp !== undefined && tp !== tasteProfile) {
+          setTasteProfile(tp);
+        }
+      } catch (e) {
+        console.error("Failed to load preferences:", e);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ^ Intentionally omit theme/tasteProfile — we only want to run on login, not on every state change
 
   // ── Chat CRUD handlers (Supabase-first for authenticated, localStorage for guest) ──
 
@@ -5664,7 +5812,12 @@ function MainApp() {
   useEffect(() => { saveToStorage("cc_watchedMovies",[...watchedMovies]);}, [watchedMovies]);
   useEffect(() => { saveToStorage("cc_watchedNotes",   [...watchedNotes]);   }, [watchedNotes]);
   useEffect(() => { saveToStorage("cc_watchedRatings", [...watchedRatings]); }, [watchedRatings]);
-  useEffect(() => { saveToStorage("cc_tasteProfile",  tasteProfile);      }, [tasteProfile]);
+  useEffect(() => {
+    saveToStorage("cc_tasteProfile", tasteProfile);
+    if (user && tasteProfile !== undefined) {
+      preferencesService.updateGenrePreferences(user.id, { tasteProfile });
+    }
+  }, [tasteProfile]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { saveToStorage("cc_collections",   collections);       }, [collections]);
   useEffect(() => { saveToStorage("cc_badges",       unlockedBadges);    }, [unlockedBadges]);
   useEffect(() => { saveToStorage("cc_watchedDates", [...watchedDates]); }, [watchedDates]);
