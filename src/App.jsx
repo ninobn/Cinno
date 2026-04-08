@@ -9,6 +9,7 @@ import "aos/dist/aos.css";
 import Swal from "sweetalert2";
 import * as chatService from "./services/chatService.js";
 import * as preferencesService from "./services/preferencesService.js";
+import * as watchlistService from "./services/watchlistService.js";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -2446,6 +2447,9 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
   const [watchlistView, setWatchlistView] = useState("grid");
   const [upNextId, setUpNextId] = useState(() => loadFromStorage("cc_upNextId", null));
   const savedContentRef = useScrollRestore("saved", scrollPositions);
+
+  // Re-trigger AOS animations after view toggle so the grid doesn't stay invisible
+  useEffect(() => { setTimeout(() => AOS.refresh(), 60); }, [watchlistView]);
 
   const movies = useMemo(
     () => Array.from(savedMovies.values()).map((m, i) => ({ ...m, _idx: i })),
@@ -5405,6 +5409,7 @@ function MainApp() {
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [chatsLoading, setChatsLoading] = useState(true);
+  const watchlistIdRef = useRef(null); // Supabase UUID of the default Watchlist collection
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -5431,6 +5436,7 @@ function MainApp() {
     setChats([]);
     setActiveChatId(null);
     setChatsLoading(true);
+    watchlistIdRef.current = null;
   }, []);
 
   // Reset React state only — does NOT touch localStorage.
@@ -5453,6 +5459,56 @@ function MainApp() {
   useEffect(() => {
     registerSignOutCallback(resetAppState);
   }, [registerSignOutCallback, resetAppState]);
+
+  // ── Load watchlist & collections from Supabase (authenticated) ──
+  useEffect(() => {
+    if (!user) { watchlistIdRef.current = null; return; }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        // Migrate localStorage data to Supabase on first login
+        const localSavedIds = loadFromStorage("cc_savedIds", []);
+        const localSavedMovies = loadFromStorage("cc_savedMovies", []);
+        const localCollections = loadFromStorage("cc_collections", []);
+        if (localSavedIds.length > 0 || localCollections.length > 0) {
+          const migrated = await watchlistService.migrateLocalWatchlist(user.id, {
+            savedIds: localSavedIds,
+            savedMovies: localSavedMovies,
+            collections: localCollections,
+          });
+          if (migrated) {
+            removeFromStorage("cc_savedIds");
+            removeFromStorage("cc_savedMovies");
+            removeFromStorage("cc_collections");
+          }
+        }
+
+        // Ensure default Watchlist exists
+        const wlId = await watchlistService.ensureDefaultCollection(user.id);
+        if (cancelled) return;
+        watchlistIdRef.current = wlId;
+
+        // Load full state from Supabase
+        const state = await watchlistService.loadFullWatchlistState(user.id);
+        if (cancelled) return;
+        console.log(`[Watchlist] Loaded ${state.savedIds.length} movies, ${state.collections.length} collections from Supabase`);
+
+        setSavedIds(new Set(state.savedIds));
+        setSavedMovies(new Map(state.savedMovies));
+        setCollections(state.collections);
+
+        // Update localStorage cache for offline/fast loads
+        saveToStorage("cc_savedIds", state.savedIds);
+        saveToStorage("cc_savedMovies", state.savedMovies);
+        saveToStorage("cc_collections", state.collections);
+      } catch (e) {
+        console.error("Failed to load watchlist from Supabase, using localStorage:", e);
+        // Keep localStorage state already loaded via useState initializers
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [user]);
 
   // ── Load chats from Supabase (authenticated) or localStorage (guest) ──
   useEffect(() => {
@@ -5643,11 +5699,33 @@ function MainApp() {
       return next;
     });
     if (wasSaved) {
+      // Remove from all collections too
+      setCollections((prev) => prev.map((c) =>
+        c.movieIds.includes(id) ? { ...c, movieIds: c.movieIds.filter((mid) => mid !== id) } : c
+      ));
+      // Supabase: remove from Watchlist (cascade removes from other collections via app logic)
+      if (user && watchlistIdRef.current) {
+        watchlistService.removeMovieFromCollection(watchlistIdRef.current, id).catch((e) => console.error("Failed to remove from Supabase watchlist:", e));
+        // Also remove from all user collections in Supabase
+        collections.forEach((col) => {
+          if (col.movieIds.includes(id)) {
+            watchlistService.removeMovieFromCollection(col.id, id).catch((e) => console.error("Failed to remove from Supabase collection:", e));
+          }
+        });
+      }
       showToast("Removed from watchlist", () => {
         setSavedIds((prev) => new Set(prev).add(id));
         setSavedMovies((prev) => new Map(prev).set(id, movie));
+        // Undo: re-add to Supabase
+        if (user && watchlistIdRef.current) {
+          watchlistService.addMovieToCollection(watchlistIdRef.current, movie).catch((e) => console.error("Failed to undo remove:", e));
+        }
       });
     } else {
+      // Supabase: add to Watchlist + cache movie data
+      if (user && watchlistIdRef.current) {
+        watchlistService.addMovieToCollection(watchlistIdRef.current, movie).catch((e) => console.error("Failed to add to Supabase watchlist:", e));
+      }
       showToast("Added to watchlist");
     }
   };
@@ -5719,8 +5797,18 @@ function MainApp() {
   };
 
   const createCollection = (name) => {
-    const id = Date.now().toString();
     const safeName = sanitizeText(name).slice(0, 50);
+    if (user) {
+      // Async: create in Supabase, use returned UUID as the id
+      const tempId = Date.now().toString();
+      setCollections((prev) => [...prev, { id: tempId, name: safeName, movieIds: [], isDefault: false }]);
+      watchlistService.createCollection(user.id, safeName, false).then((col) => {
+        // Replace temp id with real Supabase UUID
+        setCollections((prev) => prev.map((c) => c.id === tempId ? { ...c, id: col.id } : c));
+      }).catch((e) => console.error("Failed to create collection in Supabase:", e));
+      return tempId;
+    }
+    const id = Date.now().toString();
     setCollections((prev) => [...prev, { id, name: safeName, movieIds: [], isDefault: false }]);
     return id;
   };
@@ -5728,6 +5816,9 @@ function MainApp() {
   const renameCollection = (collectionId, newName) => {
     const safeName = sanitizeText(newName).slice(0, 50);
     setCollections((prev) => prev.map((c) => c.id === collectionId ? { ...c, name: safeName } : c));
+    if (user) {
+      watchlistService.renameCollection(collectionId, safeName).catch((e) => console.error("Failed to rename collection in Supabase:", e));
+    }
   };
 
   const deleteCollection = (collectionId, afterDelete) => {
@@ -5745,6 +5836,9 @@ function MainApp() {
     }).then((result) => {
       if (result.isConfirmed) {
         setCollections((prev) => prev.filter((c) => c.id !== collectionId));
+        if (user) {
+          watchlistService.deleteCollection(collectionId).catch((e) => console.error("Failed to delete collection in Supabase:", e));
+        }
         Toast.fire({ icon: "success", title: `Deleted "${col.name}"` });
         if (afterDelete) afterDelete();
       }
@@ -5752,14 +5846,19 @@ function MainApp() {
   };
 
   const toggleMovieInCollection = (collectionId, movie) => {
-    setSavedMovies((prev) => {
-      if (!prev.has(movie.id)) {
+    // Ensure movie is in the Watchlist (savedIds/savedMovies)
+    if (!savedIds.has(movie.id)) {
+      setSavedIds((prev) => new Set(prev).add(movie.id));
+      setSavedMovies((prev) => {
         const next = new Map(prev);
-        next.set(movie.id, movie);
+        next.set(movie.id, { ...movie, savedAt: DateTime.now().toISO() });
         return next;
+      });
+      // Add to Supabase Watchlist too
+      if (user && watchlistIdRef.current) {
+        watchlistService.addMovieToCollection(watchlistIdRef.current, movie).catch((e) => console.error("Failed to add to Supabase watchlist:", e));
       }
-      return prev;
-    });
+    }
     let added = false;
     setCollections((prev) => prev.map((c) => {
       if (c.id !== collectionId) return c;
@@ -5767,6 +5866,15 @@ function MainApp() {
       added = !has;
       return { ...c, movieIds: has ? c.movieIds.filter((id) => id !== movie.id) : [...c.movieIds, movie.id] };
     }));
+    // Supabase: add or remove from collection
+    if (user) {
+      const has = collections.find((c) => c.id === collectionId)?.movieIds.includes(movie.id);
+      if (has) {
+        watchlistService.removeMovieFromCollection(collectionId, movie.id).catch((e) => console.error("Failed to remove from Supabase collection:", e));
+      } else {
+        watchlistService.addMovieToCollection(collectionId, movie).catch((e) => console.error("Failed to add to Supabase collection:", e));
+      }
+    }
     if (added) {
       const col = collections.find((c) => c.id === collectionId);
       showToast(`Added to ${col?.name || "collection"}`);
