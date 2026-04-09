@@ -2160,6 +2160,8 @@ body {
   gap: 8px;
   margin-bottom: 16px;
   padding: 0 2px;
+  position: relative;
+  z-index: 9999;
 }
 
 .rank-stat-text {
@@ -7931,7 +7933,7 @@ body {
 /* ── Sort Dropdown ──────────────────────────────── */
 .sort-dropdown {
   position: relative;
-  z-index: 30;
+  z-index: 9999;
 }
 
 .sort-dropdown-btn {
@@ -7974,6 +7976,10 @@ body {
 }
 
 .sort-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
   min-width: 210px;
   background: var(--bg-elevated);
   border-radius: 12px;
@@ -7982,12 +7988,12 @@ body {
   padding: 4px;
   animation: sortDropdownIn 0.15s ease forwards;
   overflow: hidden;
-  z-index: 100;
+  z-index: 9999;
 }
 
 @keyframes sortDropdownIn {
-  0% { opacity: 0; transform: translateY(-6px) scale(0.97); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
+  0% { opacity: 0; }
+  100% { opacity: 1; }
 }
 
 .sort-dropdown-item {

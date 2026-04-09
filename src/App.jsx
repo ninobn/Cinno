@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback, useId } from 
 import { createPortal } from "react-dom";
 import { getTrending, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getSmartContext, tmdbToMovie, IMG_BASE } from "./tmdb.js";
 import { useAuth } from "./AuthContext.jsx";
-import { useFloating, offset, flip, shift, autoUpdate } from "@floating-ui/react";
+import { useFloating, offset, flip, shift, autoUpdate, FloatingPortal } from "@floating-ui/react";
 import { DateTime } from "luxon";
 import AOS from "aos";
 import "aos/dist/aos.css";
@@ -10,6 +10,7 @@ import Swal from "sweetalert2";
 import * as chatService from "./services/chatService.js";
 import * as preferencesService from "./services/preferencesService.js";
 import * as watchlistService from "./services/watchlistService.js";
+import * as journalService from "./services/journalService.js";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -3331,9 +3332,8 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 
   // Sorted lists
   const rankedMovies = useMemo(() => {
-    const rated = movies.filter((m) => watchedRatings.has(m.id));
-    return sortMovies(rated, rankSort);
-  }, [movies, watchedRatings, rankSort, sortMovies]);
+    return sortMovies(movies, rankSort);
+  }, [movies, rankSort, sortMovies]);
 
   const sortedJournalMovies = useMemo(
     () => sortMovies(movies, journalSort),
@@ -3349,11 +3349,13 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   const rankingStats = useMemo(() => {
     if (rankedMovies.length === 0) return null;
     const total = rankedMovies.length;
-    const avg = Math.round(rankedMovies.reduce((s, m) => s + (watchedRatings.get(m.id) || 0), 0) / total);
+    const ratedMovies = rankedMovies.filter((m) => watchedRatings.has(m.id));
+    const ratedCount = ratedMovies.length;
+    const avg = ratedCount > 0 ? Math.round(ratedMovies.reduce((s, m) => s + (watchedRatings.get(m.id) || 0), 0) / ratedCount) : 0;
     const genreCounts = {};
     rankedMovies.forEach((m) => { genreCounts[m.genre || "Other"] = (genreCounts[m.genre || "Other"] || 0) + 1; });
     const topGenre = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
-    return { total, avg, topGenre };
+    return { total, ratedCount, avg, topGenre };
   }, [rankedMovies, watchedRatings]);
 
   const TOGGLE_VIEWS = ["journal", "rankings", "stats"];
@@ -3482,7 +3484,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                     </div>
 
                     {/* Podium — Top 3 */}
-                    {rankSort === "rating_desc" && rankedMovies.length >= 3 && (
+                    {rankSort === "rating_desc" && rankingStats?.ratedCount >= 3 && (
                       <div className="podium-v2" data-aos="fade-up" data-aos-duration="500">
                         {[1, 0, 2].map((idx) => {
                           const m = rankedMovies[idx];
@@ -3506,10 +3508,10 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 
                     {/* Ranking List #4+ */}
                     <div className="rankings-list">
-                      {(rankSort === "rating_desc" && rankedMovies.length >= 3 ? rankedMovies.slice(3) : rankedMovies).map((movie, i) => {
-                        const rank = rankSort === "rating_desc" && rankedMovies.length >= 3 ? i + 4 : i + 1;
+                      {(rankSort === "rating_desc" && rankingStats?.ratedCount >= 3 ? rankedMovies.slice(3) : rankedMovies).map((movie, i) => {
+                        const rank = rankSort === "rating_desc" && rankingStats?.ratedCount >= 3 ? i + 4 : i + 1;
                         return (
-                          <div key={movie.id} className="ranking-item" onClick={() => setSelectedMovie(movie)} data-aos={i < 10 ? "fade-up" : undefined} data-aos-duration={i < 10 ? "300" : undefined} data-aos-delay={i < 10 ? `${i * 30}` : undefined}>
+                          <div key={movie.id} className="ranking-item" onClick={() => setSelectedMovie(movie)}>
                             <span className="ranking-num">{rank}</span>
                             <div className="ranking-poster">
                               <PosterImage posterPath={movie.poster_path} title={movie.title} />
@@ -4246,17 +4248,11 @@ function SortDropdown({ options, value, onChange }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
-  const { refs, floatingStyles } = useFloating({
-    open,
-    placement: "bottom-end",
-    middleware: [offset(8), flip(), shift({ padding: 8 })],
-    whileElementsMounted: autoUpdate,
-  });
-
   useEffect(() => {
     if (!open) return;
     const handler = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+      if (wrapRef.current?.contains(e.target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -4266,12 +4262,12 @@ function SortDropdown({ options, value, onChange }) {
 
   return (
     <div className="sort-dropdown" ref={wrapRef}>
-      <button className="sort-dropdown-btn" ref={refs.setReference} onClick={() => setOpen(!open)}>
+      <button className="sort-dropdown-btn" onClick={() => setOpen(!open)}>
         <span className="sort-dropdown-label">{activeLabel}</span>
         <svg className={`sort-dropdown-chevron${open ? " open" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
       </button>
       {open && (
-        <div className="sort-dropdown-menu" ref={refs.setFloating} style={floatingStyles}>
+        <div className="sort-dropdown-menu">
           {options.map((opt) => (
             <button
               key={opt.value}
@@ -5410,6 +5406,7 @@ function MainApp() {
   const [activeChatId, setActiveChatId] = useState(null);
   const [chatsLoading, setChatsLoading] = useState(true);
   const watchlistIdRef = useRef(null); // Supabase UUID of the default Watchlist collection
+  const journalEntryIds = useRef(new Map()); // tmdb_id → Supabase journal_entries UUID
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -5437,6 +5434,7 @@ function MainApp() {
     setActiveChatId(null);
     setChatsLoading(true);
     watchlistIdRef.current = null;
+    journalEntryIds.current = new Map();
   }, []);
 
   // Reset React state only — does NOT touch localStorage.
@@ -5608,6 +5606,58 @@ function MainApp() {
   }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   // ^ Intentionally omit theme/tasteProfile — we only want to run on login, not on every state change
 
+  // ── Load journal from Supabase (authenticated) ──
+  useEffect(() => {
+    if (!user) { journalEntryIds.current = new Map(); return; }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        // Migrate localStorage journal data to Supabase on first login
+        const localWatchedIds = loadFromStorage("cc_watchedIds", []);
+        if (localWatchedIds.length > 0) {
+          const migrated = await journalService.migrateLocalJournal(user.id, {
+            watchedIds: localWatchedIds,
+            watchedMovies: loadFromStorage("cc_watchedMovies", []),
+            watchedRatings: loadFromStorage("cc_watchedRatings", []),
+            watchedDates: loadFromStorage("cc_watchedDates", []),
+            watchedNotes: loadFromStorage("cc_watchedNotes", []),
+          });
+          if (migrated) {
+            removeFromStorage("cc_watchedIds");
+            removeFromStorage("cc_watchedMovies");
+            removeFromStorage("cc_watchedRatings");
+            removeFromStorage("cc_watchedDates");
+            removeFromStorage("cc_watchedNotes");
+          }
+        }
+
+        // Load full journal state from Supabase
+        const state = await journalService.loadFullJournalState(user.id);
+        if (cancelled) return;
+        console.log(`[Journal] Loaded ${state.watchedIds.length} entries from Supabase`);
+
+        setWatchedIds(new Set(state.watchedIds));
+        setWatchedMovies(new Map(state.watchedMovies));
+        setWatchedRatings(new Map(state.watchedRatings));
+        setWatchedDates(new Map(state.watchedDates));
+        setWatchedNotes(new Map(state.watchedNotes));
+        journalEntryIds.current = new Map(state.entryIdMap);
+
+        // Update localStorage cache for offline/fast loads
+        saveToStorage("cc_watchedIds", state.watchedIds);
+        saveToStorage("cc_watchedMovies", state.watchedMovies);
+        saveToStorage("cc_watchedRatings", state.watchedRatings);
+        saveToStorage("cc_watchedDates", state.watchedDates);
+        saveToStorage("cc_watchedNotes", state.watchedNotes);
+      } catch (e) {
+        console.error("Failed to load journal from Supabase, using localStorage:", e);
+        // Keep localStorage state already loaded via useState initializers
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [user]);
+
   // ── Chat CRUD handlers (Supabase-first for authenticated, localStorage for guest) ──
 
   const handleCreateChat = useCallback(async (title = "New chat", metadata = {}) => {
@@ -5748,15 +5798,31 @@ function MainApp() {
           const prevDate = watchedDates.get(id);
           const prevNote = watchedNotes.get(id);
           const prevRating = watchedRatings.get(id);
+          const prevEntryId = journalEntryIds.current.get(id);
           setWatchedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
           setWatchedMovies((prev) => { const next = new Map(prev); next.delete(id); return next; });
           setWatchedDates((prev) => { const next = new Map(prev); next.delete(id); return next; });
+          // Supabase: delete journal entry
+          if (user && prevEntryId) {
+            journalEntryIds.current.delete(id);
+            journalService.deleteJournalEntry(prevEntryId).catch((e) => console.error("Failed to delete journal entry:", e));
+          }
           showToast("Removed from journal", () => {
             setWatchedIds((prev) => new Set(prev).add(id));
             setWatchedMovies((prev) => new Map(prev).set(id, movie));
             if (prevDate) setWatchedDates((prev) => new Map(prev).set(id, prevDate));
             if (prevNote !== undefined) setWatchedNotes((prev) => new Map(prev).set(id, prevNote));
             if (prevRating !== undefined) setWatchedRatings((prev) => new Map(prev).set(id, prevRating));
+            // Supabase: re-add on undo
+            if (user) {
+              journalService.addJournalEntry(user.id, movie, {
+                personalRating: prevRating ?? null,
+                watchDate: prevDate ?? null,
+                notes: prevNote ?? null,
+              }).then((entry) => {
+                if (entry) journalEntryIds.current.set(id, entry.id);
+              }).catch((e) => console.error("Failed to undo journal delete:", e));
+            }
           });
         }
       });
@@ -5772,7 +5838,8 @@ function MainApp() {
       next.set(id, movie);
       return next;
     });
-    setWatchedDates((prev) => new Map(prev).set(id, DateTime.now().toISO()));
+    const watchDate = DateTime.now().toISO();
+    setWatchedDates((prev) => new Map(prev).set(id, watchDate));
     const wasSaved = savedIds.has(id);
     if (wasSaved) {
       setSavedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
@@ -5781,11 +5848,25 @@ function MainApp() {
     setCollections((prev) => prev.map((c) =>
       c.movieIds.includes(id) ? { ...c, movieIds: c.movieIds.filter((mid) => mid !== id) } : c
     ));
+    // Supabase: add journal entry + cache movie
+    if (user) {
+      journalService.addJournalEntry(user.id, movie, { watchDate }).then((entry) => {
+        if (entry) journalEntryIds.current.set(id, entry.id);
+      }).catch((e) => console.error("Failed to add journal entry:", e));
+    }
     showToast("Moved to journal");
   };
 
   const setWatchedNote = (id, text) => {
-    setWatchedNotes((prev) => new Map(prev).set(id, sanitizeText(text).slice(0, 1000)));
+    const sanitized = sanitizeText(text).slice(0, 1000);
+    setWatchedNotes((prev) => new Map(prev).set(id, sanitized));
+    // Supabase: update notes
+    if (user) {
+      const entryId = journalEntryIds.current.get(id);
+      if (entryId) {
+        journalService.updateJournalEntry(entryId, { notes: sanitized }).catch((e) => console.error("Failed to update journal notes:", e));
+      }
+    }
   };
 
   const setWatchedRating = (id, rating) => {
@@ -5794,6 +5875,13 @@ function MainApp() {
       if (rating === null) next.delete(id); else next.set(id, rating);
       return next;
     });
+    // Supabase: update rating
+    if (user) {
+      const entryId = journalEntryIds.current.get(id);
+      if (entryId) {
+        journalService.updateJournalEntry(entryId, { personalRating: rating }).catch((e) => console.error("Failed to update journal rating:", e));
+      }
+    }
   };
 
   const createCollection = (name) => {
