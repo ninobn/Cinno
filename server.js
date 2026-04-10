@@ -1,9 +1,16 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import { createClient } from "@supabase/supabase-js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// ─── Supabase server client (for JWT verification) ─────────────────────────────
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+);
 
 const ALLOWED_ORIGINS = [
   "http://localhost:5173",
@@ -14,8 +21,6 @@ const ALLOWED_ORIGINS = [
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-    // Allow local network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x) for mobile dev
-    if (/^http:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(origin)) return cb(null, true);
     cb(new Error("Not allowed by CORS"));
   },
 }));
@@ -27,13 +32,27 @@ const searchBodyLimit = express.json({ limit: "1kb" });
 // Fallback for any other routes
 app.use(express.json({ limit: "10kb" }));
 
-// ─── Rate Limiting (in-memory, per IP) ──────────────────────────────────────────
-const rateLimits = new Map(); // key: "endpoint:ip" → { count, resetAt }
+// ─── Auth Middleware ────────────────────────────────────────────────────────────
+async function verifyAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: { message: "Missing authorization token" } });
+  }
+  const token = authHeader.split(" ")[1];
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+  if (error || !user) {
+    return res.status(401).json({ error: { message: "Invalid or expired token" } });
+  }
+  req.user = user;
+  next();
+}
+
+// ─── Rate Limiting (in-memory, per user) ────────────────────────────────────────
+const rateLimits = new Map(); // key: "endpoint:userId" → { count, resetAt }
 
 function rateLimit(endpoint, maxPerMinute) {
   return (req, res, next) => {
-    const ip = req.ip || req.connection?.remoteAddress || "unknown";
-    const key = `${endpoint}:${ip}`;
+    const key = `${endpoint}:${req.user.id}`;
     const now = Date.now();
     let entry = rateLimits.get(key);
 
@@ -59,11 +78,8 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-// ─── Daily API Budget (in-memory, resets on server restart) ─────────────────────
-const dailyBudget = {
-  chat: { count: 0, max: 200, resetAt: getEndOfDay() },
-  search: { count: 0, max: 50, resetAt: getEndOfDay() },
-};
+// ─── Daily API Budget (in-memory, per user, resets on server restart) ───────────
+const dailyBudgets = new Map(); // key: "type:userId" → { count, resetAt }
 
 function getEndOfDay() {
   const d = new Date();
@@ -71,13 +87,16 @@ function getEndOfDay() {
   return d.getTime();
 }
 
-function checkBudget(type) {
-  const budget = dailyBudget[type];
+function checkBudget(type, userId) {
+  const key = `${type}:${userId}`;
   const now = Date.now();
-  if (now > budget.resetAt) {
-    budget.count = 0;
-    budget.resetAt = getEndOfDay();
+  let budget = dailyBudgets.get(key);
+
+  if (!budget || now > budget.resetAt) {
+    budget = { count: 0, max: type === "chat" ? 200 : 50, resetAt: getEndOfDay() };
+    dailyBudgets.set(key, budget);
   }
+
   budget.count++;
   return budget.count <= budget.max;
 }
@@ -88,9 +107,9 @@ const ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"];
 const MAX_TOKENS_CAP = 2000;
 const MAX_MESSAGES = 50;
 
-app.post("/api/search", searchBodyLimit, rateLimit("search", 10), async (req, res) => {
+app.post("/api/search", verifyAuth, searchBodyLimit, rateLimit("search", 10), async (req, res) => {
   try {
-    if (!checkBudget("search")) {
+    if (!checkBudget("search", req.user.id)) {
       return res.status(503).json({ error: { message: "Daily search limit reached. Try again tomorrow." } });
     }
 
@@ -116,9 +135,9 @@ app.post("/api/search", searchBodyLimit, rateLimit("search", 10), async (req, re
   }
 });
 
-app.post("/api/chat", chatBodyLimit, rateLimit("chat", 20), async (req, res) => {
+app.post("/api/chat", verifyAuth, chatBodyLimit, rateLimit("chat", 20), async (req, res) => {
   try {
-    if (!checkBudget("chat")) {
+    if (!checkBudget("chat", req.user.id)) {
       return res.status(503).json({ error: { message: "Daily chat limit reached. Try again tomorrow." } });
     }
 

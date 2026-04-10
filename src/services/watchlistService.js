@@ -61,15 +61,16 @@ async function upsertMovieCacheBatch(movies) {
 
 export async function ensureDefaultCollection(userId) {
   if (!supabase) throw new Error("No Supabase client");
-  // Check if default Watchlist already exists
+  // Check if default Watchlist already exists (limit 1 handles duplicates gracefully)
   const { data: existing, error: fetchErr } = await supabase
     .from("collections")
     .select("id")
     .eq("user_id", userId)
     .eq("is_default", true)
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(1);
   if (fetchErr) throw fetchErr;
-  if (existing) return existing.id;
+  if (existing && existing.length > 0) return existing[0].id;
   // Create it
   const { data, error } = await supabase
     .from("collections")

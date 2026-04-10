@@ -165,6 +165,11 @@ export function AuthProvider({ children }) {
     return !!sessionRef.current?.user;
   }, []);
 
+  // Returns the current access token for authenticated API calls
+  const getAccessToken = useCallback(() => {
+    return sessionRef.current?.access_token || null;
+  }, []);
+
   // Allow App to register a callback for clearing all state on sign-out
   const registerSignOutCallback = useCallback((cb) => {
     onSignOutRef.current = cb;
@@ -180,6 +185,7 @@ export function AuthProvider({ children }) {
     signOut,
     continueAsGuest,
     isAuthenticated,
+    getAccessToken,
     registerSignOutCallback,
   };
 

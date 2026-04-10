@@ -6669,6 +6669,8 @@ body {
     border-radius: 12px;
     margin: 0 8px;
     gap: 4px;
+    width: calc(var(--sidebar-width) - 16px);
+    box-sizing: border-box;
   }
 
   .tab-item.active {

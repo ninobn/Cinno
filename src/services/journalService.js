@@ -109,9 +109,6 @@ export async function loadFullJournalState(userId) {
     .order("rank_position", { ascending: true, nullsFirst: false });
   if (error) throw error;
 
-  const rawCount = entries?.length ?? 0;
-  console.log(`[Journal] Supabase returned ${rawCount} journal_entries rows`);
-
   if (!entries || entries.length === 0) {
     return {
       watchedIds: [],
@@ -128,8 +125,8 @@ export async function loadFullJournalState(userId) {
   const tmdbIds = entries.map((e) => e.tmdb_id);
   const cacheMap = await fetchMovieCache(tmdbIds);
   const cacheHits = tmdbIds.filter((id) => id in cacheMap).length;
-  if (cacheHits < rawCount) {
-    console.warn(`[Journal] movies_cache has ${cacheHits}/${rawCount} entries — ${rawCount - cacheHits} will show as "Unknown"`);
+  if (cacheHits < entries.length) {
+    console.warn(`[Journal] movies_cache has ${cacheHits}/${entries.length} entries — ${entries.length - cacheHits} will show as "Unknown"`);
   }
 
   // Build the structures React state expects — every entry is included
@@ -172,7 +169,6 @@ export async function loadFullJournalState(userId) {
     }
   }
 
-  console.log(`[Journal] Hydrated state: ${watchedIds.length} ids, ${watchedMovies.length} movies, ${watchedRatings.length} ratings`);
   return { watchedIds, watchedMovies, watchedRatings, watchedDates, watchedNotes, rankedOrder, entryIdMap };
 }
 

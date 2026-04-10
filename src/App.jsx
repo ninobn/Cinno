@@ -11,6 +11,7 @@ import * as chatService from "./services/chatService.js";
 import * as preferencesService from "./services/preferencesService.js";
 import * as watchlistService from "./services/watchlistService.js";
 import * as journalService from "./services/journalService.js";
+import * as discoverService from "./services/discoverService.js";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -3119,7 +3120,7 @@ const INSIGHT_PROMPTS = {
 const AI_INSIGHTS_ENABLED = false;
 
 function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections, scrollPositions, chats }) {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [view, _setView] = useState("journal");
   const prevViewRef = useRef("journal");
@@ -3221,9 +3222,11 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
       });
       const systemPrompt = `You are a witty, concise movie taste analyst. The user has watched these movies: ${lines.join("; ")}. Respond with ONLY the insight text, nothing else. No preamble, no "Here's your insight", just the insight itself. Max 2 sentences.`;
       const userPrompt = INSIGHT_PROMPTS[insightType];
+      const token = getAccessToken();
+      if (!token) return;
       const resp = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 120, system: systemPrompt, messages: [{ role: "user", content: userPrompt }] }),
       });
       const data = await resp.json();
@@ -3583,7 +3586,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 // ─── Chat Tab ──────────────────────────────────────────────────────────────────
 
 function ChatTab({ chats, activeChatId, setActiveChatId, onCreateChat, onDeleteChat, onRenameChat, onSaveMessage, tasteProfile, debriefPayload, onDebriefHandled }) {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [typingHint, setTypingHint] = useState(null);
@@ -3659,12 +3662,13 @@ function ChatTab({ chats, activeChatId, setActiveChatId, onCreateChat, onDeleteC
 
         try {
           const searchQuery = `${smartData.title} ${smartData.year} movie reviews opinions discussion`;
-          const resp = await fetch(`${API_URL}/api/search`, {
+          const searchToken = getAccessToken();
+          const resp = searchToken ? await fetch(`${API_URL}/api/search`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${searchToken}` },
             body: JSON.stringify({ query: searchQuery }),
-          });
-          if (resp.ok) {
+          }) : null;
+          if (resp && resp.ok) {
             const data = await resp.json();
             const snippets = (data.results || []).slice(0, 3).map((r) => r.content?.slice(0, 200) || "").filter(Boolean);
             webContext = data.answer
@@ -3714,9 +3718,11 @@ function ChatTab({ chats, activeChatId, setActiveChatId, onCreateChat, onDeleteC
 
   const generateTitle = async (chatId, userMsg, assistantMsg) => {
     try {
+      const titleToken = getAccessToken();
+      if (!titleToken) return;
       const resp = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${titleToken}` },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 30,
@@ -3823,9 +3829,14 @@ The user is using the movie picker — they want to decide what to watch right n
         movieContext = `${basePrompt}${smartEnrichment ? "\n\nYou have detailed movie data and web research below — use it to give informed, specific answers. Reference details naturally without dumping all the data." : ""}${debriefContext}${personalContext ? "\n\n" + personalContext : ""}${smartEnrichment ? "\n\n" + smartEnrichment : ""}`;
       }
 
+      const chatToken = getAccessToken();
+      if (!chatToken) {
+        setLoading(false);
+        return;
+      }
       const resp = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${chatToken}` },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 1000,
@@ -4361,18 +4372,51 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   });
   const [maybeLater, setMaybeLater] = useState(() => loadFromStorage("cc_discover_maybe_later", []));
 
-  // Sync maybeLater from Supabase on login
+  // Load discover state from Supabase on login (migrate localStorage first)
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    preferencesService.getPreferences(user.id).then((prefs) => {
-      if (cancelled) return;
-      const remote = prefs.genre_preferences?.discoverMaybeLater;
-      if (Array.isArray(remote) && remote.length > 0) {
-        setMaybeLater(remote);
-        saveToStorage("cc_discover_maybe_later", remote);
+    const load = async () => {
+      try {
+        // Migrate localStorage discover data to Supabase on first login
+        const localMaybeLater = loadFromStorage("cc_discover_maybe_later", []);
+        if (localMaybeLater.length > 0) {
+          const migrated = await discoverService.migrateLocalDiscover(user.id, {
+            maybeLater: localMaybeLater,
+          });
+          if (migrated) {
+            removeFromStorage("cc_discover_maybe_later");
+            removeFromStorage("cc_discover_swipe_weights");
+            removeFromStorage("cc_discover_seen");
+            removeFromStorage("cc_discover_swipe_history");
+          }
+        }
+
+        // Load full discover state from Supabase
+        const state = await discoverService.loadFullDiscoverState(user.id);
+        if (cancelled) return;
+
+        // Sync maybeLater: rebuild from Supabase skipped IDs merged with local movie data
+        if (state.maybeLaterIds.size > 0) {
+          setMaybeLater((prev) => {
+            // Keep existing movie objects for IDs we have, add placeholders for new ones
+            const existingMap = new Map(prev.map((m) => [m.id, m]));
+            const merged = [];
+            for (const tmdbId of state.maybeLaterIds) {
+              if (existingMap.has(tmdbId)) {
+                merged.push(existingMap.get(tmdbId));
+              } else {
+                merged.push({ id: tmdbId, title: "Unknown", addedAt: Date.now() });
+              }
+            }
+            return merged;
+          });
+        }
+      } catch (e) {
+        console.error("Failed to load discover state from Supabase:", e);
       }
-    });
+    };
+    load();
     return () => { cancelled = true; };
   }, [user]);
 
@@ -4629,8 +4673,16 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       setShowStamp(null);
       setDragX(0);
       swipingRef.current = false;
+
+      // Fire-and-forget: record swipe to Supabase
+      if (user) {
+        const dbAction = action === "save" ? "liked" : action === "skip" ? "disliked" : "skipped";
+        discoverService.recordSwipe(user.id, movie.id, dbAction).catch((e) =>
+          console.error("Failed to record swipe:", e)
+        );
+      }
     }, 250);
-  }, [movies, currentIndex, savedIds, toggleSave, isGuest, guardAction]);
+  }, [movies, currentIndex, savedIds, toggleSave, isGuest, guardAction, user]);
 
   // Save from the "Already Watched" mini modal
   const handleWatchedSave = useCallback(() => {
@@ -4643,7 +4695,13 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     setCardKey((k) => k + 1);
     setCounterBump(true);
     setTimeout(() => setCounterBump(false), 200);
-  }, [watchedModal, watchedSlider, toggleWatched, setWatchedRating]);
+    // Fire-and-forget: record as "liked" in Supabase (watched = positive signal)
+    if (user) {
+      discoverService.recordSwipe(user.id, watchedModal.id, "liked").catch((e) =>
+        console.error("Failed to record watched swipe:", e)
+      );
+    }
+  }, [watchedModal, watchedSlider, toggleWatched, setWatchedRating, user]);
 
   const handleSwipe = useCallback((direction) => {
     handleAction(direction === "right" ? "save" : "skip");
@@ -5489,8 +5547,6 @@ function MainApp() {
         // Load full state from Supabase
         const state = await watchlistService.loadFullWatchlistState(user.id);
         if (cancelled) return;
-        console.log(`[Watchlist] Loaded ${state.savedIds.length} movies, ${state.collections.length} collections from Supabase`);
-
         setSavedIds(new Set(state.savedIds));
         setSavedMovies(new Map(state.savedMovies));
         setCollections(state.collections);
@@ -5634,8 +5690,6 @@ function MainApp() {
         // Load full journal state from Supabase
         const state = await journalService.loadFullJournalState(user.id);
         if (cancelled) return;
-        console.log(`[Journal] Loaded ${state.watchedIds.length} entries from Supabase`);
-
         setWatchedIds(new Set(state.watchedIds));
         setWatchedMovies(new Map(state.watchedMovies));
         setWatchedRatings(new Map(state.watchedRatings));
