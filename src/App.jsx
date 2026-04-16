@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback, useId } from "react";
 import { createPortal } from "react-dom";
-import { getTrending, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getSmartContext, tmdbToMovie, IMG_BASE } from "./tmdb.js";
+import { getTrending, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, discoverMoviesRaw, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getSmartContext, tmdbToMovie, IMG_BASE } from "./tmdb.js";
 import { useAuth } from "./AuthContext.jsx";
 import { useFloating, offset, flip, shift, autoUpdate, FloatingPortal } from "@floating-ui/react";
 import { DateTime } from "luxon";
@@ -4521,20 +4521,22 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     }
 
     try {
-      const apiKey = import.meta.env.VITE_TMDB_API_KEY;
-      let baseUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&vote_average.gte=6.5&vote_count.gte=100&with_original_language=en&sort_by=popularity.desc&primary_release_date.gte=${releaseDateGte}`;
+      const discoverParams = {
+        "vote_average.gte": "6.5",
+        "vote_count.gte": "100",
+        with_original_language: "en",
+        sort_by: "popularity.desc",
+        "primary_release_date.gte": releaseDateGte,
+      };
       if (genreIds.length > 0) {
-        baseUrl += `&with_genres=${genreIds.join("|")}`;
+        discoverParams.with_genres = genreIds.join("|");
       }
 
       // Probe page 1 first to discover total_pages, so we don't request beyond available range
       let maxPage = 500; // TMDB hard cap
       try {
-        const probeRes = await fetch(`${baseUrl}&page=1`);
-        if (probeRes.ok) {
-          const probeData = await probeRes.json();
-          maxPage = Math.min(probeData.total_pages || 1, 500);
-        }
+        const probe = await discoverMoviesRaw(discoverParams, 1);
+        maxPage = Math.min(probe.totalPages || 1, 500);
       } catch {
         // fallback to default maxPage
       }
@@ -4544,16 +4546,12 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         // Pick a random page within the actual available range (leave room for page+1 fetch)
         const pageLimit = Math.max(1, maxPage - 1);
         const page = Math.floor(Math.random() * pageLimit) + 1;
-        const fetchUrl1 = `${baseUrl}&page=${page}`;
-        const fetchUrl2 = `${baseUrl}&page=${page + 1}`;
         try {
-          const [res1, res2] = await Promise.all([
-            fetch(fetchUrl1),
-            fetch(fetchUrl2),
+          const [data1, data2] = await Promise.all([
+            discoverMoviesRaw(discoverParams, page),
+            discoverMoviesRaw(discoverParams, page + 1),
           ]);
-          if (!res1.ok || !res2.ok) continue;
-          const [data1, data2] = await Promise.all([res1.json(), res2.json()]);
-          const combined = [...(data1?.results || []), ...(data2?.results || [])];
+          const combined = [...data1.results, ...data2.results];
           const seenIds = new Set();
           const batch = combined
             .filter((m) => {

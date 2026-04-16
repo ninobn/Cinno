@@ -1,5 +1,6 @@
-const TMDB_KEY = import.meta.env.VITE_TMDB_API_KEY;
-const BASE = "https://api.themoviedb.org/3";
+import { supabase } from "./supabase.js";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 export const IMG_BASE = "https://image.tmdb.org/t/p";
 
 const GENRE_MAP = {
@@ -23,12 +24,35 @@ export function tmdbToMovie(m) {
   };
 }
 
+async function getAccessToken() {
+  if (!supabase) return null;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
 async function tmdbFetch(endpoint, params = {}) {
-  const url = new URL(`${BASE}${endpoint}`);
-  url.searchParams.set("api_key", TMDB_KEY);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const resp = await fetch(url.toString());
-  if (!resp.ok) throw new Error(`TMDB error: ${resp.status}`);
+  const token = await getAccessToken();
+  const isPublic = !token;
+  const url = `${API_URL}/api/tmdb${isPublic ? "-public" : ""}`;
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ path: endpoint, params }),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err?.error?.message || err?.status_message || `TMDB error: ${resp.status}`);
+  }
+
   return resp.json();
 }
 
@@ -123,6 +147,11 @@ export async function getMovieKeywords(movieId) {
 export async function discoverMovies(params = {}, page = 1) {
   const data = await tmdbFetch("/discover/movie", { ...params, page });
   return { movies: (data?.results || []).map(tmdbToMovie), totalPages: data?.total_pages || 0 };
+}
+
+export async function discoverMoviesRaw(params = {}, page = 1) {
+  const data = await tmdbFetch("/discover/movie", { ...params, page });
+  return { results: data?.results || [], totalPages: data?.total_pages || 0 };
 }
 
 export async function getMovieCredits(movieId) {
