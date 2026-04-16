@@ -301,6 +301,7 @@ body {
   display: flex;
   gap: 12px;
   padding-bottom: 8px;
+  padding-right: 16px;
 }
 
 /* Arrow buttons — desktop only */
@@ -6473,7 +6474,7 @@ body {
   height: 42vh;
   min-height: 260px;
   max-height: 360px;
-  border-radius: 16px 16px 0 0;
+  border-radius: 16px;
   overflow: hidden;
   margin-bottom: 0;
 }
@@ -6707,7 +6708,7 @@ body {
     height: 55vh;
     min-height: 400px;
     max-height: 560px;
-    border-radius: 20px 20px 0 0;
+    border-radius: 20px;
   }
   .hero-title { font-size: 40px; }
   .hero-content { padding: 0 40px 48px; }
@@ -6782,6 +6783,7 @@ body {
 
   /* Scroll rows — wider tiles on desktop */
   .scroll-row { margin: 0 -32px; padding: 0 32px; }
+  .scroll-row-inner { padding-right: 32px; }
   .scroll-tile,
   .scroll-row .skeleton-tile { flex: 0 0 150px; width: 150px; min-width: 150px; }
   .scroll-row .skeleton-tile { height: 225px; }
@@ -6842,6 +6844,7 @@ body {
   .badge-grid-inline { gap: 12px; }
 
   .scroll-row { margin: 0 -40px; padding: 0 40px; }
+  .scroll-row-inner { padding-right: 40px; }
   .scroll-tile,
   .scroll-row .skeleton-tile { flex: 0 0 160px; width: 160px; min-width: 160px; }
   .scroll-row .skeleton-tile { height: 240px; }

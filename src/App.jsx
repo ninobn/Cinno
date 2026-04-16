@@ -1161,7 +1161,7 @@ function useTabDirection(tab) {
   return dir;
 }
 
-function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, savedIds, isWatched, onToggleWatched, onStartDebrief, collections, toggleMovieInCollection }) {
+function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, savedIds, isWatched, onToggleWatched, onStartDebrief, collections, toggleMovieInCollection, rating, onSetRating }) {
   const genreColor = GENRE_COLORS[movie.genre] || "#7A7878";
   const ratingColor = getRatingColor(movie.rating);
   const [tab, setTab] = useState("overview");
@@ -1215,7 +1215,8 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
     if (t === "similar") loadSimilar();
   };
 
-  const backdropUrl = movie.backdrop_path ? `${IMG_BASE}/w780${movie.backdrop_path}` : null;
+  const backdropPath = movie.backdrop_path || (details?.backdrop_path ?? null);
+  const backdropUrl = backdropPath ? `${IMG_BASE}/w780${backdropPath}` : null;
   const posterBlurUrl = movie.poster_path ? `${IMG_BASE}/w342${movie.poster_path}` : null;
   const { modalRef, overlayRef, animatedClose, swipeHandlers } = useSwipeToDismiss(onClose);
 
@@ -1298,6 +1299,26 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
               </div>
             </div>
           </div>
+          {isWatched && onSetRating && (
+            <div className="rating-section">
+              <ScoreRing score={rating} size={56} />
+              <div className="rating-controls">
+                <div className="rating-label">Your rating{rating ? ` · ${rating}/100` : ""}</div>
+                <input
+                  type="range"
+                  className="rating-slider"
+                  min="1"
+                  max="100"
+                  value={rating ?? 50}
+                  onChange={(e) => onSetRating(movie.id, Number(e.target.value))}
+                  onPointerUp={() => Toast.fire({ icon: "success", title: "Rating updated" })}
+                />
+              </div>
+              {rating && (
+                <button className="rating-clear" onClick={() => onSetRating(movie.id, null)}>✕</button>
+              )}
+            </div>
+          )}
           <div className="modal-tabs">
             <button className={`modal-tab ${tab === "overview" ? "active" : ""}`} onClick={() => handleTabSwitch("overview")}>Overview</button>
             <button className={`modal-tab ${tab === "similar" ? "active" : ""}`} onClick={() => handleTabSwitch("similar")}>Similar to this</button>
@@ -1374,7 +1395,6 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
   const [providers, setProviders] = useState([]);
   const [details, setDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(true);
-  const backdropUrl = movie.backdrop_path ? `${IMG_BASE}/w780${movie.backdrop_path}` : null;
   const posterBlurUrl = movie.poster_path ? `${IMG_BASE}/w342${movie.poster_path}` : null;
 
   useEffect(() => {
@@ -1382,6 +1402,9 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
     setDetailsLoading(true);
     getMovieDetails(movie.id).then(setDetails).catch(() => {}).finally(() => setDetailsLoading(false));
   }, [movie.id]);
+
+  const backdropPath = movie.backdrop_path || (details?.backdrop_path ?? null);
+  const backdropUrl = backdropPath ? `${IMG_BASE}/w780${backdropPath}` : null;
 
   const saveNote = useCallback(() => onSaveNote(movie.id, noteText), [movie.id, noteText, onSaveNote]);
 
@@ -1515,7 +1538,7 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
 
 // ─── Search Tab ────────────────────────────────────────────────────────────────
 
-function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, scrollPositions }) {
+function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, scrollPositions, watchedRatings, setWatchedRating }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [movies, setMovies] = useState([]);
@@ -2035,6 +2058,8 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
           onStartDebrief={startDebrief}
           collections={collections}
           toggleMovieInCollection={toggleMovieInCollection}
+          rating={watchedRatings?.get(selectedMovie.id) ?? null}
+          onSetRating={setWatchedRating}
         />
       )}
     </>
@@ -2340,7 +2365,7 @@ function CollectionCard({ collection, savedMovies, onClick, onShare }) {
   );
 }
 
-function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, onBack, onRename, onDelete, onShare, collections, toggleMovieInCollection }) {
+function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, onBack, onRename, onDelete, onShare, collections, toggleMovieInCollection, watchedRatings, setWatchedRating }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(collection.name);
@@ -2435,13 +2460,15 @@ function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, w
           onStartDebrief={startDebrief}
           collections={collections}
           toggleMovieInCollection={toggleMovieInCollection}
+          rating={watchedRatings?.get(selectedMovie.id) ?? null}
+          onSetRating={setWatchedRating}
         />
       )}
     </>
   );
 }
 
-function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief, collections, createCollection, renameCollection, deleteCollection, toggleMovieInCollection, onStartMoviePicker, scrollPositions }) {
+function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief, collections, createCollection, renameCollection, deleteCollection, toggleMovieInCollection, onStartMoviePicker, scrollPositions, watchedRatings, setWatchedRating }) {
   const [selectedMovie, setSelectedMovie] = useState(null);
   const [emptyMsg] = useState(() => pickRandom(EMPTY_WATCHLIST));
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -2522,6 +2549,8 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
         onShare={(e) => handleShareCollection(e, viewingCollection)}
         collections={collections}
         toggleMovieInCollection={toggleMovieInCollection}
+        watchedRatings={watchedRatings}
+        setWatchedRating={setWatchedRating}
       />
     );
   }
@@ -2682,6 +2711,8 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
           onStartDebrief={startDebrief}
           collections={collections}
           toggleMovieInCollection={toggleMovieInCollection}
+          rating={watchedRatings?.get(selectedMovie.id) ?? null}
+          onSetRating={setWatchedRating}
         />
       )}
       {showCreateModal && (
@@ -4346,7 +4377,7 @@ function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
 const GENRE_ID_TO_LABEL = {};
 GENRE_FILTERS.forEach((g) => { GENRE_ID_TO_LABEL[g.id] = g.label; });
 
-function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, setWatchedRating, watchedMovies, isGuest, guardAction }) {
+function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, setWatchedRating, watchedRatings, watchedMovies, isGuest, guardAction }) {
   const { user } = useAuth();
   const SESSION_LIMIT = 30;
 
@@ -5111,6 +5142,8 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
           onStartDebrief={startDebrief}
           collections={collections}
           toggleMovieInCollection={toggleMovieInCollection}
+          rating={watchedRatings?.get(selectedMovie.id) ?? null}
+          onSetRating={setWatchedRating}
         />
       )}
     </div>
@@ -6231,7 +6264,7 @@ function MainApp() {
 
       <div className={`tab-panel ${tabFading ? "tab-fade-out" : ""} ${tabDir === "fade-in" ? "tab-fade-in" : ""}`} key={activeTab}>
         {activeTab === "search" && (
-          <SearchTab savedIds={savedIds} toggleSave={guardedToggleSave} watchedIds={watchedIds} toggleWatched={guardedToggleWatched} startDebrief={guardedStartDebrief} collections={collections} toggleMovieInCollection={guardedToggleMovieInCollection} scrollPositions={scrollPositions} />
+          <SearchTab savedIds={savedIds} toggleSave={guardedToggleSave} watchedIds={watchedIds} toggleWatched={guardedToggleWatched} startDebrief={guardedStartDebrief} collections={collections} toggleMovieInCollection={guardedToggleMovieInCollection} scrollPositions={scrollPositions} watchedRatings={watchedRatings} setWatchedRating={guardedSetWatchedRating} />
         )}
         {activeTab === "saved" && (
           <SavedTab
@@ -6242,6 +6275,7 @@ function MainApp() {
             toggleMovieInCollection={guardedToggleMovieInCollection}
             onStartMoviePicker={guardedStartMoviePicker}
             scrollPositions={scrollPositions}
+            watchedRatings={watchedRatings} setWatchedRating={guardedSetWatchedRating}
           />
         )}
         {activeTab === "discover" && (
@@ -6251,6 +6285,7 @@ function MainApp() {
             startDebrief={guardedStartDebrief}
             collections={collections} toggleMovieInCollection={guardedToggleMovieInCollection}
             setWatchedRating={guardedSetWatchedRating}
+            watchedRatings={watchedRatings}
             watchedMovies={watchedMovies}
             isGuest={isGuest}
             guardAction={guardAction}
