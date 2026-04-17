@@ -25,6 +25,17 @@ const Toast = Swal.mixin({
   customClass: { popup: "cinno-swal-popup" },
 });
 
+// ─── Debounced sync-failure toast (5s cooldown) ────────────────────────────────
+let _lastSyncFailToast = 0;
+function syncFailToast(e) {
+  console.error("Failed to sync:", e);
+  const now = Date.now();
+  if (now - _lastSyncFailToast > 5000) {
+    _lastSyncFailToast = now;
+    Toast.fire({ icon: "warning", title: "Change may not be saved", text: "Sync failed — will retry on next reload." });
+  }
+}
+
 // ─── Error Boundary ───────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -2847,7 +2858,7 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates, collections, c
     setShowcaseIds((prev) => {
       const next = prev.includes(badgeId) ? prev.filter((id) => id !== badgeId) : [...prev.filter((id) => id !== badgeId), badgeId].slice(-3);
       saveToStorage("cc_badge_showcase", next);
-      if (user) preferencesService.updateUIToggles(user.id, { badgeShowcase: next });
+      if (user) preferencesService.updateUIToggles(user.id, { badgeShowcase: next }).catch(syncFailToast);
       return next;
     });
   }, [user]);
@@ -3295,11 +3306,11 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   // Persist sort preferences
   useEffect(() => {
     saveToStorage("cc_rankSort", rankSort);
-    if (user) preferencesService.updateUIToggles(user.id, { rankSort });
+    if (user) preferencesService.updateUIToggles(user.id, { rankSort }).catch(syncFailToast);
   }, [rankSort]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     saveToStorage("cc_journalSort", journalSort);
-    if (user) preferencesService.updateUIToggles(user.id, { journalSort });
+    if (user) preferencesService.updateUIToggles(user.id, { journalSort }).catch(syncFailToast);
   }, [journalSort]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { saveToStorage("cc_runtimeCache", runtimeCache); }, [runtimeCache]);
 
@@ -3677,7 +3688,7 @@ function ChatTab({ chats, activeChatId, setActiveChatId, onCreateChat, onDeleteC
     setSmartMode((prev) => {
       const next = !prev;
       saveToStorage("cinno-smart-mode", next);
-      if (user) preferencesService.updateUIToggles(user.id, { smartMode: next });
+      if (user) preferencesService.updateUIToggles(user.id, { smartMode: next }).catch(syncFailToast);
       return next;
     });
   };
@@ -4493,7 +4504,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   // Persist maybeLater
   useEffect(() => {
     saveToStorage("cc_discover_maybe_later", maybeLater);
-    if (user) preferencesService.updateGenrePreferences(user.id, { discoverMaybeLater: maybeLater });
+    if (user) preferencesService.updateGenrePreferences(user.id, { discoverMaybeLater: maybeLater }).catch(syncFailToast);
   }, [maybeLater]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close genre dropdown on outside click
@@ -4706,9 +4717,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       // Fire-and-forget: record swipe to Supabase
       if (user) {
         const dbAction = action === "save" ? "liked" : action === "skip" ? "disliked" : "skipped";
-        discoverService.recordSwipe(user.id, movie.id, dbAction).catch((e) =>
-          console.error("Failed to record swipe:", e)
-        );
+        discoverService.recordSwipe(user.id, movie.id, dbAction).catch(syncFailToast);
       }
     }, 250);
   }, [movies, currentIndex, savedIds, toggleSave, isGuest, guardAction, user]);
@@ -4726,9 +4735,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     setTimeout(() => setCounterBump(false), 200);
     // Fire-and-forget: record as "liked" in Supabase (watched = positive signal)
     if (user) {
-      discoverService.recordSwipe(user.id, watchedModal.id, "liked").catch((e) =>
-        console.error("Failed to record watched swipe:", e)
-      );
+      discoverService.recordSwipe(user.id, watchedModal.id, "liked").catch(syncFailToast);
     }
   }, [watchedModal, watchedSlider, toggleWatched, setWatchedRating, user]);
 
@@ -5500,7 +5507,7 @@ function MainApp() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     saveToStorage("cc_theme", theme);
-    if (user) preferencesService.updateThemeSettings(user.id, { theme });
+    if (user) preferencesService.updateThemeSettings(user.id, { theme }).catch(syncFailToast);
   }, [theme]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleTheme = () => setTheme((t) => t === "dark" ? "light" : "dark");
@@ -5840,11 +5847,11 @@ function MainApp() {
       ));
       // Supabase: remove from Watchlist (cascade removes from other collections via app logic)
       if (user && watchlistIdRef.current) {
-        watchlistService.removeMovieFromCollection(watchlistIdRef.current, id).catch((e) => console.error("Failed to remove from Supabase watchlist:", e));
+        watchlistService.removeMovieFromCollection(watchlistIdRef.current, id).catch(syncFailToast);
         // Also remove from all user collections in Supabase
         collections.forEach((col) => {
           if (col.movieIds.includes(id)) {
-            watchlistService.removeMovieFromCollection(col.id, id).catch((e) => console.error("Failed to remove from Supabase collection:", e));
+            watchlistService.removeMovieFromCollection(col.id, id).catch(syncFailToast);
           }
         });
       }
@@ -5853,13 +5860,13 @@ function MainApp() {
         setSavedMovies((prev) => new Map(prev).set(id, movie));
         // Undo: re-add to Supabase
         if (user && watchlistIdRef.current) {
-          watchlistService.addMovieToCollection(watchlistIdRef.current, movie).catch((e) => console.error("Failed to undo remove:", e));
+          watchlistService.addMovieToCollection(watchlistIdRef.current, movie).catch(syncFailToast);
         }
       });
     } else {
       // Supabase: add to Watchlist + cache movie data
       if (user && watchlistIdRef.current) {
-        watchlistService.addMovieToCollection(watchlistIdRef.current, movie).catch((e) => console.error("Failed to add to Supabase watchlist:", e));
+        watchlistService.addMovieToCollection(watchlistIdRef.current, movie).catch(syncFailToast);
       }
       showToast("Added to watchlist");
     }
@@ -5890,7 +5897,7 @@ function MainApp() {
           // Supabase: delete journal entry
           if (user && prevEntryId) {
             journalEntryIds.current.delete(id);
-            journalService.deleteJournalEntry(prevEntryId).catch((e) => console.error("Failed to delete journal entry:", e));
+            journalService.deleteJournalEntry(prevEntryId).catch(syncFailToast);
           }
           showToast("Removed from journal", () => {
             setWatchedIds((prev) => new Set(prev).add(id));
@@ -5906,7 +5913,7 @@ function MainApp() {
                 notes: prevNote ?? null,
               }).then((entry) => {
                 if (entry) journalEntryIds.current.set(id, entry.id);
-              }).catch((e) => console.error("Failed to undo journal delete:", e));
+              }).catch(syncFailToast);
             }
           });
         }
@@ -5937,7 +5944,7 @@ function MainApp() {
     if (user) {
       journalService.addJournalEntry(user.id, movie, { watchDate }).then((entry) => {
         if (entry) journalEntryIds.current.set(id, entry.id);
-      }).catch((e) => console.error("Failed to add journal entry:", e));
+      }).catch(syncFailToast);
     }
     showToast("Moved to journal");
   };
@@ -5949,7 +5956,7 @@ function MainApp() {
     if (user) {
       const entryId = journalEntryIds.current.get(id);
       if (entryId) {
-        journalService.updateJournalEntry(entryId, { notes: sanitized }).catch((e) => console.error("Failed to update journal notes:", e));
+        journalService.updateJournalEntry(entryId, { notes: sanitized }).catch(syncFailToast);
       }
     }
   };
@@ -5964,7 +5971,7 @@ function MainApp() {
     if (user) {
       const entryId = journalEntryIds.current.get(id);
       if (entryId) {
-        journalService.updateJournalEntry(entryId, { personalRating: rating }).catch((e) => console.error("Failed to update journal rating:", e));
+        journalService.updateJournalEntry(entryId, { personalRating: rating }).catch(syncFailToast);
       }
     }
   };
@@ -5978,7 +5985,7 @@ function MainApp() {
       watchlistService.createCollection(user.id, safeName, false).then((col) => {
         // Replace temp id with real Supabase UUID
         setCollections((prev) => prev.map((c) => c.id === tempId ? { ...c, id: col.id } : c));
-      }).catch((e) => console.error("Failed to create collection in Supabase:", e));
+      }).catch(syncFailToast);
       return tempId;
     }
     const id = Date.now().toString();
@@ -5990,7 +5997,7 @@ function MainApp() {
     const safeName = sanitizeText(newName).slice(0, 50);
     setCollections((prev) => prev.map((c) => c.id === collectionId ? { ...c, name: safeName } : c));
     if (user) {
-      watchlistService.renameCollection(collectionId, safeName).catch((e) => console.error("Failed to rename collection in Supabase:", e));
+      watchlistService.renameCollection(collectionId, safeName).catch(syncFailToast);
     }
   };
 
@@ -6010,7 +6017,7 @@ function MainApp() {
       if (result.isConfirmed) {
         setCollections((prev) => prev.filter((c) => c.id !== collectionId));
         if (user) {
-          watchlistService.deleteCollection(collectionId).catch((e) => console.error("Failed to delete collection in Supabase:", e));
+          watchlistService.deleteCollection(collectionId).catch(syncFailToast);
         }
         Toast.fire({ icon: "success", title: `Deleted "${col.name}"` });
         if (afterDelete) afterDelete();
@@ -6029,7 +6036,7 @@ function MainApp() {
       });
       // Add to Supabase Watchlist too
       if (user && watchlistIdRef.current) {
-        watchlistService.addMovieToCollection(watchlistIdRef.current, movie).catch((e) => console.error("Failed to add to Supabase watchlist:", e));
+        watchlistService.addMovieToCollection(watchlistIdRef.current, movie).catch(syncFailToast);
       }
     }
     let added = false;
@@ -6043,9 +6050,9 @@ function MainApp() {
     if (user) {
       const has = collections.find((c) => c.id === collectionId)?.movieIds.includes(movie.id);
       if (has) {
-        watchlistService.removeMovieFromCollection(collectionId, movie.id).catch((e) => console.error("Failed to remove from Supabase collection:", e));
+        watchlistService.removeMovieFromCollection(collectionId, movie.id).catch(syncFailToast);
       } else {
-        watchlistService.addMovieToCollection(collectionId, movie).catch((e) => console.error("Failed to add to Supabase collection:", e));
+        watchlistService.addMovieToCollection(collectionId, movie).catch(syncFailToast);
       }
     }
     if (added) {
@@ -6096,7 +6103,7 @@ function MainApp() {
   useEffect(() => {
     saveToStorage("cc_tasteProfile", tasteProfile);
     if (user && tasteProfile !== undefined) {
-      preferencesService.updateGenrePreferences(user.id, { tasteProfile });
+      preferencesService.updateGenrePreferences(user.id, { tasteProfile }).catch(syncFailToast);
     }
   }, [tasteProfile]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { saveToStorage("cc_collections",   collections);       }, [collections]);
