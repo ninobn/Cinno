@@ -26,7 +26,11 @@
 
 /* Global smooth transitions for interactive elements */
 button, a, [role="button"] {
-  transition: background 200ms ease, color 200ms ease, opacity 200ms ease, transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+  transition: background 200ms ease, color 200ms ease, opacity 200ms ease, transform 120ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
+button:active {
+  transform: scale(0.96);
 }
 
 body {
@@ -65,7 +69,13 @@ body {
 }
 
 .tab-panel.tab-fade-out { opacity: 0; }
-.tab-panel.tab-fade-in  { animation: tabFadeIn 200ms ease-out both; }
+.tab-panel.tab-fade-in,
+.tab-enter { animation: fadeSlideIn 250ms ease-out both; }
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 @keyframes tabFadeIn {
   from { opacity: 0; }
@@ -269,6 +279,8 @@ body {
   min-height: 0;
   padding: 0 16px 80px;
   overflow-y: auto;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ── Movie Grid (3-col poster tiles) ─────────────── */
@@ -387,9 +399,14 @@ body {
   to { opacity: 1; }
 }
 
-.movies-grid,
-.scroll-row-inner {
+.movies-grid {
   animation: groupFadeIn 300ms ease-out;
+}
+
+/* Search rail posters stagger in — --i is set per-item via inline style (capped at 10) */
+.scroll-tile {
+  animation: fadeSlideIn 300ms ease-out both;
+  animation-delay: calc(var(--i, 0) * 50ms);
 }
 
 /* Skeleton → content crossfade for loading states */
@@ -408,7 +425,7 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 32px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 200ms ease, box-shadow 200ms ease;
   overflow: hidden;
   position: relative;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -427,9 +444,11 @@ body {
   opacity: 0.4;
 }
 
-.movie-tile:hover .movie-poster {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+@media (hover: hover) {
+  .movie-tile:hover .movie-poster {
+    transform: scale(1.04);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
 }
 
 .movie-poster-rating {
@@ -519,11 +538,21 @@ body {
   background: var(--bg-card);
   border-radius: 20px;
   padding: 24px;
-  animation: modalScaleIn 250ms ease-out;
+  animation: modalIn 300ms ease-out;
   max-height: 80vh;
   overflow-y: auto;
   position: relative;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(40px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes modalOut {
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(40px); }
 }
 
 @keyframes modalScaleIn {
@@ -1705,6 +1734,23 @@ body {
   height: 100%;
   object-fit: cover;
   object-position: center top;
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+
+.modal-backdrop img.loaded {
+  opacity: 1;
+}
+
+.modal-backdrop-blur {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(20px) saturate(1.1);
+  transform: scale(1.2);
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 .modal-backdrop-placeholder {
@@ -1853,6 +1899,20 @@ body {
   border-color: var(--text-muted);
 }
 
+.watch-provider-skeleton {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.04) 75%);
+  background-size: 400px 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+[data-theme="light"] .watch-provider-skeleton {
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.04) 25%, rgba(0, 0, 0, 0.08) 50%, rgba(0, 0, 0, 0.04) 75%);
+  background-size: 400px 100%;
+}
+
 /* ── Modal Actions Row ───────────────────────────── */
 .modal-actions {
   display: flex;
@@ -1984,7 +2044,8 @@ body {
   transition: transform 0.15s;
 }
 
-.rating-slider::-webkit-slider-thumb:hover {
+.rating-slider::-webkit-slider-thumb:hover,
+.rating-slider::-webkit-slider-thumb:active {
   transform: scale(1.2);
 }
 
@@ -1996,6 +2057,17 @@ body {
   cursor: pointer;
   border: none;
   transition: transform 0.15s;
+}
+
+.rating-slider::-moz-range-thumb:hover,
+.rating-slider::-moz-range-thumb:active {
+  transform: scale(1.2);
+}
+
+/* Smoothly transition the score-ring color as the slider value changes */
+.rating-section svg circle,
+.rating-section svg text {
+  transition: stroke 300ms ease, fill 300ms ease, color 300ms ease;
 }
 
 .rating-clear {
@@ -8265,6 +8337,8 @@ body {
   flex-direction: column;
   gap: 8px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  position: relative;
+  z-index: 9999;
 }
 
 .journal-header-top {

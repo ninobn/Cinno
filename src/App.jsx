@@ -126,6 +126,38 @@ function formatAddedDate(dateStr) {
   return `Added ${dt.toFormat("MMM d, yyyy")}`;
 }
 
+// Preloads the backdrop image before showing the modal so the top of the modal
+// doesn't flash empty. Falls through after 500ms on slow connections.
+function useMovieModal() {
+  const [selectedMovie, _setSelectedMovie] = useState(null);
+  const timerRef = useRef(null);
+  const tokenRef = useRef(0);
+
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  const setSelectedMovie = useCallback((movie) => {
+    clearTimeout(timerRef.current);
+    const token = ++tokenRef.current;
+    if (!movie || !movie.backdrop_path) {
+      _setSelectedMovie(movie);
+      return;
+    }
+    let opened = false;
+    const open = () => {
+      if (opened || tokenRef.current !== token) return;
+      opened = true;
+      _setSelectedMovie(movie);
+    };
+    const img = new Image();
+    img.onload = open;
+    img.onerror = open;
+    img.src = `${IMG_BASE}/w780${movie.backdrop_path}`;
+    timerRef.current = setTimeout(open, 500);
+  }, []);
+
+  return [selectedMovie, setSelectedMovie];
+}
+
 function useSwipeToDismiss(onClose) {
   const startY = useRef(null);
   const currentY = useRef(0);
@@ -1130,10 +1162,10 @@ function ScrollRow({ children }) {
   );
 }
 
-function MovieTile({ movie, onClick, isSaved, onToggleSave, className }) {
+function MovieTile({ movie, onClick, isSaved, onToggleSave, className, style }) {
   const genreColor = GENRE_COLORS[movie.genre] || "#7A7878";
   return (
-    <div className={`movie-tile ${className || ""}`} onClick={onClick}>
+    <div className={`movie-tile ${className || ""}`} onClick={onClick} style={style}>
       <div className="movie-poster">
         <PosterImage posterPath={movie.poster_path} title={movie.title} />
         <span className="movie-poster-rating">★ {movie.rating}</span>
@@ -1181,8 +1213,10 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
   const [similarLoaded, setSimilarLoaded] = useState(false);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
   const [providers, setProviders] = useState([]);
+  const [providersLoading, setProvidersLoading] = useState(true);
   const [details, setDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(true);
+  const [backdropLoaded, setBackdropLoaded] = useState(false);
   const [collectionDropdown, setCollectionDropdown] = useState(false);
   const dropdownRef = useRef(null);
   const collectionFloating = useFloating({
@@ -1202,7 +1236,8 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
   }, [collectionDropdown]);
 
   useEffect(() => {
-    getWatchProviders(movie.id).then(setProviders).catch(() => {});
+    setProvidersLoading(true);
+    getWatchProviders(movie.id).then(setProviders).catch(() => {}).finally(() => setProvidersLoading(false));
     setDetailsLoading(true);
     getMovieDetails(movie.id).then(setDetails).catch(() => {}).finally(() => setDetailsLoading(false));
   }, [movie.id]);
@@ -1241,7 +1276,17 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
         <button className="modal-close-btn" onClick={animatedClose}>✕</button>
         <div className="modal-backdrop">
           {backdropUrl ? (
-            <img src={backdropUrl} alt={movie.title} />
+            <>
+              {!backdropLoaded && posterBlurUrl && (
+                <div className="modal-backdrop-blur" style={{ backgroundImage: `url(${posterBlurUrl})` }} />
+              )}
+              <img
+                src={backdropUrl}
+                alt={movie.title}
+                onLoad={() => setBackdropLoaded(true)}
+                className={backdropLoaded ? "loaded" : ""}
+              />
+            </>
           ) : (
             <div className="modal-backdrop-placeholder" style={{ background: `${genreColor}22` }} />
           )}
@@ -1343,7 +1388,16 @@ function MovieModal({ movie, onClose, isSaved, onToggleSave, onMovieSelect, save
                   <p className="modal-tagline">{details.tagline}</p>
                 ) : null}
                 <p className="modal-synopsis">{movie.synopsis}</p>
-                {providers.length > 0 && (
+                {providersLoading ? (
+                  <div className="watch-providers">
+                    <div className="watch-providers-label">Available on</div>
+                    <div className="watch-providers-row">
+                      {Array.from({ length: 4 }, (_, i) => (
+                        <div key={i} className="watch-provider-skeleton" />
+                      ))}
+                    </div>
+                  </div>
+                ) : providers.length > 0 && (
                   <div className="watch-providers">
                     <div className="watch-providers-label">Available on</div>
                     <div className="watch-providers-row">
@@ -1404,12 +1458,15 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
   const tabDir = useTabDirection(tab);
   const [noteText, setNoteText] = useState(note || "");
   const [providers, setProviders] = useState([]);
+  const [providersLoading, setProvidersLoading] = useState(true);
   const [details, setDetails] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(true);
+  const [backdropLoaded, setBackdropLoaded] = useState(false);
   const posterBlurUrl = movie.poster_path ? `${IMG_BASE}/w342${movie.poster_path}` : null;
 
   useEffect(() => {
-    getWatchProviders(movie.id).then(setProviders).catch(() => {});
+    setProvidersLoading(true);
+    getWatchProviders(movie.id).then(setProviders).catch(() => {}).finally(() => setProvidersLoading(false));
     setDetailsLoading(true);
     getMovieDetails(movie.id).then(setDetails).catch(() => {}).finally(() => setDetailsLoading(false));
   }, [movie.id]);
@@ -1436,7 +1493,17 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
         <button className="modal-close-btn" onClick={animatedClose}>✕</button>
         <div className="modal-backdrop">
           {backdropUrl ? (
-            <img src={backdropUrl} alt={movie.title} />
+            <>
+              {!backdropLoaded && posterBlurUrl && (
+                <div className="modal-backdrop-blur" style={{ backgroundImage: `url(${posterBlurUrl})` }} />
+              )}
+              <img
+                src={backdropUrl}
+                alt={movie.title}
+                onLoad={() => setBackdropLoaded(true)}
+                className={backdropLoaded ? "loaded" : ""}
+              />
+            </>
           ) : (
             <div className="modal-backdrop-placeholder" style={{ background: `${genreColor}22` }} />
           )}
@@ -1510,7 +1577,16 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
                   <p className="modal-tagline">{details.tagline}</p>
                 ) : null}
                 <p className="modal-synopsis">{movie.synopsis}</p>
-                {providers.length > 0 && (
+                {providersLoading ? (
+                  <div className="watch-providers">
+                    <div className="watch-providers-label">Available on</div>
+                    <div className="watch-providers-row">
+                      {Array.from({ length: 4 }, (_, i) => (
+                        <div key={i} className="watch-provider-skeleton" />
+                      ))}
+                    </div>
+                  </div>
+                ) : providers.length > 0 && (
                   <div className="watch-providers">
                     <div className="watch-providers-label">Available on</div>
                     <div className="watch-providers-row">
@@ -1577,7 +1653,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
   const [topRatedMovies, setTopRatedMovies] = useState([]);
   const [topRatedLoading, setTopRatedLoading] = useState(true);
   const [topRatedError, setTopRatedError] = useState(false);
-  const [selectedMovie, setSelectedMovie] = useState(null);
+  const [selectedMovie, setSelectedMovie] = useMovieModal();
   const [fetchError, setFetchError] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -1994,6 +2070,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                         onToggleSave={toggleSave}
                         onClick={() => setSelectedMovie(movie)}
                         className="scroll-tile"
+                        style={{ "--i": Math.min(i, 10) }}
                       />
                     ))}
                   </ScrollRow>
@@ -2020,6 +2097,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                         onToggleSave={toggleSave}
                         onClick={() => setSelectedMovie(movie)}
                         className="scroll-tile"
+                        style={{ "--i": Math.min(i, 10) }}
                       />
                     ))}
                   </ScrollRow>
@@ -2046,6 +2124,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                         onToggleSave={toggleSave}
                         onClick={() => setSelectedMovie(movie)}
                         className="scroll-tile"
+                        style={{ "--i": Math.min(i, 10) }}
                       />
                     ))}
                   </ScrollRow>
@@ -2172,7 +2251,7 @@ function SharedWatchlistView() {
   const [movies, setMovies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [selectedMovie, setSelectedMovie] = useState(null);
+  const [selectedMovie, setSelectedMovie] = useMovieModal();
   const closeSharedDetail = useCallback(() => setSelectedMovie(null), []);
   const { modalRef, overlayRef, swipeHandlers } = useSwipeToDismiss(closeSharedDetail);
 
@@ -2377,7 +2456,7 @@ function CollectionCard({ collection, savedMovies, onClick, onShare }) {
 }
 
 function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, onBack, onRename, onDelete, onShare, collections, toggleMovieInCollection, watchedRatings, setWatchedRating }) {
-  const [selectedMovie, setSelectedMovie] = useState(null);
+  const [selectedMovie, setSelectedMovie] = useMovieModal();
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(collection.name);
   const editRef = useRef(null);
@@ -2479,8 +2558,8 @@ function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, w
   );
 }
 
-function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief, collections, createCollection, renameCollection, deleteCollection, toggleMovieInCollection, onStartMoviePicker, scrollPositions, watchedRatings, setWatchedRating }) {
-  const [selectedMovie, setSelectedMovie] = useState(null);
+function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief, collections, createCollection, renameCollection, deleteCollection, toggleMovieInCollection, onStartMoviePicker, scrollPositions, watchedRatings, setWatchedRating, listsLoading }) {
+  const [selectedMovie, setSelectedMovie] = useMovieModal();
   const [emptyMsg] = useState(() => pickRandom(EMPTY_WATCHLIST));
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeCollection, setActiveCollection] = useState(null);
@@ -2603,7 +2682,9 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
           </div>
         ) : null}
 
-        {movies.length === 0 ? (
+        {movies.length === 0 && listsLoading ? (
+          <SkeletonGrid count={9} />
+        ) : movies.length === 0 ? (
           <div className="saved-empty">
             <div className="saved-icon">{emptyMsg.icon}</div>
             <div className="saved-title">{emptyMsg.title}</div>
@@ -3163,7 +3244,7 @@ const AI_INSIGHTS_ENABLED = false;
 
 function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections, scrollPositions, chats }) {
   const { user, getAccessToken } = useAuth();
-  const [selectedMovie, setSelectedMovie] = useState(null);
+  const [selectedMovie, setSelectedMovie] = useMovieModal();
   const [view, _setView] = useState("journal");
   const prevViewRef = useRef("journal");
   const [viewDir, setViewDir] = useState(null);
@@ -4400,7 +4481,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
   const [swipeDir, setSwipeDir] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragX, setDragX] = useState(0);
-  const [selectedMovie, setSelectedMovie] = useState(null);
+  const [selectedMovie, setSelectedMovie] = useMovieModal();
   const [undoHistory, setUndoHistory] = useState([]);
   const [showStamp, setShowStamp] = useState(null);
   const [cardDetails, setCardDetails] = useState({});
@@ -5473,6 +5554,7 @@ function MainApp() {
   const [theme, setTheme] = useState(() => loadFromStorage("cc_theme", "dark"));
   const [savedIds, setSavedIds] = useState(() => new Set(loadFromStorage("cc_savedIds", [])));
   const [savedMovies, setSavedMovies] = useState(() => new Map(loadFromStorage("cc_savedMovies", [])));
+  const [listsLoading, setListsLoading] = useState(() => !!user);
   const [watchedIds, setWatchedIds] = useState(() => new Set(loadFromStorage("cc_watchedIds", [])));
   const [watchedMovies, setWatchedMovies] = useState(() => new Map(loadFromStorage("cc_watchedMovies", [])));
   const [watchedNotes, setWatchedNotes] = useState(() => new Map(loadFromStorage("cc_watchedNotes", [])));
@@ -5556,7 +5638,7 @@ function MainApp() {
 
   // ── Load watchlist & collections from Supabase (authenticated) ──
   useEffect(() => {
-    if (!user) { watchlistIdRef.current = null; return; }
+    if (!user) { watchlistIdRef.current = null; setListsLoading(false); return; }
     let cancelled = false;
     const load = async () => {
       try {
@@ -5596,6 +5678,8 @@ function MainApp() {
       } catch (e) {
         console.error("Failed to load watchlist from Supabase, using localStorage:", e);
         // Keep localStorage state already loaded via useState initializers
+      } finally {
+        if (!cancelled) setListsLoading(false);
       }
     };
     load();
@@ -6281,6 +6365,7 @@ function MainApp() {
             onStartMoviePicker={guardedStartMoviePicker}
             scrollPositions={scrollPositions}
             watchedRatings={watchedRatings} setWatchedRating={guardedSetWatchedRating}
+            listsLoading={listsLoading}
           />
         )}
         {activeTab === "discover" && (
