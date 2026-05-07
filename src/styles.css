@@ -7020,6 +7020,7 @@ body {
   gap: 16px;
   margin-top: 20px;
   margin-bottom: 4px;
+  align-items: stretch;
 }
 
 .dash-card {
@@ -7031,11 +7032,26 @@ body {
   flex-direction: column;
   gap: 16px;
   min-width: 0;
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+
+@media (hover: hover) {
+  .dash-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
 }
 
 [data-theme="light"] .dash-card {
   border-color: rgba(0, 0, 0, 0.06);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+@media (hover: hover) {
+  [data-theme="light"] .dash-card:hover {
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
+  }
 }
 
 .dash-card-label {
@@ -7048,10 +7064,82 @@ body {
 }
 
 /* — Your Reel — */
+.reel-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.reel-tf-toggle {
+  display: inline-flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+  padding: 3px;
+}
+
+[data-theme="light"] .reel-tf-toggle {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.reel-tf-pill {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 200ms ease, color 200ms ease;
+  white-space: nowrap;
+}
+
+.reel-tf-pill:hover {
+  color: var(--text-primary);
+}
+
+.reel-tf-pill.active {
+  background: var(--accent-burgundy);
+  color: #fff;
+}
+
 .reel-stats-row {
   display: flex;
   align-items: flex-end;
   gap: 18px;
+}
+
+.reel-ring-wrap {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reel-ring-svg {
+  position: absolute;
+  inset: 0;
+}
+
+.reel-ring-num {
+  position: relative;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+
+.reel-stat-films {
+  align-items: flex-start;
 }
 
 .reel-stat {
@@ -7115,6 +7203,20 @@ body {
   background: var(--accent-burgundy);
   border-radius: 4px 4px 0 0;
   transition: height 300ms ease;
+  min-height: 0;
+}
+
+.reel-empty-msg {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--accent-dim);
+  color: rgba(245, 240, 235, 0.55);
+  margin-top: -8px;
+}
+
+[data-theme="light"] .reel-empty-msg {
+  color: rgba(0, 0, 0, 0.5);
 }
 
 .reel-bar-fill.reel-bar-today {
@@ -7128,6 +7230,49 @@ body {
   letter-spacing: 0.4px;
   color: var(--text-muted);
   text-transform: uppercase;
+}
+
+.reel-badges {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding-bottom: 2px;
+  margin-top: -4px;
+}
+
+.reel-badges::-webkit-scrollbar { display: none; }
+
+.reel-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+[data-theme="light"] .reel-badge {
+  background: var(--bg-secondary);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.reel-badge-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.reel-badge-empty {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 /* — Cinno Companion card — */
@@ -7174,6 +7319,12 @@ body {
   border-radius: 50%;
   background: var(--success);
   box-shadow: 0 0 8px rgba(107, 143, 113, 0.65);
+  animation: cinnoStatusPulse 2s ease-in-out infinite;
+}
+
+@keyframes cinnoStatusPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.75; }
 }
 
 .cinno-card-bubble {
@@ -7240,6 +7391,147 @@ body {
 .cinno-mini-input:hover {
   border-color: var(--accent);
   color: var(--text-secondary);
+}
+
+/* — Cinno's Pick card — */
+.cinno-pick-card {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  min-height: 280px;
+  background: var(--bg-elevated);
+  isolation: isolate;
+}
+
+.cinno-pick-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.cinno-pick-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.45) 50%, rgba(0, 0, 0, 0.15) 100%);
+  z-index: 1;
+}
+
+.cinno-pick-content {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px 18px;
+  gap: 12px;
+  transition: opacity 180ms ease;
+}
+
+.cinno-pick-content.cinno-pick-fading {
+  opacity: 0;
+}
+
+.cinno-pick-label {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  color: #F5F0EB;
+  text-transform: uppercase;
+  align-self: flex-start;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 4px 8px;
+  border-radius: 4px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.cinno-pick-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cinno-pick-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 19px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.3px;
+  line-height: 1.15;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+
+.cinno-pick-reason {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-style: italic;
+  color: rgba(245, 240, 235, 0.92);
+  line-height: 1.4;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+}
+
+.cinno-pick-reason-skel {
+  height: 14px;
+  border-radius: 4px;
+  width: 90%;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.cinno-pick-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.cinno-pick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #F5F0EB;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background 200ms ease, border-color 200ms ease, color 200ms ease;
+}
+
+.cinno-pick-btn:hover {
+  background: rgba(0, 0, 0, 0.7);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+.cinno-pick-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cinno-pick-btn svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.cinno-pick-btn.saved {
+  background: var(--accent-burgundy);
+  border-color: var(--accent-burgundy);
+  color: #fff;
+}
+
+.cinno-pick-btn.saved svg {
+  fill: #fff;
 }
 
 /* ── Your Taste editorial section ─────────────── */
@@ -7470,14 +7762,16 @@ body {
   .movies-grid { grid-template-columns: repeat(5, 1fr); gap: 16px; }
   .movie-modal { max-width: 600px; }
 
-  /* Two-column dashboard cards on tablet+ */
+  /* Three-column dashboard cards on tablet+ — Pick / Reel / Chat = 30 / 40 / 30 */
   .dash-row {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 30fr 40fr 30fr;
     gap: 20px;
     margin-top: 24px;
   }
   .reel-stat-num { font-size: 32px; }
   .reel-bars { height: 96px; }
+  .cinno-pick-card { min-height: 100%; }
+  .cinno-pick-title { font-size: 22px; }
 
   /* Three-column journal recent cards on tablet+ */
   .journal-recent-row {

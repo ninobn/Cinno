@@ -1,102 +1,104 @@
-\## Current Roadmap
+Update the CLAUDE.md file in the project root with the following roadmap and project context. Replace any outdated roadmap/phase information but keep existing technical rules (Windows environment, no bash, etc.) intact.
 
 
 
-\### STATUS: Pre-deployment polish + Supabase migration
+Add or update these sections:
 
 
 
-\### Phase 1: Supabase Auth + Guest Mode (DO FIRST)
+=== PROJECT VISION ===
 
-\- Set up Supabase project and configure in .env (VITE\_SUPABASE\_URL, VITE\_SUPABASE\_ANON\_KEY)
-
-\- Install @supabase/supabase-js
-
-\- Create auth context/provider wrapping the app
-
-\- Three auth states: logged out (guest), logged in (Google), logged in (Apple)
-
-\- Guest mode: user can browse Search tab fully (hero banner, sections, search, genre filter, movie modal viewing)
-
-\- Guest restrictions: when guest tries to save to watchlist, add to journal, use chat, or use discover, show a clean modal: "Sign in to unlock this feature" with Google and Apple sign-in buttons and a "Continue browsing" dismiss button
-
-\- Google OAuth login via Supabase Auth
-
-\- Apple OAuth login via Supabase Auth
-
-\- Auth UI: clean login screen with Cinno logo, "Welcome to Cinno" heading, Google and Apple sign-in buttons, and "Continue as guest" link below
-
-\- Show user profile icon in header when logged in (replace settings icon or add next to it)
-
-\- Logout option in settings
+Cinno is a personal movie companion web app evolving into a modern, social editorial hub — think Letterboxd meets Apple TV+ meets a personal film magazine. The design language is shifting from a utility app to a premium editorial experience with large typography, curated sections, AI-powered insights, and social features.
 
 
 
-\### Phase 2: Supabase Database Migration
+=== CURRENT STATE (as of May 2026) ===
 
-\- Create database tables:
+\- Phase 1 (Auth): Complete — Google OAuth + guest mode via Supabase
 
-&#x20; - watchlist (id, user\_id, tmdb\_id, movie\_data jsonb, created\_at)
+\- Phase 2 (Database migration): Complete — all 5 data layers migrated to Supabase (chat, preferences, watchlist/collections, journal/rankings, swipe data) with localStorage fallback
 
-&#x20; - journal (id, user\_id, tmdb\_id, movie\_data jsonb, rating, notes, watch\_date, created\_at)
+\- Phase 3 (Deployment): Complete — Frontend on Vercel (cinno-five.vercel.app), proxy server on Railway (cinno-production.up.railway.app), auto-deploys on git push
 
-&#x20; - collections (id, user\_id, name, created\_at)
+\- Security hardening: Complete — JWT auth on proxy, per-user rate limits, TMDB proxied server-side, persistent budget counters, sync-failure toasts
 
-&#x20; - collection\_movies (id, collection\_id, tmdb\_id, created\_at)
+\- Visual polish: Complete — tab transitions, hover states, skeleton loaders, modal preloading, scroll snap, button feedback
 
-&#x20; - conversations (id uuid, user\_id uuid, title text, metadata jsonb, created\_at timestamptz, updated\_at timestamptz)
-
-&#x20; - messages (id uuid, conversation\_id uuid, role text, content text, timestamp timestamptz)
-
-&#x20; - user\_preferences (id, user\_id, theme, discover\_weights jsonb, pinned\_movie\_id, showcase\_badges jsonb, smart\_mode boolean)
-
-\- Replace ALL localStorage reads/writes with Supabase queries
-
-\- On first login: check if localStorage has existing data, if yes show "Import your existing data?" prompt, migrate all localStorage data to Supabase under the user's account
-
-\- After migration, clear localStorage movie data (keep theme preference locally for fast load)
-
-\- Add loading states for all database operations
-
-\- Handle offline gracefully — show cached data if network fails
+\- Home tab redesign: Complete — horizontal top nav, hero banner with FEATURED badge + 3 action buttons, Your Reel stats card, Cinno companion chat widget, Your Taste AI editorial summary, personalized movie sections (Because You Watched, Popular You Haven't Seen), From Your Journal section
 
 
 
-\### Phase 3: Deploy
+=== NAVIGATION ===
 
-\- Build frontend for production: npm run build
-
-\- Deploy frontend to Vercel
-
-\- Deploy proxy server (server.js) to Railway or Render
-
-\- Set environment variables on both platforms:
-
-&#x20; - Vercel: VITE\_SUPABASE\_URL, VITE\_SUPABASE\_ANON\_KEY, VITE\_API\_URL (pointing to Railway/Render proxy URL), VITE\_TMDB\_API\_KEY
-
-&#x20; - Railway/Render: ANTHROPIC\_API\_KEY, TAVILY\_API\_KEY, PRODUCTION\_URL (Vercel URL for CORS)
-
-\- Update CORS in server.js to allow the production Vercel URL
-
-\- Test full flow: guest browse → sign in → data sync → all features work
-
-\- Add Vercel Analytics
-
-\- PWA manifest + service worker for installability
+Horizontal top bar (fixed): Cinno logo, Home, Discover, Journal, Watchlist, Cinno (AI chat, formerly "Companion"), Friends (SOON badge, non-functional), search bar, settings gear, user avatar.
 
 
 
-\### Phase 4: Post-launch Polish
+=== ROADMAP ===
 
-\- Monitor for bugs via Vercel Analytics
 
-\- Dark mode thorough testing
 
-\- Performance optimization
+Phase 5A — Dashboard Cards Polish (NEXT)
 
-\- End Debrief → auto journal feature
+Priority: Quick win. Redesign the Your Reel + Cinno chat card row on the Home tab. Add more contrast, visual interest, or a third card to make the section feel functional rather than filler. Explore options before committing to a design.
 
-\- Movie Identity refinement
 
-\- Year-end Wrapped feature (build closer to December)
+
+Phase 5B — Tab Redesign Overhaul
+
+Redesign Watchlist, Journal, Discover, and Cinno (chat) tabs to match the Home tab's modern editorial style. Each tab to be explored and designed individually — don't apply a blanket style. Key principles: large editorial typography, curated feel, breathing room, dark theme with cream accents, premium not utilitarian.
+
+
+
+Phase 5C — Journal Enhancement
+
+After the redesign overhaul, improve quality of life features within Journal: better Stats visualizations, Rankings improvements, richer entry editing, and any UX friction discovered during the redesign.
+
+
+
+Phase 5D — Friends \& Social Tab
+
+Build out the Friends tab. Scope TBD — will be explored before committing to a feature set. Possible directions: follow users, activity feeds, shared watchlists, reviews, likes, comments. Requires new Supabase tables and potentially new auth flows.
+
+
+
+=== TAB NAMING ===
+
+\- Home (was Search) — personalized editorial landing page
+
+\- Discover — Tinder-style swipe recommendation engine
+
+\- Journal — watch tracking, ratings, Rankings podium, Stats bento grid
+
+\- Watchlist — collections, Up Next banner
+
+\- Cinno — AI chat assistant with Smart Mode (was "Chat", then "Companion")
+
+\- Friends — social features (SOON, not yet built)
+
+
+
+=== DESIGN DIRECTION ===
+
+Moving toward: modern social editorial hub. Magazine-style layouts, large serif-weight headings, editorial eyebrow labels (e.g., "— CURATED · MAY 2026 —"), AI-generated taste summaries, personalized dynamic sections. Away from: utility app with basic grids and lists.
+
+
+
+Color palette: dark #1A0A14, cream #F5F0EB, burgundy #8B2040, gold #D4B05C. Plus Jakarta Sans. TMDB backdrops with dark gradient overlays.
+
+
+
+=== KEY TECHNICAL PATTERNS ===
+
+\- Supabase primary → localStorage fallback on failure → localStorage-only for guests
+
+\- Fire-and-forget Supabase writes with debounced sync-failure toasts
+
+\- TMDB calls proxied through server.js (/api/tmdb authenticated, /api/tmdb-public for guests)
+
+\- JWT verification via supabase.auth.getUser(token) on all proxy endpoints
+
+\- Per-user rate limiting and persistent daily budget counters (Supabase api\_budget\_counter table)
+
+\- Auto-deploy: git push to master → Vercel (frontend) + Railway (server) auto-redeploy
 

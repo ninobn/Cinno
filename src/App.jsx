@@ -1626,78 +1626,272 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
 // ─── Home Dashboard Cards ──────────────────────────────────────────────────────
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Animates a numeric value from 0 → target over `duration` ms with ease-out cubic.
+// Returns `null` when target is null (so callers can render "—" without animation).
+function useAnimatedCount(target, duration = 600, decimals = 0) {
+  const [value, setValue] = useState(target == null ? null : 0);
+  const rafRef = useRef(null);
+  useEffect(() => {
+    if (target == null) { setValue(null); return; }
+    const start = performance.now();
+    const from = 0;
+    const to = Number(target);
+    const step = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const current = from + (to - from) * eased;
+      setValue(current);
+      if (t < 1) rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [target, duration]);
+
+  if (value == null) return "—";
+  return decimals > 0 ? value.toFixed(decimals) : String(Math.round(value));
+}
+
+function ProgressRing({ value, goal, size = 64, stroke = 5 }) {
+  const radius = (size - stroke) / 2;
+  const c = size / 2;
+  const circ = 2 * Math.PI * radius;
+  const pct = goal > 0 ? Math.min(1, value / goal) : 0;
+  const offset = circ * (1 - pct);
+  return (
+    <svg className="reel-ring-svg" width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle
+        cx={c} cy={c} r={radius}
+        fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke}
+      />
+      <circle
+        cx={c} cy={c} r={radius}
+        fill="none" stroke="var(--accent-burgundy)" strokeWidth={stroke}
+        strokeLinecap="round"
+        strokeDasharray={circ}
+        strokeDashoffset={offset}
+        transform={`rotate(-90 ${c} ${c})`}
+        style={{ transition: "stroke-dashoffset 800ms cubic-bezier(0.22, 0.61, 0.36, 1)" }}
+      />
+    </svg>
+  );
+}
+
+const REEL_TIMEFRAMES = [
+  { id: "week", label: "Week", goal: 5 },
+  { id: "month", label: "Month", goal: 20 },
+  { id: "all", label: "All Time", goal: null },
+];
+
+function computeReelStats(timeframe, watchedDates, watchedRatings, watchedMovies) {
+  const now = DateTime.now();
+  const watched = []; // [{id, dateStr, dt}]
+  if (watchedDates) {
+    watchedDates.forEach((dateStr, id) => {
+      if (!dateStr) return;
+      const dKey = dateStr.slice(0, 10);
+      const dt = DateTime.fromISO(dKey);
+      if (!dt.isValid) return;
+      watched.push({ id, dateStr: dKey, dt });
+    });
+  }
+
+  let cutoff = null;
+  let buckets = [];
+  let todayKey = now.toFormat("yyyy-MM-dd");
+
+  if (timeframe === "week") {
+    cutoff = now.minus({ days: 6 }).startOf("day");
+    buckets = Array.from({ length: 7 }, (_, i) => {
+      const d = cutoff.plus({ days: i });
+      return {
+        key: d.toFormat("yyyy-MM-dd"),
+        label: DAY_LABELS[(d.weekday + 6) % 7],
+        count: 0,
+        match: (entry) => entry.dateStr === d.toFormat("yyyy-MM-dd"),
+      };
+    });
+  } else if (timeframe === "month") {
+    cutoff = now.minus({ days: 29 }).startOf("day");
+    buckets = Array.from({ length: 4 }, (_, i) => {
+      const start = cutoff.plus({ days: i * 7 });
+      const end = i === 3 ? now.endOf("day") : cutoff.plus({ days: (i + 1) * 7 - 1 }).endOf("day");
+      return {
+        key: `wk${i}`,
+        label: `W${i + 1}`,
+        count: 0,
+        match: (entry) => entry.dt >= start && entry.dt <= end,
+      };
+    });
+  } else {
+    // All time → 6-month buckets ending this month
+    const start6 = now.minus({ months: 5 }).startOf("month");
+    cutoff = null; // no filter on stats — but the bars only count last 6 months
+    buckets = Array.from({ length: 6 }, (_, i) => {
+      const d = start6.plus({ months: i });
+      return {
+        key: d.toFormat("yyyy-MM"),
+        label: MONTH_LABELS[d.month - 1],
+        count: 0,
+        match: (entry) => entry.dt.toFormat("yyyy-MM") === d.toFormat("yyyy-MM"),
+      };
+    });
+  }
+
+  const filteredIds = [];
+  watched.forEach((entry) => {
+    const inWindow = cutoff ? entry.dt >= cutoff : true;
+    if (inWindow) filteredIds.push(entry.id);
+    buckets.forEach((b) => { if (b.match(entry)) b.count += 1; });
+  });
+
+  // Hours from runtime cache
+  const runtimeCache = loadFromStorage("cc_runtimeCache", {});
+  let totalMinutes = 0;
+  let missing = false;
+  filteredIds.forEach((id) => {
+    const r = runtimeCache[id];
+    if (typeof r === "number" && r > 0) totalMinutes += r;
+    else missing = true;
+  });
+  const films = filteredIds.length;
+  const hours = films === 0 ? null : missing ? null : totalMinutes / 60;
+
+  // Avg rating
+  const ratings = filteredIds.map((id) => watchedRatings?.get(id)).filter((r) => typeof r === "number");
+  const avgRating = ratings.length > 0
+    ? (ratings.reduce((a, b) => a + b, 0) / ratings.length / 10)
+    : null;
+
+  const maxBar = Math.max(1, ...buckets.map((b) => b.count));
+  return { films, hours, avgRating, buckets, maxBar, todayKey };
+}
+
+function computeBadges(watchedDates, watchedRatings, watchedMovies) {
+  const totalWatched = watchedDates?.size || 0;
+  const totalRated = watchedRatings ? Array.from(watchedRatings.values()).filter((r) => typeof r === "number").length : 0;
+
+  // Build a Set of ISO date strings for streak + weekly checks
+  const watchedDays = new Set();
+  if (watchedDates) {
+    watchedDates.forEach((dateStr) => {
+      if (dateStr) watchedDays.add(dateStr.slice(0, 10));
+    });
+  }
+
+  // Streak: count consecutive days backwards from today
+  let streak = 0;
+  let cursor = DateTime.now().startOf("day");
+  while (watchedDays.has(cursor.toFormat("yyyy-MM-dd"))) {
+    streak += 1;
+    cursor = cursor.minus({ days: 1 });
+  }
+
+  // Consistent: at least 1 movie in each of the last 4 weeks
+  const now = DateTime.now();
+  let consistent = true;
+  for (let w = 0; w < 4; w++) {
+    const weekStart = now.minus({ days: (w + 1) * 7 - 1 }).startOf("day");
+    const weekEnd = now.minus({ days: w * 7 }).endOf("day");
+    const hit = Array.from(watchedDays).some((ds) => {
+      const dt = DateTime.fromISO(ds);
+      return dt.isValid && dt >= weekStart && dt <= weekEnd;
+    });
+    if (!hit) { consistent = false; break; }
+  }
+  if (totalWatched < 4) consistent = false;
+
+  // Top genre
+  const genreCounts = {};
+  watchedMovies?.forEach((m) => {
+    const g = m?.genre;
+    if (!g || g === "Film") return;
+    genreCounts[g] = (genreCounts[g] || 0) + 1;
+  });
+  let topGenre = null, topCount = 0;
+  Object.entries(genreCounts).forEach(([g, c]) => { if (c > topCount) { topGenre = g; topCount = c; } });
+
+  const badges = [];
+  if (streak >= 2) badges.push({ id: "streak", icon: "🔥", label: `${streak}-day streak` });
+  if (totalWatched >= 100) badges.push({ id: "century", icon: "🏆", label: "Century club" });
+  else if (totalWatched >= 10) badges.push({ id: "power", icon: "🎬", label: "Power viewer" });
+  if (totalRated >= 20) badges.push({ id: "critic", icon: "⭐", label: "Critic" });
+  if (consistent) badges.push({ id: "consistent", icon: "🎯", label: "Consistent" });
+  if (topGenre && topCount >= 3) badges.push({ id: "genre", icon: "❤️", label: `${topGenre} fan` });
+
+  return badges;
+}
 
 function YourReelCard({ watchedDates, watchedRatings, watchedMovies }) {
-  const stats = useMemo(() => {
-    const now = DateTime.now();
-    const sevenDaysAgo = now.minus({ days: 6 }).startOf("day");
-    const todayKey = now.toFormat("yyyy-MM-dd");
+  const [timeframe, setTimeframe] = useState("week");
 
-    // Build day-of-week buckets seeded at 0 for the rolling 7-day window
-    const dayBuckets = Array.from({ length: 7 }, (_, i) => {
-      const d = sevenDaysAgo.plus({ days: i });
-      return { key: d.toFormat("yyyy-MM-dd"), label: DAY_LABELS[(d.weekday + 6) % 7], count: 0 };
-    });
+  const stats = useMemo(
+    () => computeReelStats(timeframe, watchedDates, watchedRatings, watchedMovies),
+    [timeframe, watchedDates, watchedRatings, watchedMovies]
+  );
 
-    const recentIds = [];
-    if (watchedDates) {
-      watchedDates.forEach((dateStr, id) => {
-        if (!dateStr) return;
-        const dKey = dateStr.slice(0, 10);
-        const d = DateTime.fromISO(dKey);
-        if (!d.isValid) return;
-        if (d >= sevenDaysAgo) {
-          recentIds.push(id);
-          const bucket = dayBuckets.find((b) => b.key === dKey);
-          if (bucket) bucket.count += 1;
-        }
-      });
-    }
+  const badges = useMemo(
+    () => computeBadges(watchedDates, watchedRatings, watchedMovies),
+    [watchedDates, watchedRatings, watchedMovies]
+  );
 
-    const films = recentIds.length;
+  const filmsDisplay = useAnimatedCount(stats.films, 600, 0);
+  const hoursDisplay = useAnimatedCount(stats.hours, 600, 1);
+  const avgDisplay = useAnimatedCount(stats.avgRating, 600, 1);
 
-    // Hours: sum runtime from cache; if any are missing, return null so we can render "—"
-    const runtimeCache = loadFromStorage("cc_runtimeCache", {});
-    let totalMinutes = 0;
-    let missing = false;
-    recentIds.forEach((id) => {
-      const r = runtimeCache[id];
-      if (typeof r === "number" && r > 0) totalMinutes += r;
-      else missing = true;
-    });
-    const hoursStr = films === 0 ? "—" : missing ? "—" : (totalMinutes / 60).toFixed(1);
-
-    // Average rating across recent films that have a rating
-    const ratings = recentIds.map((id) => watchedRatings?.get(id)).filter((r) => typeof r === "number");
-    const avgRating = ratings.length > 0
-      ? (ratings.reduce((a, b) => a + b, 0) / ratings.length / 10).toFixed(1)
-      : "—";
-
-    const maxBar = Math.max(1, ...dayBuckets.map((b) => b.count));
-    return { films, hoursStr, avgRating, dayBuckets, maxBar, todayKey };
-  }, [watchedDates, watchedRatings, watchedMovies]);
+  const tfMeta = REEL_TIMEFRAMES.find((t) => t.id === timeframe);
+  const showRing = tfMeta?.goal != null;
 
   return (
-    <div className="dash-card">
-      <div className="dash-card-label">YOUR REEL · THIS WEEK</div>
+    <div className="dash-card reel-card">
+      <div className="reel-card-header">
+        <div className="dash-card-label">YOUR REEL</div>
+        <div className="reel-tf-toggle" role="tablist">
+          {REEL_TIMEFRAMES.map((tf) => (
+            <button
+              key={tf.id}
+              role="tab"
+              aria-selected={timeframe === tf.id}
+              className={`reel-tf-pill${timeframe === tf.id ? " active" : ""}`}
+              onClick={() => setTimeframe(tf.id)}
+            >
+              {tf.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="reel-stats-row">
-        <div className="reel-stat">
-          <div className="reel-stat-num">{stats.films}</div>
-          <div className="reel-stat-key">Films</div>
+        <div className="reel-stat reel-stat-films">
+          {showRing ? (
+            <div className="reel-ring-wrap">
+              <ProgressRing value={Math.min(stats.films, tfMeta.goal)} goal={tfMeta.goal} size={64} stroke={5} />
+              <div className="reel-ring-num">{filmsDisplay}</div>
+            </div>
+          ) : (
+            <div className="reel-stat-num">{filmsDisplay}</div>
+          )}
+          <div className="reel-stat-key">{showRing ? `of ${tfMeta.goal} goal` : "Films"}</div>
         </div>
         <div className="reel-stat">
-          <div className="reel-stat-num">{stats.hoursStr}</div>
+          <div className="reel-stat-num">{hoursDisplay}</div>
           <div className="reel-stat-key">Hours</div>
         </div>
         <div className="reel-stat">
-          <div className="reel-stat-num">{stats.avgRating}</div>
+          <div className="reel-stat-num">{avgDisplay}</div>
           <div className="reel-stat-key">Avg rating</div>
         </div>
       </div>
+
+      {stats.films === 0 && (
+        <div className="reel-empty-msg">Watch a movie to start tracking</div>
+      )}
+
       <div className="reel-bars">
-        {stats.dayBuckets.map((b) => {
+        {stats.buckets.map((b) => {
           const pct = b.count === 0 ? 0 : Math.max(8, (b.count / stats.maxBar) * 100);
-          const isToday = b.key === stats.todayKey;
+          const isToday = timeframe === "week" && b.key === stats.todayKey;
           return (
             <div key={b.key} className="reel-bar-col">
               <div className="reel-bar-track">
@@ -1710,6 +1904,20 @@ function YourReelCard({ watchedDates, watchedRatings, watchedMovies }) {
             </div>
           );
         })}
+      </div>
+
+      <div className="reel-badges">
+        {badges.length > 0 ? badges.map((b) => (
+          <span key={b.id} className="reel-badge">
+            <span className="reel-badge-icon" aria-hidden="true">{b.icon}</span>
+            {b.label}
+          </span>
+        )) : (
+          <span className="reel-badge reel-badge-empty">
+            <span className="reel-badge-icon" aria-hidden="true">🎬</span>
+            Watch more to earn badges
+          </span>
+        )}
       </div>
     </div>
   );
@@ -1728,6 +1936,162 @@ const CINNO_SUGGESTIONS = [
   "Surprise me",
   "What should I watch tonight?",
 ];
+
+// Module-level cache for the day's candidate pool — survives Home tab unmount/remount.
+const _cinnoPickPool = { movies: [], userId: null };
+
+const CINNO_PICK_REASON_PROMPT = "You are Cinno, a witty film companion. Given a movie title and its overview, write a single compelling sentence (under 15 words) explaining why someone should watch it. Be specific to the movie, not generic. No quotes, no preamble.";
+
+function firstSentence(text) {
+  if (!text) return null;
+  const m = text.match(/[^.!?]+[.!?]/);
+  return (m ? m[0] : text).trim();
+}
+
+function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, toggleSave, onOpenMovie }) {
+  const [pool, setPool] = useState(() =>
+    _cinnoPickPool.userId === (user?.id || null) ? _cinnoPickPool.movies : []
+  );
+  const [pickIdx, setPickIdx] = useState(() => Math.floor(Math.random() * Math.max(1, _cinnoPickPool.movies.length)));
+  const [reason, setReason] = useState(null);
+  const [reasonLoading, setReasonLoading] = useState(false);
+  const [fading, setFading] = useState(false);
+
+  const movie = pool.length > 0 ? pool[pickIdx % pool.length] : null;
+
+  // One-time pool fetch per session (cached at module level).
+  useEffect(() => {
+    if (_cinnoPickPool.userId === (user?.id || null) && _cinnoPickPool.movies.length > 0) return;
+    let cancelled = false;
+    const randomPage = 1 + Math.floor(Math.random() * 10);
+    getPopular(randomPage)
+      .then((r) => {
+        if (cancelled) return;
+        const filtered = (r?.movies || [])
+          .filter((m) => m.backdrop_path)
+          .filter((m) => !watchedIds?.has(m.id))
+          .filter((m) => !savedIds?.has(m.id));
+        _cinnoPickPool.userId = user?.id || null;
+        _cinnoPickPool.movies = filtered;
+        setPool(filtered);
+        setPickIdx(Math.floor(Math.random() * Math.max(1, filtered.length)));
+      })
+      .catch((err) => {
+        console.error("[CinnoPick] getPopular failed:", err?.message || err);
+      });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  // AI reason — cached per (date + movie) in localStorage; falls back to overview.
+  useEffect(() => {
+    if (!movie) { setReason(null); return; }
+    const today = DateTime.now().toFormat("yyyy-MM-dd");
+    const cacheKey = `cc_cinno_pick_${today}_${movie.id}`;
+    const cached = loadFromStorage(cacheKey, null);
+    if (cached?.reason) { setReason(cached.reason); setReasonLoading(false); return; }
+
+    // Guests / unauthenticated → use the synopsis as the reason (no AI call)
+    if (isGuest || !user) {
+      setReason(firstSentence(movie.synopsis));
+      setReasonLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setReasonLoading(true);
+    setReason(null);
+    (async () => {
+      try {
+        const token = getAccessToken();
+        if (!token) throw new Error("no token");
+        const userMsg = `Title: ${movie.title}\nOverview: ${movie.synopsis || "(no overview)"}`;
+        const resp = await fetch(`${API_URL}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 60,
+            system: CINNO_PICK_REASON_PROMPT,
+            messages: [{ role: "user", content: userMsg }],
+          }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error.message || "API error");
+        const text = data.content?.[0]?.text?.trim();
+        if (cancelled) return;
+        if (!text) throw new Error("empty");
+        setReason(text);
+        saveToStorage(cacheKey, { reason: text, ts: Date.now() });
+      } catch (err) {
+        console.error("[CinnoPick] AI reason failed:", err?.message || err);
+        if (!cancelled) setReason(firstSentence(movie.synopsis));
+      } finally {
+        if (!cancelled) setReasonLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [movie?.id, isGuest, user?.id]);
+
+  const shuffle = () => {
+    if (pool.length < 2 || fading) return;
+    setFading(true);
+    setTimeout(() => {
+      let next = pickIdx;
+      while (next === pickIdx && pool.length > 1) {
+        next = Math.floor(Math.random() * pool.length);
+      }
+      setPickIdx(next);
+      setFading(false);
+    }, 180);
+  };
+
+  if (!movie) return null;
+
+  const backdropUrl = movie.backdrop_path ? `${IMG_BASE}/w780${movie.backdrop_path}` : null;
+  const isSaved = savedIds?.has(movie.id);
+
+  return (
+    <div className="dash-card cinno-pick-card">
+      {backdropUrl && <img className="cinno-pick-bg" src={backdropUrl} alt="" aria-hidden="true" />}
+      <div className="cinno-pick-gradient" />
+      <div className={`cinno-pick-content${fading ? " cinno-pick-fading" : ""}`}>
+        <div className="cinno-pick-label">CINNO&apos;S PICK</div>
+        <div className="cinno-pick-bottom">
+          <div className="cinno-pick-title">{movie.title}</div>
+          {reasonLoading ? (
+            <div className="cinno-pick-reason-skel skel" />
+          ) : reason ? (
+            <div className="cinno-pick-reason">{reason}</div>
+          ) : null}
+          <div className="cinno-pick-actions">
+            <button
+              className="cinno-pick-btn"
+              onClick={shuffle}
+              disabled={pool.length < 2}
+              title="Shuffle"
+            >
+              <ShuffleIcon size={13} />
+              <span>Shuffle</span>
+            </button>
+            <button
+              className={`cinno-pick-btn${isSaved ? " saved" : ""}`}
+              onClick={() => toggleSave(movie)}
+              title={isSaved ? "Saved" : "Save"}
+            >
+              <BookmarkIcon />
+              <span>{isSaved ? "Saved" : "Save"}</span>
+            </button>
+            <button className="cinno-pick-btn" onClick={() => onOpenMovie(movie)} title="More info">
+              More info
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function CinnoCompanionCard({ goToCompanion, startCinnoChat }) {
   // Stable greeting per session — picked once on mount.
@@ -2034,7 +2398,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
   const [trendingError, setTrendingError] = useState(false);
   const [selectedMovie, setSelectedMovie] = useMovieModal();
   const [journalSelected, setJournalSelected] = useMovieModal();
-  const { user, getAccessToken } = useAuth();
+  const { user, getAccessToken, isGuest } = useAuth();
 
   // Personalized rails: derived sync from journal data so the section is visible
   // on first paint (skeleton renders before fetch completes — avoids the blank-flash).
@@ -2507,6 +2871,15 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
 
             {/* Dashboard Cards Row */}
             <div className="dash-row">
+              <CinnoPickCard
+                user={user}
+                isGuest={isGuest}
+                getAccessToken={getAccessToken}
+                watchedIds={watchedIds}
+                savedIds={savedIds}
+                toggleSave={toggleSave}
+                onOpenMovie={setSelectedMovie}
+              />
               <YourReelCard
                 watchedDates={watchedDates}
                 watchedRatings={watchedRatings}
