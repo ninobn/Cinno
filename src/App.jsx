@@ -1866,7 +1866,7 @@ function YourReelCard({ watchedDates, watchedRatings, watchedMovies }) {
         <div className="reel-stat reel-stat-films">
           {showRing ? (
             <div className="reel-ring-wrap">
-              <ProgressRing value={Math.min(stats.films, tfMeta.goal)} goal={tfMeta.goal} size={64} stroke={5} />
+              <ProgressRing value={Math.min(stats.films, tfMeta.goal)} goal={tfMeta.goal} size={56} stroke={5} />
               <div className="reel-ring-num">{filmsDisplay}</div>
             </div>
           ) : (
@@ -2417,6 +2417,18 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
   // (treating "you watched something new" as the trigger to refresh). Guests get a stable key 0.
   const watchedKey = user ? (watchedIds?.size ?? 0) : 0;
 
+  // Drives the side-by-side dashboard layout: editorial column shows only when the
+  // YourTasteSection has data to display (logged-in user with ≥1 watch in last 30 days).
+  const hasEditorial = useMemo(() => {
+    if (!user || !watchedDates) return false;
+    const cutoff = DateTime.now().minus({ days: 30 }).startOf("day");
+    for (const dateStr of watchedDates.values()) {
+      const d = DateTime.fromISO((dateStr || "").slice(0, 10));
+      if (d.isValid && d >= cutoff) return true;
+    }
+    return false;
+  }, [user, watchedDates]);
+
   // Hydrate from module cache when the keys still match (e.g. tab switch back to Home).
   // Otherwise initialize empty + loading=true so the skeleton shows immediately.
   const cacheUserMatches = _personalizedRailsCache.userId === (user?.id || null);
@@ -2869,36 +2881,43 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
               </div>
             )}
 
-            {/* Dashboard Cards Row */}
-            <div className="dash-row">
-              <CinnoPickCard
-                user={user}
-                isGuest={isGuest}
-                getAccessToken={getAccessToken}
-                watchedIds={watchedIds}
-                savedIds={savedIds}
-                toggleSave={toggleSave}
-                onOpenMovie={setSelectedMovie}
-              />
-              <YourReelCard
-                watchedDates={watchedDates}
-                watchedRatings={watchedRatings}
-                watchedMovies={watchedMovies}
-              />
-              <CinnoCompanionCard
-                goToCompanion={goToCompanion}
-                startCinnoChat={startCinnoChat}
-              />
+            {/* Editorial + Dashboard Cards — side by side when there's taste content */}
+            <div className={`home-dashboard${hasEditorial ? " home-dashboard-split" : ""}`}>
+              {hasEditorial && (
+                <div className="home-dashboard-left">
+                  <YourTasteSection
+                    user={user}
+                    getAccessToken={getAccessToken}
+                    watchedMovies={watchedMovies}
+                    watchedDates={watchedDates}
+                    watchedRatings={watchedRatings}
+                    goToJournal={goToJournal}
+                  />
+                </div>
+              )}
+              {/* DOM order = mobile stack order: Reel → Chat → Pick.
+                  CSS grid-template-areas / order overrides this on desktop. */}
+              <div className="home-dashboard-right">
+                <YourReelCard
+                  watchedDates={watchedDates}
+                  watchedRatings={watchedRatings}
+                  watchedMovies={watchedMovies}
+                />
+                <CinnoCompanionCard
+                  goToCompanion={goToCompanion}
+                  startCinnoChat={startCinnoChat}
+                />
+                <CinnoPickCard
+                  user={user}
+                  isGuest={isGuest}
+                  getAccessToken={getAccessToken}
+                  watchedIds={watchedIds}
+                  savedIds={savedIds}
+                  toggleSave={toggleSave}
+                  onOpenMovie={setSelectedMovie}
+                />
+              </div>
             </div>
-
-            <YourTasteSection
-              user={user}
-              getAccessToken={getAccessToken}
-              watchedMovies={watchedMovies}
-              watchedDates={watchedDates}
-              watchedRatings={watchedRatings}
-              goToJournal={goToJournal}
-            />
 
             {/* Browse Sections — stacked full-width */}
             <div className="browse-sections">
