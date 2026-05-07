@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback, useId } from "react";
 import { createPortal } from "react-dom";
-import { getTrending, getTopRated, getSimilar, searchMovies, discoverByGenres, discoverMovies, discoverMoviesRaw, getHiddenGems, getWatchProviders, getMovieDetails, getMovieById, getSmartContext, tmdbToMovie, IMG_BASE } from "./tmdb.js";
+import { getTrending, getPopular, getSimilar, searchMovies, discoverByGenres, discoverMovies, discoverMoviesRaw, getWatchProviders, getMovieDetails, getMovieById, getSmartContext, tmdbToMovie, IMG_BASE } from "./tmdb.js";
 import { useAuth } from "./AuthContext.jsx";
 import { useFloating, offset, flip, shift, autoUpdate, FloatingPortal } from "@floating-ui/react";
 import { DateTime } from "luxon";
@@ -1623,11 +1623,396 @@ function JournalDetailModal({ movie, onClose, note, onSaveNote, isSaved, onToggl
   );
 }
 
+// ─── Home Dashboard Cards ──────────────────────────────────────────────────────
+
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function YourReelCard({ watchedDates, watchedRatings, watchedMovies }) {
+  const stats = useMemo(() => {
+    const now = DateTime.now();
+    const sevenDaysAgo = now.minus({ days: 6 }).startOf("day");
+    const todayKey = now.toFormat("yyyy-MM-dd");
+
+    // Build day-of-week buckets seeded at 0 for the rolling 7-day window
+    const dayBuckets = Array.from({ length: 7 }, (_, i) => {
+      const d = sevenDaysAgo.plus({ days: i });
+      return { key: d.toFormat("yyyy-MM-dd"), label: DAY_LABELS[(d.weekday + 6) % 7], count: 0 };
+    });
+
+    const recentIds = [];
+    if (watchedDates) {
+      watchedDates.forEach((dateStr, id) => {
+        if (!dateStr) return;
+        const dKey = dateStr.slice(0, 10);
+        const d = DateTime.fromISO(dKey);
+        if (!d.isValid) return;
+        if (d >= sevenDaysAgo) {
+          recentIds.push(id);
+          const bucket = dayBuckets.find((b) => b.key === dKey);
+          if (bucket) bucket.count += 1;
+        }
+      });
+    }
+
+    const films = recentIds.length;
+
+    // Hours: sum runtime from cache; if any are missing, return null so we can render "—"
+    const runtimeCache = loadFromStorage("cc_runtimeCache", {});
+    let totalMinutes = 0;
+    let missing = false;
+    recentIds.forEach((id) => {
+      const r = runtimeCache[id];
+      if (typeof r === "number" && r > 0) totalMinutes += r;
+      else missing = true;
+    });
+    const hoursStr = films === 0 ? "—" : missing ? "—" : (totalMinutes / 60).toFixed(1);
+
+    // Average rating across recent films that have a rating
+    const ratings = recentIds.map((id) => watchedRatings?.get(id)).filter((r) => typeof r === "number");
+    const avgRating = ratings.length > 0
+      ? (ratings.reduce((a, b) => a + b, 0) / ratings.length / 10).toFixed(1)
+      : "—";
+
+    const maxBar = Math.max(1, ...dayBuckets.map((b) => b.count));
+    return { films, hoursStr, avgRating, dayBuckets, maxBar, todayKey };
+  }, [watchedDates, watchedRatings, watchedMovies]);
+
+  return (
+    <div className="dash-card">
+      <div className="dash-card-label">YOUR REEL · THIS WEEK</div>
+      <div className="reel-stats-row">
+        <div className="reel-stat">
+          <div className="reel-stat-num">{stats.films}</div>
+          <div className="reel-stat-key">Films</div>
+        </div>
+        <div className="reel-stat">
+          <div className="reel-stat-num">{stats.hoursStr}</div>
+          <div className="reel-stat-key">Hours</div>
+        </div>
+        <div className="reel-stat">
+          <div className="reel-stat-num">{stats.avgRating}</div>
+          <div className="reel-stat-key">Avg rating</div>
+        </div>
+      </div>
+      <div className="reel-bars">
+        {stats.dayBuckets.map((b) => {
+          const pct = b.count === 0 ? 0 : Math.max(8, (b.count / stats.maxBar) * 100);
+          const isToday = b.key === stats.todayKey;
+          return (
+            <div key={b.key} className="reel-bar-col">
+              <div className="reel-bar-track">
+                <div
+                  className={`reel-bar-fill${isToday ? " reel-bar-today" : ""}`}
+                  style={{ height: `${pct}%` }}
+                />
+              </div>
+              <div className="reel-bar-label">{b.label}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const CINNO_GREETINGS = [
+  "You've been on a heavy streak. Want to break it with something lighter?",
+  "Noticed you love sci-fi lately. Want to go deeper?",
+  "Haven't watched anything in a while. Need a recommendation?",
+  "Your taste has been eclectic this week. Keep exploring?",
+  "You rated your last watch pretty high. Want something similar?",
+];
+
+const CINNO_SUGGESTIONS = [
+  "Recommend something",
+  "Surprise me",
+  "What should I watch tonight?",
+];
+
+function CinnoCompanionCard({ goToCompanion, startCinnoChat }) {
+  // Stable greeting per session — picked once on mount.
+  const [greeting] = useState(() => CINNO_GREETINGS[Math.floor(Math.random() * CINNO_GREETINGS.length)]);
+
+  return (
+    <div className="dash-card cinno-card">
+      <div className="cinno-card-header">
+        <div className="cinno-card-brand">
+          <CinnoLogo size={28} />
+          <span className="cinno-card-name">Cinno</span>
+        </div>
+        <div className="cinno-card-status">
+          <span className="cinno-status-dot" />
+          ONLINE · READY
+        </div>
+      </div>
+      <div className="cinno-card-bubble">{greeting}</div>
+      <div className="cinno-card-pills">
+        {CINNO_SUGGESTIONS.map((s) => (
+          <button key={s} className="cinno-pill" onClick={() => startCinnoChat(s)}>{s}</button>
+        ))}
+      </div>
+      <button className="cinno-mini-input" onClick={goToCompanion}>
+        <span>Ask Cinno anything…</span>
+        <SendIcon />
+      </button>
+    </div>
+  );
+}
+
+// ─── From-Your-Journal recent watches strip ────────────────────────────────────
+
+function StarRating({ score }) {
+  // score is 0-100; render 5 stars with proportional fill width.
+  const pct = Math.max(0, Math.min(100, score || 0));
+  return (
+    <div className="star-rating" aria-label={`${(score / 20).toFixed(1)} stars`}>
+      <span className="star-rating-bg">★★★★★</span>
+      <span className="star-rating-fg" style={{ width: `${pct}%` }}>★★★★★</span>
+    </div>
+  );
+}
+
+function JournalRecentSection({ watchedMovies, watchedDates, watchedRatings, watchedNotes, onCardClick, goToJournal }) {
+  const recent = useMemo(() => {
+    if (!watchedMovies || !watchedDates) return [];
+    const list = [];
+    watchedDates.forEach((dateStr, id) => {
+      const movie = watchedMovies.get(id);
+      if (!movie) return;
+      list.push({ ...movie, _watchedAt: dateStr });
+    });
+    list.sort((a, b) => (b._watchedAt || "").localeCompare(a._watchedAt || ""));
+    return list.slice(0, 3);
+  }, [watchedMovies, watchedDates]);
+
+  if (recent.length === 0) return null;
+
+  return (
+    <div className="browse-section journal-recent-section">
+      <div className="browse-section-header browse-section-header-v2">
+        <div className="browse-section-titles">
+          <div className="browse-section-eyebrow">— DIARY · LAST 7 DAYS —</div>
+          <div className="browse-section-title">From your journal</div>
+        </div>
+        <div className="browse-section-actions">
+          <button className="browse-section-browse-all" onClick={goToJournal}>View all ›</button>
+        </div>
+      </div>
+      <div className="journal-recent-row">
+        {recent.map((movie) => {
+          const rating = watchedRatings?.get(movie.id);
+          const note = watchedNotes?.get(movie.id);
+          const dateStr = movie._watchedAt ? movie._watchedAt.slice(0, 10) : null;
+          let dateLabel = "";
+          if (dateStr) {
+            const dt = DateTime.fromISO(dateStr);
+            if (dt.isValid) dateLabel = `${dt.toFormat("MMM d")} · ${movie.year || dt.year}`;
+          }
+          const truncatedNote = note && note.length > 100 ? note.slice(0, 100).trim() + "…" : note;
+          return (
+            <button
+              key={movie.id}
+              className="journal-recent-card"
+              onClick={() => onCardClick(movie)}
+            >
+              <div className="journal-recent-poster">
+                <PosterImage posterPath={movie.poster_path} title={movie.title} />
+              </div>
+              <div className="journal-recent-info">
+                <div className="journal-recent-title">{movie.title}</div>
+                {dateLabel && <div className="journal-recent-date">{dateLabel}</div>}
+                {typeof rating === "number" && <StarRating score={rating} />}
+                {truncatedNote && <div className="journal-recent-note">{truncatedNote}</div>}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Your Taste editorial section ─────────────────────────────────────────────
+
+const TASTE_SYSTEM_PROMPT = "You are Cinno, a witty, concise film companion. Generate ONE sentence — an editorial summary of the user's monthly viewing taste. Be playful, opinionated, and specific. Use bold (**word**) and italic (*word*) markdown for emphasis on 2-3 key words. Example: 'You leaned **heavy & cerebral** this month.' Keep it under 20 words. Output ONLY the sentence — no preamble, no quotes.";
+
+function parseInlineMarkdown(text) {
+  // Tokenize **bold** and *italic*. Returns an array of React nodes.
+  const nodes = [];
+  let remaining = text;
+  let key = 0;
+  const re = /(\*\*([^*]+)\*\*|\*([^*]+)\*)/;
+  while (remaining.length > 0) {
+    const m = remaining.match(re);
+    if (!m) { nodes.push(remaining); break; }
+    if (m.index > 0) nodes.push(remaining.slice(0, m.index));
+    if (m[2]) nodes.push(<strong key={key++}>{m[2]}</strong>);
+    else if (m[3]) nodes.push(<em key={key++}>{m[3]}</em>);
+    remaining = remaining.slice(m.index + m[0].length);
+  }
+  return nodes;
+}
+
+const TASTE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function YourTasteSection({ user, getAccessToken, watchedMovies, watchedDates, watchedRatings, goToJournal }) {
+  const monthStats = useMemo(() => {
+    const now = DateTime.now();
+    const thirtyDaysAgo = now.minus({ days: 30 }).startOf("day");
+    const ids = [];
+    if (watchedDates) {
+      watchedDates.forEach((dateStr, id) => {
+        const d = DateTime.fromISO((dateStr || "").slice(0, 10));
+        if (d.isValid && d >= thirtyDaysAgo) ids.push(id);
+      });
+    }
+    const movies = ids.map((id) => watchedMovies?.get(id)).filter(Boolean);
+    const ratings = ids.map((id) => watchedRatings?.get(id)).filter((r) => typeof r === "number");
+    const avgRating = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
+
+    const genreCounts = {};
+    movies.forEach((m) => { if (m.genre) genreCounts[m.genre] = (genreCounts[m.genre] || 0) + 1; });
+    let topGenre = null, topCount = 0;
+    Object.entries(genreCounts).forEach(([g, c]) => { if (c > topCount) { topGenre = g; topCount = c; } });
+    const topPct = movies.length > 0 ? Math.round((topCount / movies.length) * 100) : 0;
+
+    const runtimeCache = loadFromStorage("cc_runtimeCache", {});
+    let totalMinutes = 0;
+    let runtimeMissing = false;
+    ids.forEach((id) => {
+      const r = runtimeCache[id];
+      if (typeof r === "number" && r > 0) totalMinutes += r;
+      else runtimeMissing = true;
+    });
+    const hours = runtimeMissing && ids.length > 0 ? null : totalMinutes / 60;
+
+    let highest = null, lowest = null;
+    movies.forEach((m) => {
+      const r = watchedRatings?.get(m.id);
+      if (typeof r !== "number") return;
+      if (!highest || r > highest.r) highest = { m, r };
+      if (!lowest || r < lowest.r) lowest = { m, r };
+    });
+
+    return {
+      monthLabel: "LAST 30 DAYS",
+      films: movies.length,
+      hours,
+      avgRating,
+      topGenre,
+      topPct,
+      highest,
+      lowest,
+      titles: movies.map((m) => m.title).slice(0, 12),
+    };
+  }, [watchedMovies, watchedDates, watchedRatings]);
+
+  const cacheKey = `cc_taste_summary_30d_${user?.id || "anon"}`;
+
+  const [summary, setSummary] = useState(() => {
+    const cached = loadFromStorage(cacheKey, null);
+    if (!cached?.text || !cached?.generatedAt) return null;
+    if (Date.now() - cached.generatedAt > TASTE_CACHE_TTL_MS) return null;
+    return cached.text;
+  });
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (!user) return;
+    if (monthStats.films === 0) return;
+    if (summary) return;
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+
+    const fetchSummary = async () => {
+      setLoading(true);
+      setFailed(false);
+      try {
+        const token = getAccessToken();
+        if (!token) throw new Error("no token");
+        const titlesLine = monthStats.titles.length > 0 ? `Titles watched: ${monthStats.titles.join(", ")}.` : "";
+        const ratingLine = monthStats.avgRating ? ` Average rating ${(monthStats.avgRating).toFixed(0)}/100.` : "";
+        const genreLine = monthStats.topGenre ? ` Top genre: ${monthStats.topGenre} (${monthStats.topPct}% of watches).` : "";
+        const hiLine = monthStats.highest ? ` Highest-rated: ${monthStats.highest.m.title} (${monthStats.highest.r}/100).` : "";
+        const loLine = monthStats.lowest && monthStats.lowest.m.id !== monthStats.highest?.m?.id
+          ? ` Lowest-rated: ${monthStats.lowest.m.title} (${monthStats.lowest.r}/100).` : "";
+        const userMsg = `${monthStats.films} films in the last 30 days.${ratingLine}${genreLine}${hiLine}${loLine} ${titlesLine}`.trim();
+        const resp = await fetch(`${API_URL}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 80,
+            system: TASTE_SYSTEM_PROMPT,
+            messages: [{ role: "user", content: userMsg }],
+          }),
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error.message || "API error");
+        const text = data.content?.[0]?.text?.trim();
+        if (!text) throw new Error("empty");
+        setSummary(text);
+        saveToStorage(cacheKey, { text, generatedAt: Date.now() });
+      } catch {
+        setFailed(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchSummary();
+  }, [user, monthStats.films, summary, cacheKey, getAccessToken, monthStats]);
+
+  if (!user) return null;
+  if (monthStats.films === 0) return null;
+  if (failed && !summary) return null;
+
+  const statsParts = [];
+  if (monthStats.hours !== null) {
+    statsParts.push(`${monthStats.hours.toFixed(1)} hours across ${monthStats.films} film${monthStats.films === 1 ? "" : "s"}`);
+  } else {
+    statsParts.push(`${monthStats.films} film${monthStats.films === 1 ? "" : "s"} watched`);
+  }
+  if (monthStats.topGenre) statsParts.push(`${monthStats.topGenre} up ${monthStats.topPct}%`);
+  if (monthStats.avgRating !== null) statsParts.push(`Average rating ${(monthStats.avgRating / 10).toFixed(1)}`);
+
+  return (
+    <div className="taste-section">
+      <div className="taste-eyebrow">★ YOUR TASTE · {monthStats.monthLabel}</div>
+      {loading && !summary ? (
+        <>
+          <div className="taste-summary-skeleton skel" />
+          <div className="taste-summary-skeleton skel taste-summary-skeleton-short" />
+        </>
+      ) : (
+        <h2 className="taste-summary">{parseInlineMarkdown(summary || "")}</h2>
+      )}
+      <p className="taste-stats">{statsParts.join(" · ")}.</p>
+      <div className="taste-actions">
+        <button className="taste-btn taste-btn-primary" onClick={goToJournal}>Open journal</button>
+        <button className="taste-btn taste-btn-disabled" disabled title="Coming soon">Year in review →</button>
+      </div>
+    </div>
+  );
+}
+
+// Module-level cache so personalized rails survive Home tab unmount/remount.
+// Keyed by user.id so the cache is invalidated on user switch.
+const _personalizedRailsCache = {
+  userId: null,
+  picksRefId: null,
+  picksMovies: [],
+  picksRefMovie: null,
+  popularWatchedKey: null,
+  popularMovies: [],
+};
+
 // ─── Search Tab ────────────────────────────────────────────────────────────────
 
-function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, scrollPositions, watchedRatings, setWatchedRating }) {
-  const [query, setQuery] = useState("");
+function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, scrollPositions, watchedRatings, setWatchedRating, query, setQuery, watchedMovies, watchedDates, watchedNotes, setWatchedNote, goToCompanion, startCinnoChat, goToJournal }) {
   const [searchResults, setSearchResults] = useState([]);
+  const [searchRetry, setSearchRetry] = useState(0);
   const [movies, setMovies] = useState([]);
   const [loading, setLoading] = useState(false);
   const [moviesLoading, setMoviesLoading] = useState(false);
@@ -1647,13 +2032,38 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
   const [trendingMovies, setTrendingMovies] = useState([]);
   const [trendingLoading, setTrendingLoading] = useState(true);
   const [trendingError, setTrendingError] = useState(false);
-  const [gemsMovies, setGemsMovies] = useState([]);
-  const [gemsLoading, setGemsLoading] = useState(true);
-  const [gemsError, setGemsError] = useState(false);
-  const [topRatedMovies, setTopRatedMovies] = useState([]);
-  const [topRatedLoading, setTopRatedLoading] = useState(true);
-  const [topRatedError, setTopRatedError] = useState(false);
   const [selectedMovie, setSelectedMovie] = useMovieModal();
+  const [journalSelected, setJournalSelected] = useMovieModal();
+  const { user, getAccessToken } = useAuth();
+
+  // Personalized rails: derived sync from journal data so the section is visible
+  // on first paint (skeleton renders before fetch completes — avoids the blank-flash).
+  const recentMovie = useMemo(() => {
+    if (!watchedDates || watchedDates.size === 0) return null;
+    let mostRecentId = null;
+    let mostRecentDate = "";
+    watchedDates.forEach((dateStr, id) => {
+      const ds = (dateStr || "").slice(0, 10);
+      if (ds > mostRecentDate) { mostRecentDate = ds; mostRecentId = id; }
+    });
+    return mostRecentId ? watchedMovies?.get(mostRecentId) : null;
+  }, [watchedDates, watchedMovies]);
+
+  // Cache key for "Popular you haven't seen" — invalidates when the watched count changes
+  // (treating "you watched something new" as the trigger to refresh). Guests get a stable key 0.
+  const watchedKey = user ? (watchedIds?.size ?? 0) : 0;
+
+  // Hydrate from module cache when the keys still match (e.g. tab switch back to Home).
+  // Otherwise initialize empty + loading=true so the skeleton shows immediately.
+  const cacheUserMatches = _personalizedRailsCache.userId === (user?.id || null);
+  const picksCacheHit = cacheUserMatches && recentMovie && _personalizedRailsCache.picksRefId === recentMovie.id;
+  const popularCacheHit = cacheUserMatches && _personalizedRailsCache.popularWatchedKey === watchedKey && _personalizedRailsCache.popularMovies.length > 0;
+
+  const [pickedMovies, setPickedMovies] = useState(() => picksCacheHit ? _personalizedRailsCache.picksMovies : []);
+  const [pickedLoading, setPickedLoading] = useState(() => Boolean(recentMovie) && !picksCacheHit);
+  const [popularMovies, setPopularMovies] = useState(() => popularCacheHit ? _personalizedRailsCache.popularMovies : []);
+  const [popularLoading, setPopularLoading] = useState(() => !popularCacheHit);
+  const [popularFailed, setPopularFailed] = useState(false);
   const [fetchError, setFetchError] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -1707,24 +2117,103 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
   const fetchAllSections = useCallback(() => {
     setTrendingLoading(true); setTrendingError(false);
     const p1 = getTrending(1)
-      .then((r) => { setTrendingMovies(r.movies.slice(0, 20)); setTrendingLoading(false); })
-      .catch(() => { setTrendingLoading(false); setTrendingError(true); });
+      .then((r) => {
+        const list = (r?.movies || []).slice(0, 20);
+        setTrendingMovies(list);
+        setTrendingLoading(false);
+      })
+      .catch((err) => {
+        console.error("[Home] getTrending failed:", err?.message || err);
+        setTrendingLoading(false);
+        setTrendingError(true);
+      });
 
-    setGemsLoading(true); setGemsError(false);
-    const p2 = getHiddenGems(1)
-      .then((r) => { setGemsMovies(r.movies.slice(0, 20)); setGemsLoading(false); })
-      .catch(() => { setGemsLoading(false); setGemsError(true); });
-
-    setTopRatedLoading(true); setTopRatedError(false);
-    const p3 = getTopRated(1)
-      .then((r) => { setTopRatedMovies(r.movies.slice(0, 20)); setTopRatedLoading(false); })
-      .catch(() => { setTopRatedLoading(false); setTopRatedError(true); });
-
-    return Promise.all([p1, p2, p3]);
+    return Promise.all([p1]);
   }, []);
 
-  // Fetch browse sections on mount
+  // Fetch trending on mount
   useEffect(() => { fetchAllSections(); }, [fetchAllSections]);
+
+  // Personalized "Because you watched" rail: refetch only when the reference movie changes.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    // Reset cache if user switched
+    if (_personalizedRailsCache.userId !== user.id) {
+      _personalizedRailsCache.userId = user.id;
+      _personalizedRailsCache.picksRefId = null;
+      _personalizedRailsCache.picksMovies = [];
+      _personalizedRailsCache.picksRefMovie = null;
+      _personalizedRailsCache.popularWatchedKey = null;
+      _personalizedRailsCache.popularMovies = [];
+    }
+
+    if (recentMovie && _personalizedRailsCache.picksRefId !== recentMovie.id) {
+      setPickedLoading(true);
+      getSimilar(recentMovie.id, 30)
+        .then((list) => {
+          if (cancelled) return;
+          const filtered = (list || []).filter((m) => !watchedIds?.has(m.id)).slice(0, 20);
+          _personalizedRailsCache.picksRefId = recentMovie.id;
+          _personalizedRailsCache.picksRefMovie = recentMovie;
+          _personalizedRailsCache.picksMovies = filtered;
+          setPickedMovies(filtered);
+        })
+        .catch((err) => {
+          console.error("[Home] getSimilar failed:", err?.message || err);
+          if (!cancelled) setPickedMovies([]);
+        })
+        .finally(() => { if (!cancelled) setPickedLoading(false); });
+    } else if (!recentMovie) {
+      setPickedMovies([]);
+      setPickedLoading(false);
+    }
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, recentMovie]);
+
+  // "You haven't seen these yet" / "Popular right now": refetch on first mount or when
+  // the user's watched-count changes. Guests use a stable key so we only fetch once.
+  useEffect(() => {
+    let cancelled = false;
+    if (_personalizedRailsCache.popularWatchedKey === watchedKey && _personalizedRailsCache.popularMovies.length > 0) {
+      // Cache hit — already hydrated via initializer. Nothing to do.
+      return;
+    }
+    setPopularLoading(true);
+    setPopularFailed(false);
+    const randomPage = 1 + Math.floor(Math.random() * 5);
+    getPopular(randomPage)
+      .then((r) => {
+        if (cancelled) return;
+        const list = r?.movies || [];
+        _personalizedRailsCache.popularWatchedKey = watchedKey;
+        _personalizedRailsCache.popularMovies = list;
+        setPopularMovies(list);
+      })
+      .catch((err) => {
+        console.error("[Home] getPopular failed:", err?.message || err);
+        if (!cancelled) {
+          setPopularMovies([]);
+          setPopularFailed(true);
+        }
+      })
+      .finally(() => { if (!cancelled) setPopularLoading(false); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedKey]);
+
+  // Filter popular movies against watched + trending at render time (trending may load later).
+  const popularFiltered = useMemo(() => {
+    if (popularMovies.length === 0) return [];
+    const trendingIds = new Set(trendingMovies.map((m) => m.id));
+    return popularMovies
+      .filter((m) => !trendingIds.has(m.id))
+      .filter((m) => !user || !watchedIds?.has(m.id))
+      .slice(0, 20);
+  }, [popularMovies, trendingMovies, watchedIds, user]);
 
   // Shuffle trending movies for hero banner on load
   useEffect(() => {
@@ -1764,13 +2253,12 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
     return () => document.removeEventListener("mousedown", handler);
   }, [genreDropdownOpen]);
 
-  const handleSearch = useCallback((q) => {
-    const safeQ = sanitizeText(q).slice(0, 200);
-    setQuery(safeQ);
+  // Debounced search whenever the (externally-controlled) query changes.
+  useEffect(() => {
     setSearchPage(1);
     setFetchError(false);
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    if (!safeQ.trim()) {
+    if (!query.trim()) {
       setSearchResults([]);
       setLoading(false);
       return;
@@ -1778,7 +2266,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
     setLoading(true);
     searchTimeout.current = setTimeout(async () => {
       try {
-        const result = await searchMovies(safeQ, 1);
+        const result = await searchMovies(query, 1);
         setSearchResults(result.movies);
         setSearchTotalPages(result.totalPages || 1);
         setTimeout(() => AOS.refresh(), 50);
@@ -1788,7 +2276,8 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
         setLoading(false);
       }
     }, 400);
-  }, []);
+    return () => clearTimeout(searchTimeout.current);
+  }, [query, searchRetry]);
 
   const isSearching = query.trim().length > 0;
   const isGenreFiltered = selectedGenres.length > 0;
@@ -1842,54 +2331,6 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
 
   return (
     <>
-      <div className="search-container">
-        <div className="search-bar">
-          <span className="search-icon"><SearchIcon /></span>
-          <input
-            type="text"
-            placeholder="Search any movie..."
-            value={query}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-          {query && (
-            <button className="search-clear" onClick={() => { setQuery(""); setSearchResults([]); }}>✕</button>
-          )}
-        </div>
-        {!isSearching && (
-          <div className="genre-dropdown" ref={genreDropdownRef}>
-            <button
-              className={`genre-dropdown-trigger ${isGenreFiltered ? "active" : ""}`}
-              ref={genreFloating.refs.setReference}
-              onClick={() => setGenreDropdownOpen((o) => !o)}
-              aria-expanded={genreDropdownOpen}
-            >
-              <span>{isGenreFiltered ? `Genres (${selectedGenres.length})` : "Filter by genre"}</span>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-            {genreDropdownOpen && (
-              <div className="genre-dropdown-panel" ref={genreFloating.refs.setFloating} style={genreFloating.floatingStyles}>
-                {GENRE_FILTERS.map((g) => (
-                  <button
-                    key={g.id}
-                    className={`genre-option ${selectedGenres.includes(g.id) ? "active" : ""}`}
-                    onClick={() => toggleGenre(g.id)}
-                  >
-                    <span className="genre-option-check">{selectedGenres.includes(g.id) ? "✓" : ""}</span>
-                    {g.label}
-                  </button>
-                ))}
-                {isGenreFiltered && (
-                  <button className="genre-clear-btn" onClick={() => { setSelectedGenres([]); setGenreDropdownOpen(false); }}>
-                    Clear all
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
       <div
         className="content"
         ref={contentRef}
@@ -1923,7 +2364,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                 <div className="error-card-icon">📡</div>
                 <div className="error-card-title">Couldn't load movies</div>
                 <div className="error-card-desc">Something went wrong. Tap below to try again.</div>
-                <button className="error-card-btn" onClick={() => handleSearch(query)}>Retry</button>
+                <button className="error-card-btn" onClick={() => setSearchRetry((n) => n + 1)}>Retry</button>
               </div>
             ) : loading && searchResults.length === 0 ? (
               <SkeletonGrid />
@@ -2015,23 +2456,45 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
             )}
             {!trendingLoading && heroMovies.length > 0 && (
               <div className="hero-banner">
-                {heroMovies.map((movie, i) => (
-                  <div key={movie.id} className={`hero-slide ${i === heroIndex ? 'active' : ''}`}>
-                    {movie.backdrop_path && (
-                      <img src={`${IMG_BASE}/w1280${movie.backdrop_path}`} alt="" className="hero-slide-bg" />
-                    )}
-                    <div className="hero-gradient" />
-                    <div className="hero-content">
-                      <h2 className="hero-title">{movie.title.toUpperCase()}</h2>
-                      <p className="hero-subtitle">{movie.genre} · {movie.year}</p>
-                      <div className="hero-actions">
-                        <button className="hero-btn hero-btn-details" onClick={(e) => { e.stopPropagation(); setSelectedMovie(movie); }}>
-                          More Info
-                        </button>
+                {heroMovies.map((movie, i) => {
+                  const isCurrent = i === heroIndex;
+                  const trailerUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(movie.title + " official trailer")}`;
+                  const isHeroSaved = savedIds.has(movie.id);
+                  return (
+                    <div key={movie.id} className={`hero-slide ${isCurrent ? 'active' : ''}`}>
+                      {movie.backdrop_path && (
+                        <img src={`${IMG_BASE}/w1280${movie.backdrop_path}`} alt="" className="hero-slide-bg" />
+                      )}
+                      <div className="hero-gradient" />
+                      <div className="hero-content">
+                        <span className="hero-featured-badge">FEATURED</span>
+                        <p className="hero-meta">{movie.genre} · {movie.year}</p>
+                        <h2 className="hero-title">{movie.title}</h2>
+                        <div className="hero-actions">
+                          <a
+                            className="hero-btn hero-btn-trailer"
+                            href={trailerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>
+                            Watch trailer
+                          </a>
+                          <button
+                            className={`hero-btn hero-btn-watchlist${isHeroSaved ? " saved" : ""}`}
+                            onClick={(e) => { e.stopPropagation(); toggleSave(movie); }}
+                          >
+                            {isHeroSaved ? "✓ Watchlist" : "+ Watchlist"}
+                          </button>
+                          <button className="hero-btn hero-btn-details" onClick={(e) => { e.stopPropagation(); setSelectedMovie(movie); }}>
+                            More info
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 <div className="hero-dots">
                   {Array.from({ length: Math.min(heroMovies.length, 5) }, (_, i) => {
                     const segSize = Math.ceil(heroMovies.length / Math.min(heroMovies.length, 5));
@@ -2042,23 +2505,51 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
               </div>
             )}
 
+            {/* Dashboard Cards Row */}
+            <div className="dash-row">
+              <YourReelCard
+                watchedDates={watchedDates}
+                watchedRatings={watchedRatings}
+                watchedMovies={watchedMovies}
+              />
+              <CinnoCompanionCard
+                goToCompanion={goToCompanion}
+                startCinnoChat={startCinnoChat}
+              />
+            </div>
+
+            <YourTasteSection
+              user={user}
+              getAccessToken={getAccessToken}
+              watchedMovies={watchedMovies}
+              watchedDates={watchedDates}
+              watchedRatings={watchedRatings}
+              goToJournal={goToJournal}
+            />
+
             {/* Browse Sections — stacked full-width */}
             <div className="browse-sections">
               <div className="browse-section">
-                <div className="browse-section-header">
-                  <div className="browse-section-title">Everyone's Watching</div>
-                  <button className="desktop-refresh-btn" onClick={handleDesktopRefresh} disabled={refreshing} title="Refresh">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={refreshing ? "spinning" : ""}>
-                      <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
-                      <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
-                    </svg>
-                  </button>
+                <div className="browse-section-header browse-section-header-v2">
+                  <div className="browse-section-titles">
+                    <div className="browse-section-eyebrow">— CURATED · {DateTime.now().toFormat("LLL yyyy").toUpperCase()} —</div>
+                    <div className="browse-section-title">Everyone's Watching</div>
+                  </div>
+                  <div className="browse-section-actions">
+                    <button className="desktop-refresh-btn" onClick={handleDesktopRefresh} disabled={refreshing} title="Refresh">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={refreshing ? "spinning" : ""}>
+                        <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
+                        <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
                 {trendingLoading ? (
                   <div className="scroll-row"><div className="scroll-row-inner"><SkeletonScrollRow /></div></div>
                 ) : trendingError ? (
                   <div className="error-card compact">
                     <div className="error-card-title">Couldn't load this section</div>
+                    <button className="error-card-btn" onClick={() => fetchAllSections()}>Retry</button>
                   </div>
                 ) : (
                   <ScrollRow>
@@ -2077,59 +2568,70 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                 )}
               </div>
 
-              <div className="browse-section">
-                <div className="browse-section-header">
-                  <div className="browse-section-title">Hidden Gems</div>
-                </div>
-                {gemsLoading ? (
-                  <div className="scroll-row"><div className="scroll-row-inner"><SkeletonScrollRow /></div></div>
-                ) : gemsError ? (
-                  <div className="error-card compact">
-                    <div className="error-card-title">Couldn't load this section</div>
+              {user && recentMovie && (pickedLoading || pickedMovies.length > 0) && (
+                <div className="browse-section">
+                  <div className="browse-section-header browse-section-header-v2">
+                    <div className="browse-section-titles">
+                      <div className="browse-section-eyebrow">— PICKED FOR YOU —</div>
+                      <div className="browse-section-title">Because you watched {recentMovie.title}</div>
+                    </div>
                   </div>
-                ) : (
-                  <ScrollRow>
-                    {gemsMovies.map((movie, i) => (
-                      <MovieTile
-                        key={movie.id}
-                        movie={{ ...movie, _idx: i }}
-                        isSaved={savedIds.has(movie.id)}
-                        onToggleSave={toggleSave}
-                        onClick={() => setSelectedMovie(movie)}
-                        className="scroll-tile"
-                        style={{ "--i": Math.min(i, 10) }}
-                      />
-                    ))}
-                  </ScrollRow>
-                )}
-              </div>
+                  {pickedLoading ? (
+                    <div className="scroll-row"><div className="scroll-row-inner"><SkeletonScrollRow /></div></div>
+                  ) : (
+                    <ScrollRow>
+                      {pickedMovies.map((movie, i) => (
+                        <MovieTile
+                          key={movie.id}
+                          movie={{ ...movie, _idx: i }}
+                          isSaved={savedIds.has(movie.id)}
+                          onToggleSave={toggleSave}
+                          onClick={() => setSelectedMovie(movie)}
+                          className="scroll-tile"
+                          style={{ "--i": Math.min(i, 10) }}
+                        />
+                      ))}
+                    </ScrollRow>
+                  )}
+                </div>
+              )}
 
-              <div className="browse-section">
-                <div className="browse-section-header">
-                  <div className="browse-section-title">All-Time Greats</div>
-                </div>
-                {topRatedLoading ? (
-                  <div className="scroll-row"><div className="scroll-row-inner"><SkeletonScrollRow /></div></div>
-                ) : topRatedError ? (
-                  <div className="error-card compact">
-                    <div className="error-card-title">Couldn't load this section</div>
+              {!popularFailed && (popularLoading || popularFiltered.length > 0) && (
+                <div className="browse-section">
+                  <div className="browse-section-header browse-section-header-v2">
+                    <div className="browse-section-titles">
+                      <div className="browse-section-eyebrow">— POPULAR RIGHT NOW —</div>
+                      <div className="browse-section-title">{user ? "You haven't seen these yet" : "Popular right now"}</div>
+                    </div>
                   </div>
-                ) : (
-                  <ScrollRow>
-                    {topRatedMovies.map((movie, i) => (
-                      <MovieTile
-                        key={movie.id}
-                        movie={{ ...movie, _idx: i }}
-                        isSaved={savedIds.has(movie.id)}
-                        onToggleSave={toggleSave}
-                        onClick={() => setSelectedMovie(movie)}
-                        className="scroll-tile"
-                        style={{ "--i": Math.min(i, 10) }}
-                      />
-                    ))}
-                  </ScrollRow>
-                )}
-              </div>
+                  {popularLoading ? (
+                    <div className="scroll-row"><div className="scroll-row-inner"><SkeletonScrollRow /></div></div>
+                  ) : (
+                    <ScrollRow>
+                      {popularFiltered.map((movie, i) => (
+                        <MovieTile
+                          key={movie.id}
+                          movie={{ ...movie, _idx: i }}
+                          isSaved={savedIds.has(movie.id)}
+                          onToggleSave={toggleSave}
+                          onClick={() => setSelectedMovie(movie)}
+                          className="scroll-tile"
+                          style={{ "--i": Math.min(i, 10) }}
+                        />
+                      ))}
+                    </ScrollRow>
+                  )}
+                </div>
+              )}
+
+              <JournalRecentSection
+                watchedMovies={watchedMovies}
+                watchedDates={watchedDates}
+                watchedRatings={watchedRatings}
+                watchedNotes={watchedNotes}
+                onCardClick={setJournalSelected}
+                goToJournal={goToJournal}
+              />
             </div>
           </>
         )}
@@ -2150,6 +2652,21 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
           toggleMovieInCollection={toggleMovieInCollection}
           rating={watchedRatings?.get(selectedMovie.id) ?? null}
           onSetRating={setWatchedRating}
+        />
+      )}
+      {journalSelected && (
+        <JournalDetailModal
+          key={journalSelected.id}
+          movie={journalSelected}
+          onClose={() => setJournalSelected(null)}
+          note={watchedNotes?.get(journalSelected.id) || ""}
+          onSaveNote={setWatchedNote}
+          isSaved={savedIds.has(journalSelected.id)}
+          onToggleSave={toggleSave}
+          onToggleWatched={toggleWatched}
+          rating={watchedRatings?.get(journalSelected.id) ?? null}
+          onSetRating={setWatchedRating}
+          onStartDebrief={startDebrief}
         />
       )}
     </>
@@ -5503,15 +6020,11 @@ function MainApp() {
   const { guardAction, guestModal } = useGuestGate();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const headerMenuFloating = useFloating({
     open: userMenuOpen,
     placement: "bottom-end",
-    middleware: [offset(8), flip(), shift({ padding: 8 })],
-    whileElementsMounted: autoUpdate,
-  });
-  const sidebarMenuFloating = useFloating({
-    open: userMenuOpen,
-    placement: "right-start",
     middleware: [offset(8), flip(), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
   });
@@ -6157,6 +6670,26 @@ function MainApp() {
     setDebriefPayload({ chatId, message: userMsg });
   };
 
+  // Home → Companion handoff: optional message auto-sends once the new chat opens.
+  const startCinnoChat = useCallback((message) => {
+    if (isGuest) { guardAction(() => {}); return; }
+    (async () => {
+      const chatId = await handleCreateChat(message ? message.slice(0, 40) : "New conversation");
+      setActiveChatId(chatId);
+      setActiveTab("chat");
+      if (message) setDebriefPayload({ chatId, message });
+    })();
+  }, [isGuest, guardAction, handleCreateChat, setActiveChatId, setActiveTab]);
+
+  const goToCompanion = useCallback(() => {
+    if (isGuest) { guardAction(() => {}); return; }
+    setActiveTab("chat");
+  }, [isGuest, guardAction, setActiveTab]);
+
+  const goToJournal = useCallback(() => {
+    setActiveTab("journal");
+  }, [setActiveTab]);
+
   const startMoviePicker = async () => {
     // Build context from user's watchlist and journal
     const watchedList = Array.from(watchedMovies.values()).slice(-30);
@@ -6262,12 +6795,20 @@ function MainApp() {
   }, [watchedIds]);
 
   const tabs = [
-    { id: "search",   label: "Search",    icon: SearchIcon    },
-    { id: "saved",    label: "Watchlist",  icon: BookmarkIcon  },
+    { id: "search",   label: "Home",       icon: SearchIcon    },
     { id: "discover", label: "Discover",   icon: DiscoverIcon  },
     { id: "journal",  label: "Journal",    icon: FilmStripIcon },
-    { id: "chat",     label: "Chat",       icon: ChatIcon      },
+    { id: "saved",    label: "Watchlist",  icon: BookmarkIcon  },
+    { id: "chat",     label: "Companion",  icon: ChatIcon      },
   ];
+
+  const handleTopSearch = useCallback((q) => {
+    const safe = sanitizeText(q).slice(0, 200);
+    setSearchQuery(safe);
+    if (safe.trim()) {
+      setActiveTab("search");
+    }
+  }, [setActiveTab]);
 
   // ── Guarded actions for guest mode ──
   const guardedToggleSave = useCallback((movie) => {
@@ -6313,19 +6854,51 @@ function MainApp() {
 
   return (
     <div className="app">
-      <div className="header">
-        <div className="header-title">
+      <div className="topbar">
+        <div className="topbar-brand" onClick={() => handleTabClick("search")}>
           <CinnoLogo size={28} />
-          Cinno
+          <span className="topbar-brand-text">Cinno</span>
         </div>
-        <div className="header-actions">
+
+        <nav className="topbar-nav">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              className={`topbar-nav-item ${activeTab === tab.id ? "active" : ""}`}
+              onClick={() => handleTabClick(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+          <span className="topbar-nav-soon" aria-disabled="true">
+            Friends
+            <span className="topbar-soon-badge">SOON</span>
+          </span>
+        </nav>
+
+        <div className="topbar-actions">
+          <div className="topbar-search">
+            <span className="topbar-search-icon"><SearchIcon /></span>
+            <input
+              type="text"
+              placeholder="Search films, people, lists..."
+              value={searchQuery}
+              onChange={(e) => handleTopSearch(e.target.value)}
+            />
+            {searchQuery && (
+              <button className="topbar-search-clear" onClick={() => handleTopSearch("")}>✕</button>
+            )}
+          </div>
+          <button className="topbar-settings-btn" onClick={() => setSettingsOpen(true)} title="Settings">
+            <GearIcon />
+          </button>
           {user ? (
-            <div className="user-menu-wrapper" ref={userMenuRef}>
-              <button className="user-avatar-btn" ref={headerMenuFloating.refs.setReference} onClick={() => setUserMenuOpen((v) => !v)}>
+            <div className="topbar-user-wrapper" ref={userMenuRef}>
+              <button className="topbar-user-btn" ref={headerMenuFloating.refs.setReference} onClick={() => setUserMenuOpen((v) => !v)}>
                 {avatarUrl ? (
-                  <img src={avatarUrl} alt="" className="user-avatar-img" referrerPolicy="no-referrer" />
+                  <img src={avatarUrl} alt="" className="topbar-user-img" referrerPolicy="no-referrer" />
                 ) : (
-                  <div className="user-avatar-fallback"><UserIcon /></div>
+                  <div className="topbar-user-fallback"><UserIcon /></div>
                 )}
               </button>
               {userMenuOpen && (
@@ -6341,19 +6914,56 @@ function MainApp() {
               )}
             </div>
           ) : (
-            <button className="header-signin-btn" onClick={signInWithGoogle}>
+            <button className="topbar-signin-btn" onClick={signInWithGoogle}>
               Sign in
             </button>
           )}
-          <button className="header-settings-btn" onClick={() => setSettingsOpen(true)}>
-            <GearIcon />
+          <button className="topbar-mobile-menu-btn" onClick={() => setMobileMenuOpen(true)} title="Menu" aria-label="Open menu">
+            <MenuIcon />
           </button>
         </div>
       </div>
 
+      {mobileMenuOpen && (
+        <div className="mobile-menu-overlay" onClick={() => setMobileMenuOpen(false)}>
+          <div className="mobile-menu" onClick={(e) => e.stopPropagation()}>
+            <div className="mobile-menu-header">
+              <span className="mobile-menu-title">Menu</span>
+              <button className="mobile-menu-close" onClick={() => setMobileMenuOpen(false)} aria-label="Close menu">✕</button>
+            </div>
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                className={`mobile-menu-item ${activeTab === tab.id ? "active" : ""}`}
+                onClick={() => { handleTabClick(tab.id); setMobileMenuOpen(false); }}
+              >
+                <tab.icon />
+                <span>{tab.label}</span>
+              </button>
+            ))}
+            <div className="mobile-menu-item mobile-menu-soon" aria-disabled="true">
+              <span>Friends</span>
+              <span className="topbar-soon-badge">SOON</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className={`tab-panel ${tabFading ? "tab-fade-out" : ""} ${tabDir === "fade-in" ? "tab-fade-in" : ""}`} key={activeTab}>
         {activeTab === "search" && (
-          <SearchTab savedIds={savedIds} toggleSave={guardedToggleSave} watchedIds={watchedIds} toggleWatched={guardedToggleWatched} startDebrief={guardedStartDebrief} collections={collections} toggleMovieInCollection={guardedToggleMovieInCollection} scrollPositions={scrollPositions} watchedRatings={watchedRatings} setWatchedRating={guardedSetWatchedRating} />
+          <SearchTab
+            savedIds={savedIds} toggleSave={guardedToggleSave}
+            watchedIds={watchedIds} toggleWatched={guardedToggleWatched}
+            startDebrief={guardedStartDebrief}
+            collections={collections} toggleMovieInCollection={guardedToggleMovieInCollection}
+            scrollPositions={scrollPositions}
+            watchedRatings={watchedRatings} setWatchedRating={guardedSetWatchedRating}
+            query={searchQuery} setQuery={setSearchQuery}
+            watchedMovies={watchedMovies} watchedDates={watchedDates}
+            watchedNotes={watchedNotes} setWatchedNote={setWatchedNote}
+            goToCompanion={goToCompanion} startCinnoChat={startCinnoChat}
+            goToJournal={goToJournal}
+          />
         )}
         {activeTab === "saved" && (
           <SavedTab
@@ -6411,49 +7021,6 @@ function MainApp() {
             debriefPayload={debriefPayload} onDebriefHandled={() => setDebriefPayload(null)}
           />
         )}
-      </div>
-
-      <div className="tab-bar">
-        {/* Desktop sidebar profile button — hidden on mobile */}
-        <div className="sidebar-profile-wrapper" ref={userMenuRef}>
-          <button
-            className="sidebar-profile-btn"
-            ref={sidebarMenuFloating.refs.setReference}
-            onClick={() => {
-              if (user) {
-                setUserMenuOpen((v) => !v);
-              } else {
-                guardAction(() => {});
-              }
-            }}
-          >
-            {user && avatarUrl ? (
-              <img src={avatarUrl} alt="" className="sidebar-profile-img" referrerPolicy="no-referrer" />
-            ) : (
-              <div className="sidebar-profile-fallback"><UserIcon /></div>
-            )}
-          </button>
-          {userMenuOpen && (
-            <div className="user-dropdown sidebar-dropdown" ref={sidebarMenuFloating.refs.setFloating} style={sidebarMenuFloating.floatingStyles}>
-              <button className="user-dropdown-item" onClick={() => { setUserMenuOpen(false); setSettingsOpen(true); }}>
-                <GearIcon /> Settings
-              </button>
-              <button className="user-dropdown-item user-dropdown-signout" onClick={() => { setUserMenuOpen(false); signOut(); }}>
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                Sign out
-              </button>
-            </div>
-          )}
-          <div className="sidebar-profile-divider" />
-        </div>
-
-        {tabs.map((tab) => (
-          <button key={tab.id} className={`tab-item ${activeTab === tab.id ? "active" : ""}`} onClick={() => handleTabClick(tab.id)}>
-            {activeTab === tab.id && <div className="tab-indicator" />}
-            <tab.icon />
-            <span className="tab-label">{tab.label}</span>
-          </button>
-        ))}
       </div>
 
       {settingsOpen && (

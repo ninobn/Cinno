@@ -9,7 +9,10 @@
       "Bash(git:*)",
       "Bash(npm run:*)",
       "PowerShell(\\(Get-Content 'C:\\\\Users\\\\Nino Buranasetkul\\\\Downloads\\\\cinecompanion\\\\movie-companion\\\\src\\\\App.jsx' | Measure-Object -Line\\).Lines; \\(Get-Content 'C:\\\\Users\\\\Nino Buranasetkul\\\\Downloads\\\\cinecompanion\\\\movie-companion\\\\src\\\\styles.css' | Measure-Object -Line\\).Lines)",
-      "PowerShell(npm run *)"
+      "PowerShell(npm run *)",
+      "PowerShell($env:PORT=\"3001\"; node server.js 2>&1 | Select-Object -First 10)",
+      "PowerShell(Start-Sleep -Seconds 2; Invoke-RestMethod -Uri \"http://localhost:3001/api/tmdb-public\" -Method POST -Body \\(@{ path = \"/trending/movie/week\"; params = @{ page = 1 } } | ConvertTo-Json\\) -ContentType \"application/json\" -ErrorAction Continue 2>&1 | Select-Object -First 5)",
+      "PowerShell(Get-Process *)"
     ]
   }
 }

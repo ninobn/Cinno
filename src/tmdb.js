@@ -3,11 +3,19 @@ import { supabase } from "./supabase.js";
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 export const IMG_BASE = "https://image.tmdb.org/t/p";
 
-const GENRE_MAP = {
+export const GENRE_MAP = {
   28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
   99: "Documentary", 18: "Drama", 10751: "Family", 14: "Fantasy", 36: "History",
   27: "Horror", 10402: "Music", 9648: "Mystery", 10749: "Romance", 878: "Sci-Fi",
   10770: "TV Movie", 53: "Thriller", 10752: "War", 37: "Western",
+};
+
+// Lookup that tolerates TMDB's full names ("Science Fiction") in addition to our short labels ("Sci-Fi").
+export const GENRE_NAME_TO_ID = {
+  ...Object.fromEntries(Object.entries(GENRE_MAP).map(([id, name]) => [name, Number(id)])),
+  "Science Fiction": 878,
+  "Sci Fi": 878,
+  "Sci-fi": 878,
 };
 
 export function tmdbToMovie(m) {
@@ -36,17 +44,29 @@ async function getAccessToken() {
 
 async function tmdbFetch(endpoint, params = {}) {
   const token = await getAccessToken();
-  const isPublic = !token;
-  const url = `${API_URL}/api/tmdb${isPublic ? "-public" : ""}`;
+  const body = JSON.stringify({ path: endpoint, params });
 
-  const resp = await fetch(url, {
+  const callPublic = () => fetch(`${API_URL}/api/tmdb-public`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ path: endpoint, params }),
+    headers: { "Content-Type": "application/json" },
+    body,
   });
+
+  let resp;
+  if (token) {
+    resp = await fetch(`${API_URL}/api/tmdb`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body,
+    });
+    // Token rejected (expired/invalid) — fall back to the public endpoint so the
+    // home page still loads movie data instead of erroring out.
+    if (resp.status === 401 || resp.status === 403) {
+      resp = await callPublic();
+    }
+  } else {
+    resp = await callPublic();
+  }
 
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
@@ -86,9 +106,9 @@ export async function getMovieDetails(movieId) {
   return tmdbFetch(`/movie/${movieId}`);
 }
 
-export async function getSimilar(movieId) {
+export async function getSimilar(movieId, limit = 20) {
   const data = await tmdbFetch(`/movie/${movieId}/recommendations`);
-  return (data?.results || []).slice(0, 12).map(tmdbToMovie);
+  return (data?.results || []).slice(0, limit).map(tmdbToMovie);
 }
 
 export async function getHiddenGems(page = 1) {
