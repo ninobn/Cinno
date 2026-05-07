@@ -3726,370 +3726,437 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
   );
 }
 
-// ─── Stats View (Bento Magazine Grid) ──────────────────────────────────────────
+// ─── Stats View (Editorial layout) ─────────────────────────────────────────────
 
-const IDENTITY_MAP = {
-  Action: "The Thrill Seeker", Thriller: "The Thrill Seeker",
-  Drama: "The Deep Feeler", "Sci-Fi": "The Visionary",
-  Horror: "The Edge Walker", Comedy: "The Mood Lifter",
-  Animation: "The Young at Heart", Romance: "The Romantic Soul",
-  Documentary: "The Truth Seeker", Fantasy: "The Daydreamer",
-  Adventure: "The Explorer", Mystery: "The Puzzle Chaser",
-};
+function formatHours(totalMinutes, missing) {
+  if (missing) return "—";
+  if (!totalMinutes || totalMinutes <= 0) return "—";
+  const h = Math.floor(totalMinutes / 60);
+  const m = Math.round(totalMinutes % 60);
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
 
-function StatsView({ watchedMovies, watchedRatings, watchedDates, collections, chats }) {
-  const { user } = useAuth();
-  const [showAllBadges, setShowAllBadges] = useState(false);
-  const [runtimeCache, setRuntimeCache] = useState(() => loadFromStorage("cc_runtimeCache", {}));
-  const [showcaseIds, setShowcaseIds] = useState(() => loadFromStorage("cc_badge_showcase", []));
-  const [flippedBadges, setFlippedBadges] = useState(new Set());
+function StatsView({ watchedMovies, watchedRatings, watchedDates }) {
+  const stats = useMemo(() => {
+    const movies = Array.from(watchedMovies?.values() || []);
+    const total = movies.length;
 
-  // Sync showcaseIds from Supabase on login
-  useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    preferencesService.getPreferences(user.id).then((prefs) => {
-      if (cancelled) return;
-      const remote = prefs.ui_toggles?.badgeShowcase;
-      if (Array.isArray(remote) && remote.length > 0) {
-        setShowcaseIds(remote);
-        saveToStorage("cc_badge_showcase", remote);
-      }
+    // Hours from runtime cache
+    const runtimeCache = loadFromStorage("cc_runtimeCache", {});
+    let totalMinutes = 0;
+    let missing = false;
+    movies.forEach((m) => {
+      const r = runtimeCache[m.id];
+      if (typeof r === "number" && r > 0) totalMinutes += r;
+      else if (total > 0) missing = true;
     });
-    return () => { cancelled = true; };
-  }, [user]);
 
-  // Fetch runtimes for movies missing from the cache
-  useEffect(() => {
-    const missing = [];
-    watchedMovies.forEach((movie, id) => {
-      if (runtimeCache[id] === undefined) missing.push(id);
-    });
-    if (missing.length === 0) return;
-    let cancelled = false;
-    (async () => {
-      const updates = {};
-      // Fetch in small batches to avoid hammering the API
-      for (let i = 0; i < missing.length; i++) {
-        if (cancelled) return;
-        try {
-          const details = await getMovieDetails(missing[i]);
-          updates[missing[i]] = details?.runtime || 120;
-        } catch {
-          updates[missing[i]] = 120;
+    // Average rating
+    const ratings = [];
+    watchedRatings?.forEach((r) => { if (typeof r === "number") ratings.push(r); });
+    const avgRating = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
+
+    // Longest streak (count consecutive days from any starting point)
+    const watchedDays = new Set();
+    watchedDates?.forEach((dateStr) => { if (dateStr) watchedDays.add(dateStr.slice(0, 10)); });
+    let longest = 0;
+    if (watchedDays.size > 0) {
+      const sortedDays = Array.from(watchedDays).sort();
+      let run = 1;
+      longest = 1;
+      for (let i = 1; i < sortedDays.length; i++) {
+        const prev = DateTime.fromISO(sortedDays[i - 1]);
+        const cur = DateTime.fromISO(sortedDays[i]);
+        if (prev.isValid && cur.isValid && cur.diff(prev, "days").days === 1) {
+          run += 1;
+          if (run > longest) longest = run;
+        } else {
+          run = 1;
         }
       }
-      if (cancelled) return;
-      setRuntimeCache((prev) => {
-        const next = { ...prev, ...updates };
-        saveToStorage("cc_runtimeCache", next);
-        return next;
-      });
-    })();
-    return () => { cancelled = true; };
-  }, [watchedMovies]); // eslint-disable-line react-hooks/exhaustive-deps
+    }
 
-  const stats = useMemo(() => {
-    const totalMovies = watchedMovies.size;
-    let totalMinutes = 0;
-    watchedMovies.forEach((movie, id) => {
-      totalMinutes += runtimeCache[id] || 120;
-    });
-    const totalHours = Math.round(totalMinutes / 60);
-    const avgRating = watchedRatings.size > 0
-      ? Math.round([...watchedRatings.values()].reduce((s, v) => s + v, 0) / watchedRatings.size)
-      : 0;
-
-    const ratedMovies = [...watchedRatings.entries()]
-      .map(([id, score]) => ({ movie: watchedMovies.get(id), score }))
-      .filter((e) => e.movie)
-      .sort((a, b) => b.score - a.score);
-    const top3 = ratedMovies.slice(0, 3);
-    const lowest = ratedMovies.length > 1 ? ratedMovies[ratedMovies.length - 1] : null;
-
+    // Genre breakdown
     const genreCounts = {};
-    watchedMovies.forEach((movie) => {
-      const genre = movie.genre || "Other";
-      genreCounts[genre] = (genreCounts[genre] || 0) + 1;
+    movies.forEach((m) => {
+      const g = m?.genre;
+      if (!g || g === "Film") return;
+      genreCounts[g] = (genreCounts[g] || 0) + 1;
     });
-    const genres = Object.entries(genreCounts)
+    const genreEntries = Object.entries(genreCounts)
       .sort((a, b) => b[1] - a[1])
-      .map(([name, count]) => ({ name, count }));
+      .slice(0, 8);
+    const genreMax = genreEntries[0]?.[1] || 1;
 
-    return { totalMovies, totalHours, avgRating, genreCount: genres.length, top3, lowest, genres };
-  }, [watchedMovies, watchedRatings, runtimeCache]);
+    // Rating distribution: 10 buckets [0-10, 11-20, ... 91-100]
+    const buckets = Array.from({ length: 10 }, (_, i) => ({
+      label: i === 0 ? "0–10" : `${i * 10 + 1}–${(i + 1) * 10}`,
+      lo: i === 0 ? 0 : i * 10 + 1,
+      hi: (i + 1) * 10,
+      count: 0,
+    }));
+    ratings.forEach((r) => {
+      const idx = Math.min(9, r === 0 ? 0 : Math.floor((r - 1) / 10));
+      buckets[idx].count += 1;
+    });
+    const bucketMax = Math.max(1, ...buckets.map((b) => b.count));
 
-  if (stats.totalMovies === 0) {
-    return <div className="rankings-empty">Watch some movies to see your stats here.</div>;
+    return {
+      total,
+      hoursLabel: formatHours(totalMinutes, missing),
+      avgRating: avgRating !== null ? avgRating.toFixed(1) : "—",
+      longest,
+      genreEntries,
+      genreMax,
+      buckets,
+      bucketMax,
+      avgRatingRaw: avgRating,
+      hasRatings: ratings.length > 0,
+    };
+  }, [watchedMovies, watchedRatings, watchedDates]);
+
+  if (stats.total < 3) {
+    return (
+      <div className="stats-empty">
+        <div className="stats-empty-icon">🎬</div>
+        <div className="stats-empty-title">Watch more movies to unlock your stats</div>
+        <div className="stats-empty-desc">After 3 watched, this page lights up.</div>
+      </div>
+    );
   }
 
-  const topGenre = stats.genres[0]?.name || "Film";
-  const identity = IDENTITY_MAP[topGenre] || "The Eclectic Explorer";
-  const topThreeGenres = stats.genres.slice(0, 3);
-
-  const badgesWithTier = useMemo(() => {
-    const ctx = { watchedMovies, watchedRatings, collections: collections || [], watchedDates: watchedDates || new Map(), chats: chats || [] };
-    return BADGE_DEFS.map((b) => {
-      const progress = computeBadgeProgress(b.id, ctx);
-      const tier = getBadgeTier(progress, b.tiers);
-      return { ...b, progress, tier };
-    });
-  }, [watchedMovies, watchedRatings, collections, watchedDates]);
-
-  const showcaseBadges = useMemo(() => {
-    if (showcaseIds.length > 0) {
-      const selected = showcaseIds.map((id) => badgesWithTier.find((b) => b.id === id)).filter(Boolean).filter((b) => b.tier > 0);
-      if (selected.length > 0) return selected.slice(0, 3);
-    }
-    return badgesWithTier.filter((b) => b.tier > 0).sort((a, b) => b.tier - a.tier).slice(0, 3);
-  }, [badgesWithTier, showcaseIds]);
-
-  const toggleShowcase = useCallback((badgeId) => {
-    setShowcaseIds((prev) => {
-      const next = prev.includes(badgeId) ? prev.filter((id) => id !== badgeId) : [...prev.filter((id) => id !== badgeId), badgeId].slice(-3);
-      saveToStorage("cc_badge_showcase", next);
-      if (user) preferencesService.updateUIToggles(user.id, { badgeShowcase: next }).catch(syncFailToast);
-      return next;
-    });
-  }, [user]);
-
-  const toggleFlip = useCallback((badgeId) => {
-    setFlippedBadges((prev) => {
-      const next = new Set(prev);
-      next.has(badgeId) ? next.delete(badgeId) : next.add(badgeId);
-      return next;
-    });
-  }, []);
-
   return (
-    <div className="bento-stats">
-      {/* Share button */}
-      <button className="bento-share-btn" onClick={() => Toast.fire({ icon: "info", title: "Share feature coming soon" })} title="Share stats">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
-        </svg>
-      </button>
-
-      {/* CARD 1 — MOVIE IDENTITY */}
-      <div className="bento-card bento-identity" style={{ '--delay': '0' }}>
-        <div className="bento-identity-content">
-          <div className="bento-identity-label">Your Movie Identity</div>
-          <div className="bento-identity-title">{identity}</div>
-          <div className="bento-identity-genres">
-            {topThreeGenres.map((g) => (
-              <span key={g.name} className="bento-genre-pill" style={{ background: `${GENRE_COLORS[g.name] || "#7A7878"}25`, color: GENRE_COLORS[g.name] || "#7A7878" }}>{g.name}</span>
-            ))}
+    <div className="stats-page">
+      {/* Section 1 — Your numbers */}
+      <section className="stats-section">
+        <div className="browse-section-header browse-section-header-v2">
+          <div className="browse-section-titles">
+            <div className="browse-section-eyebrow">— ALL TIME —</div>
+            <div className="browse-section-title">Your numbers</div>
           </div>
         </div>
-      </div>
-
-      {/* CARD 2 — TOP FILM (#1 rated) */}
-      <div className="bento-card bento-top-film" style={{ '--delay': '1' }}>
-        {stats.top3[0]?.movie?.poster_path ? (
-          <>
-            <img src={`${IMG_BASE}/w500${stats.top3[0].movie.poster_path}`} alt="" className="bento-film-bg" />
-            <div className="bento-film-overlay" />
-            <div className="bento-film-content">
-              <div className="bento-film-badge">#1 Film</div>
-              <div className="bento-film-title">{stats.top3[0].movie.title}</div>
-              <div className="bento-film-meta">{stats.top3[0].movie.year}</div>
-              <ScoreRing score={stats.top3[0].score} size={48} />
-            </div>
-          </>
-        ) : (
-          <div className="bento-film-empty">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.3 }}>
-              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" /><line x1="7" y1="2" x2="7" y2="22" /><line x1="17" y1="2" x2="17" y2="22" /><line x1="2" y1="12" x2="22" y2="12" /><line x1="2" y1="7" x2="7" y2="7" /><line x1="2" y1="17" x2="7" y2="17" /><line x1="17" y1="17" x2="22" y2="17" /><line x1="17" y1="7" x2="22" y2="7" />
-            </svg>
-            <span>Rate movies to see your #1</span>
+        <div className="stats-numbers-grid">
+          <div className="stats-metric">
+            <div className="stats-metric-label">Films watched</div>
+            <div className="stats-metric-value">{stats.total}</div>
           </div>
-        )}
-      </div>
-
-      {/* CARD 3 — MOVIES WATCHED */}
-      <div className="bento-card bento-stat bento-stat-a" style={{ '--delay': '2' }}>
-        <div className="bento-stat-number">{stats.totalMovies}</div>
-        <div className="bento-stat-label">movies</div>
-      </div>
-
-      {/* CARD 4 — HOURS OF CINEMA */}
-      <div className="bento-card bento-stat bento-stat-b bento-hours" style={{ '--delay': '3' }}>
-        <div className="bento-stat-number">{stats.totalHours}h</div>
-        <div className="bento-stat-label">watched</div>
-      </div>
-
-      {/* CARD 5 — #2 FILM */}
-      <div className="bento-card bento-film-small bento-film-2" style={{ '--delay': '4' }}>
-        {stats.top3[1]?.movie?.poster_path ? (
-          <>
-            <img src={`${IMG_BASE}/w342${stats.top3[1].movie.poster_path}`} alt="" className="bento-film-bg" />
-            <div className="bento-film-overlay" />
-            <div className="bento-film-content">
-              <div className="bento-film-badge">#2</div>
-              <div className="bento-film-title bento-film-title-sm">{stats.top3[1].movie.title}</div>
-              <ScoreRing score={stats.top3[1].score} size={36} />
-            </div>
-          </>
-        ) : (
-          <div className="bento-film-empty"><span>#2</span></div>
-        )}
-      </div>
-
-      {/* CARD 6 — #3 FILM */}
-      <div className="bento-card bento-film-small bento-film-3" style={{ '--delay': '5' }}>
-        {stats.top3[2]?.movie?.poster_path ? (
-          <>
-            <img src={`${IMG_BASE}/w342${stats.top3[2].movie.poster_path}`} alt="" className="bento-film-bg" />
-            <div className="bento-film-overlay" />
-            <div className="bento-film-content">
-              <div className="bento-film-badge">#3</div>
-              <div className="bento-film-title bento-film-title-sm">{stats.top3[2].movie.title}</div>
-              <ScoreRing score={stats.top3[2].score} size={36} />
-            </div>
-          </>
-        ) : (
-          <div className="bento-film-empty"><span>#3</span></div>
-        )}
-      </div>
-
-      {/* CARD 7 — AVG RATING */}
-      <div className="bento-card bento-stat bento-avg" style={{ '--delay': '6' }}>
-        <ScoreRing score={stats.avgRating} size={56} />
-        <div className="bento-stat-label">average score</div>
-      </div>
-
-      {/* CARD 8 — GENRES EXPLORED */}
-      <div className="bento-card bento-stat bento-stat-b bento-genres" style={{ '--delay': '7' }}>
-        <div className="bento-stat-number">{stats.genreCount}</div>
-        <div className="bento-stat-label">genres</div>
-      </div>
-
-      {/* CARD 9 — ACHIEVEMENTS */}
-      <div className="bento-card bento-achievements" style={{ '--delay': '8' }}>
-        <div className="bento-achievements-row">
-          {[0, 1, 2].map((i) => {
-            const badge = showcaseBadges[i];
-            if (!badge) return <div key={i} className="bento-badge-empty" />;
-            const tierKey = ["bronze", "silver", "gold"][badge.tier - 1];
-            const tierColor = TIER_COLORS[tierKey];
-            const Icon = badge.icon;
-            return (
-              <div key={badge.id} className="bento-badge-slot" data-tier={tierKey}>
-                {showcaseIds.includes(badge.id) && <div className="bento-badge-star">★</div>}
-                <div className="bento-badge-glow" style={{ background: tierColor }} />
-                <div className="bento-badge-icon" style={{ color: tierColor }}><Icon /></div>
-                <div className="bento-badge-name">{badge.title}</div>
-                <div className="bento-badge-tier" style={{ color: tierColor }}>{TIER_NAMES[badge.tier]}</div>
-              </div>
-            );
-          })}
+          <div className="stats-metric">
+            <div className="stats-metric-label">Total hours</div>
+            <div className="stats-metric-value">{stats.hoursLabel}</div>
+          </div>
+          <div className="stats-metric">
+            <div className="stats-metric-label">Average rating</div>
+            <div className="stats-metric-value">{stats.avgRating === "—" ? "—" : `${stats.avgRating}/100`}</div>
+          </div>
+          <div className="stats-metric">
+            <div className="stats-metric-label">Longest streak</div>
+            <div className="stats-metric-value">{stats.longest > 0 ? `${stats.longest} day${stats.longest === 1 ? "" : "s"}` : "—"}</div>
+          </div>
         </div>
-        <button className="bento-see-all" onClick={() => setShowAllBadges(!showAllBadges)}>
-          {showAllBadges ? "Hide badges" : "See all →"}
-        </button>
-        {showAllBadges && (
-          <div className="badge-grid-inline" style={{ marginTop: 12 }}>
-            {badgesWithTier.map((badge) => {
-              const { progress, tier, secret } = badge;
-              const isHiddenSecret = secret && tier === 0;
-              const tierColor = tier > 0 ? TIER_COLORS[["bronze", "silver", "gold"][tier - 1]] : null;
-              const nextTier = Math.min(tier + 1, 3);
-              const nextTarget = badge.tiers[nextTier - 1];
-              const prevTarget = tier > 0 ? badge.tiers[tier - 1] : 0;
-              const pct = tier >= 3 ? 100 : Math.min(((progress - prevTarget) / (nextTarget - prevTarget)) * 100, 100);
-              const Icon = badge.icon;
-              const isFlipped = flippedBadges.has(badge.id);
-              const rarity = tier > 0 ? BADGE_RARITY[badge.id]?.[tier] : null;
+      </section>
 
+      {/* Section 2 — Genre breakdown */}
+      {stats.genreEntries.length > 0 && (
+        <section className="stats-section">
+          <div className="browse-section-header browse-section-header-v2">
+            <div className="browse-section-titles">
+              <div className="browse-section-eyebrow">— WHAT YOU WATCH —</div>
+              <div className="browse-section-title">Genre breakdown</div>
+            </div>
+          </div>
+          <div className="stats-genre-bars">
+            {stats.genreEntries.map(([name, count]) => {
+              const pct = (count / stats.genreMax) * 100;
               return (
-                <div key={badge.id} className={`badge-flip-container ${isFlipped ? "flipped" : ""}`} onClick={() => toggleFlip(badge.id)}>
-                  {/* FRONT */}
-                  <div className={`badge-flip-front badge-inline ${tier > 0 ? "unlocked" : "locked"}`}>
-                    <div className="badge-inline-icon" style={tierColor ? { color: tierColor } : undefined}>
-                      {tier > 0 && <div className="badge-tier-ring" style={{ borderColor: tierColor, boxShadow: tier === 3 ? `0 0 8px ${tierColor}44` : "none" }} />}
-                      {tier === 0 && <div className="badge-inline-lock"><LockIcon /></div>}
-                      {isHiddenSecret ? (
-                        <svg viewBox="0 0 40 40" fill="none"><text x="20" y="25" textAnchor="middle" fill="currentColor" fontSize="18" fontWeight="700">?</text></svg>
-                      ) : (
-                        <Icon />
-                      )}
-                    </div>
-                    <div className="badge-inline-name">{isHiddenSecret ? "???" : badge.title}</div>
-                    {tier > 0 && <div className="badge-tier-label" style={{ color: tierColor }}>{TIER_NAMES[tier]}</div>}
-                    <div className="badge-inline-progress">
-                      <div className="badge-inline-track">
-                        <div className="badge-inline-fill" style={{ width: `${isHiddenSecret ? 0 : pct}%`, background: tierColor || undefined }} />
-                      </div>
-                      {!isHiddenSecret && <span className="badge-inline-frac">{progress}/{tier >= 3 ? badge.tiers[2] : nextTarget}</span>}
-                    </div>
+                <div key={name} className="stats-genre-row">
+                  <div className="stats-genre-label">{name}</div>
+                  <div className="stats-genre-track">
+                    <div className="stats-genre-fill" style={{ width: `${pct}%` }} />
                   </div>
-                  {/* BACK */}
-                  <div className="badge-flip-back">
-                    {isHiddenSecret ? (
-                      <div className="badge-back-secret">
-                        <div className="badge-back-q">???</div>
-                        <div className="badge-back-hint">{SECRET_HINTS[badge.id] || "Keep exploring..."}</div>
-                      </div>
-                    ) : tier > 0 ? (
-                      <div className="badge-back-unlocked">
-                        <div className="badge-back-earned">Earned by</div>
-                        <div className="badge-back-desc">{badge.desc}</div>
-                        {rarity && (
-                          <div className="badge-rarity-tag" style={{ background: rarity.color + "22", color: rarity.color }}>
-                            {rarity.label} — {rarity.pct}%
-                          </div>
-                        )}
-                        {tier < 3 && <div className="badge-back-next">Next: {nextTarget} for {TIER_NAMES[tier + 1]}</div>}
-                        <button className="badge-showcase-btn" onClick={(e) => { e.stopPropagation(); toggleShowcase(badge.id); }}>
-                          {showcaseIds.includes(badge.id) ? "★ In Showcase" : "Set as Showcase"}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="badge-back-locked">
-                        <div className="badge-back-earned">To unlock</div>
-                        <div className="badge-back-desc">{badge.desc}: {badge.tiers[0]}</div>
-                        <div className="badge-back-remaining">{badge.tiers[0] - progress} more to go</div>
-                      </div>
-                    )}
-                  </div>
+                  <div className="stats-genre-count">{count}</div>
                 </div>
               );
             })}
           </div>
-        )}
-      </div>
+        </section>
+      )}
 
-      {/* CARD 10 — BEST VS WORST */}
-      {stats.top3[0] && stats.lowest && stats.top3[0].movie.id !== stats.lowest.movie.id && (
-        <div className="bento-card bento-vs" style={{ '--delay': '9' }}>
-          <div className="bento-vs-half bento-vs-best">
-            <div className="bento-vs-poster">
-              <PosterImage posterPath={stats.top3[0].movie.poster_path} title={stats.top3[0].movie.title} />
+      {/* Section 3 — Rating distribution */}
+      {stats.hasRatings && (
+        <section className="stats-section">
+          <div className="browse-section-header browse-section-header-v2">
+            <div className="browse-section-titles">
+              <div className="browse-section-eyebrow">— HOW YOU RATE —</div>
+              <div className="browse-section-title">Rating distribution</div>
             </div>
-            <div className="bento-vs-info">
-              <div className="bento-vs-tag best">Best</div>
-              <div className="bento-vs-name">{stats.top3[0].movie.title}</div>
-            </div>
-            <ScoreRing score={stats.top3[0].score} size={34} />
           </div>
-          <div className="bento-vs-center">VS</div>
-          <div className="bento-vs-half bento-vs-worst">
-            <div className="bento-vs-poster">
-              <PosterImage posterPath={stats.lowest.movie.poster_path} title={stats.lowest.movie.title} />
+          <div className="stats-rating-chart">
+            <div className="stats-rating-bars">
+              {stats.buckets.map((b, i) => {
+                const pct = b.count === 0 ? 2 : Math.max(4, (b.count / stats.bucketMax) * 100);
+                return (
+                  <div key={b.label} className="stats-rating-col" title={`${b.count} movies`}>
+                    <div className="stats-rating-bar-track">
+                      <div className="stats-rating-bar" style={{ height: `${pct}%` }} />
+                    </div>
+                    <div className="stats-rating-label">{i % 2 === 0 ? b.label : ""}</div>
+                  </div>
+                );
+              })}
             </div>
-            <div className="bento-vs-info">
-              <div className="bento-vs-tag worst">Worst</div>
-              <div className="bento-vs-name">{stats.lowest.movie.title}</div>
-            </div>
-            <ScoreRing score={stats.lowest.score} size={34} />
+            {stats.avgRatingRaw !== null && (
+              <div
+                className="stats-rating-avg-line"
+                style={{ left: `calc(${(stats.avgRatingRaw / 100) * 100}% - 1px)` }}
+                aria-hidden="true"
+              />
+            )}
           </div>
-        </div>
+          {stats.avgRatingRaw !== null && (
+            <div className="stats-rating-avg-label">Your average: <strong>{stats.avgRating}</strong></div>
+          )}
+        </section>
       )}
     </div>
   );
 }
 
+// (Legacy bento-grid StatsView body removed — replaced by the editorial StatsView above.)
+
 // ─── Journal Tab ───────────────────────────────────────────────────────────────
+
+// Personal-rating colour buckets for poster overlays + ranking ring
+function ratingTierColor(score) {
+  if (typeof score !== "number") return null;
+  if (score >= 90) return "#D4B05C"; // gold
+  if (score >= 70) return "#8B2040"; // burgundy
+  return "rgba(245, 240, 235, 0.45)"; // muted cream
+}
+
+function NoteIcon({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  );
+}
+
+// Compact poster card used by the new Journal poster wall.
+// Shows date badge + note indicator. Rating circle is reserved for the Rankings view.
+function JournalPosterCard({ movie, watchedDate, note, onClick }) {
+  const dateLabel = (() => {
+    if (!watchedDate) return null;
+    const dt = DateTime.fromISO(watchedDate.slice(0, 10));
+    return dt.isValid ? dt.toFormat("MMM d") : null;
+  })();
+  return (
+    <button className="jp-card" onClick={onClick} type="button">
+      <div className="jp-poster">
+        <PosterImage posterPath={movie.poster_path} title={movie.title} />
+        {dateLabel && <span className="jp-date">{dateLabel}</span>}
+        {note && <span className="jp-note" title="Has note"><NoteIcon /></span>}
+      </div>
+      <div className="jp-title">{movie.title}</div>
+    </button>
+  );
+}
+
+// Group a sorted-by-date list into month buckets.
+function groupByMonth(movies, watchedDates) {
+  const groups = new Map(); // key: yyyy-MM, value: { label, movies: [] }
+  movies.forEach((m) => {
+    const ds = (watchedDates?.get(m.id) || "").slice(0, 10);
+    const dt = ds ? DateTime.fromISO(ds) : null;
+    const key = dt && dt.isValid ? dt.toFormat("yyyy-MM") : "—";
+    let bucket = groups.get(key);
+    if (!bucket) {
+      const now = DateTime.now();
+      let label = "Older";
+      if (dt && dt.isValid) {
+        if (dt.hasSame(now, "month")) label = "This month";
+        else if (dt.year === now.year) label = dt.toFormat("LLLL");
+        else label = dt.toFormat("LLLL yyyy");
+      }
+      bucket = { key, label, eyebrow: dt && dt.isValid ? dt.toFormat("LLLL yyyy").toUpperCase() : "UNDATED", movies: [] };
+      groups.set(key, bucket);
+    }
+    bucket.movies.push(m);
+  });
+  return Array.from(groups.values());
+}
+
+// Same overlays as poster card, but a circle that sits over the corner of a small poster.
+function PosterRatingDot({ rating, size = 32 }) {
+  const tierColor = ratingTierColor(rating);
+  if (typeof rating !== "number") return null;
+  return (
+    <span className="jp-rank-dot" style={{ width: size, height: size, borderColor: tierColor, color: tierColor }}>
+      {rating}
+    </span>
+  );
+}
+
+// Resolves a movie's backdrop_path even if the cached watchedMovies entry is missing it.
+// Persists the resolved path (or null) to localStorage so we don't re-fetch on every visit.
+function useResolvedBackdrop(movie) {
+  const [path, setPath] = useState(() => {
+    if (movie?.backdrop_path) return movie.backdrop_path;
+    if (!movie) return null;
+    const cache = loadFromStorage("cc_backdrop_cache", {});
+    return cache[movie.id] !== undefined ? cache[movie.id] : null;
+  });
+
+  useEffect(() => {
+    if (!movie) { setPath(null); return; }
+    if (movie.backdrop_path) { setPath(movie.backdrop_path); return; }
+    const cache = loadFromStorage("cc_backdrop_cache", {});
+    if (cache[movie.id] !== undefined) { setPath(cache[movie.id]); return; }
+
+    let cancelled = false;
+    getMovieDetails(movie.id)
+      .then((d) => {
+        if (cancelled) return;
+        const resolved = d?.backdrop_path || null;
+        const next = { ...loadFromStorage("cc_backdrop_cache", {}), [movie.id]: resolved };
+        saveToStorage("cc_backdrop_cache", next);
+        setPath(resolved);
+      })
+      .catch((err) => {
+        console.error("[Rankings] backdrop fetch failed:", err?.message || err);
+      });
+    return () => { cancelled = true; };
+  }, [movie?.id, movie?.backdrop_path]);
+
+  return path;
+}
+
+// Cinematic rankings layout: #1 hero with backdrop, #2/#3 side-by-side, then numbered list.
+function RankingsLayout({ ranked, watchedRatings, watchedDates, onOpen }) {
+  if (ranked.length < 3) {
+    return (
+      <div className="rankings-list rankings-list-simple">
+        {ranked.map((movie, i) => {
+          const rank = i + 1;
+          const r = watchedRatings.get(movie.id);
+          return (
+            <div key={movie.id} className="ranking-item" onClick={() => onOpen(movie)}>
+              <span className="ranking-num">{rank}</span>
+              <div className="ranking-poster">
+                <PosterImage posterPath={movie.poster_path} title={movie.title} />
+              </div>
+              <div className="ranking-info">
+                <div className="ranking-title">{movie.title}</div>
+                <div className="ranking-meta">{movie.genre} · {movie.year}{watchedDates?.get(movie.id) ? ` · ${formatWatchDate(watchedDates.get(movie.id))}` : ""}</div>
+              </div>
+              <PosterRatingDot rating={r} size={36} />
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const top1 = ranked[0];
+  const top2 = ranked[1];
+  const top3 = ranked[2];
+  const rest = ranked.slice(3);
+  const top1Rating = watchedRatings.get(top1.id);
+  const top1BackdropPath = useResolvedBackdrop(top1);
+  const heroBackdrop = top1BackdropPath ? `${IMG_BASE}/w1280${top1BackdropPath}` : null;
+
+  return (
+    <div className="rk-wrap">
+      {/* #1 Hero */}
+      <button className="rk-hero" onClick={() => onOpen(top1)} type="button">
+        {heroBackdrop && <img src={heroBackdrop} alt="" className="rk-hero-bg" />}
+        <div className="rk-hero-gradient" />
+        <div className="rk-hero-content">
+          <div className="rk-hero-poster">
+            <PosterImage posterPath={top1.poster_path} title={top1.title} />
+          </div>
+          <div className="rk-hero-meta">
+            <span className="rk-hero-badge">#1</span>
+            <div className="rk-hero-eyebrow">Your all-time favourite</div>
+            <h2 className="rk-hero-title">{top1.title}</h2>
+            <div className="rk-hero-sub">
+              {top1.genre} · {top1.year}
+              {typeof top1Rating === "number" && (
+                <span className="rk-hero-stars">
+                  <span className="star-rating">
+                    <span className="star-rating-bg">★★★★★</span>
+                    <span className="star-rating-fg" style={{ width: `${top1Rating}%` }}>★★★★★</span>
+                  </span>
+                </span>
+              )}
+            </div>
+          </div>
+          {typeof top1Rating === "number" && (
+            <div className="rk-hero-ring">
+              <svg width="44" height="44" viewBox="0 0 44 44">
+                <circle cx="22" cy="22" r="19" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="3" />
+                <circle cx="22" cy="22" r="19" fill="none" stroke="#D4B05C" strokeWidth="3" strokeLinecap="round"
+                  strokeDasharray={2 * Math.PI * 19}
+                  strokeDashoffset={2 * Math.PI * 19 * (1 - top1Rating / 100)}
+                  transform="rotate(-90 22 22)"
+                />
+                <text x="22" y="22" textAnchor="middle" dominantBaseline="central" fill="#D4B05C" fontSize="13" fontWeight="700" fontFamily="Plus Jakarta Sans, sans-serif">{top1Rating}</text>
+              </svg>
+            </div>
+          )}
+        </div>
+      </button>
+
+      {/* #2 + #3 row */}
+      <div className="rk-podium">
+        {[
+          { movie: top2, rank: 2, color: "#C0C0C0" },
+          { movie: top3, rank: 3, color: "#CD7F32" },
+        ].map(({ movie, rank, color }) => {
+          const r = watchedRatings.get(movie.id);
+          return (
+            <button key={movie.id} className="rk-podium-card" onClick={() => onOpen(movie)} type="button">
+              <div className="rk-podium-poster" style={{ borderColor: color }}>
+                <PosterImage posterPath={movie.poster_path} title={movie.title} />
+              </div>
+              <div className="rk-podium-info">
+                <span className="rk-podium-badge" style={{ background: color, color: "#1A0A14" }}>#{rank}</span>
+                <div className="rk-podium-title">{movie.title}</div>
+                <div className="rk-podium-meta">{movie.genre} · {movie.year}</div>
+              </div>
+              <PosterRatingDot rating={r} size={32} />
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Remaining ranked list */}
+      {rest.length > 0 && (
+        <div className="rankings-list">
+          {rest.map((movie, i) => {
+            const rank = i + 4;
+            const r = watchedRatings.get(movie.id);
+            return (
+              <div key={movie.id} className="ranking-item" onClick={() => onOpen(movie)}>
+                <span className="ranking-num">{rank}</span>
+                <div className="ranking-poster">
+                  <PosterImage posterPath={movie.poster_path} title={movie.title} />
+                </div>
+                <div className="ranking-info">
+                  <div className="ranking-title">{movie.title}</div>
+                  <div className="ranking-meta">{movie.genre} · {movie.year}{watchedDates?.get(movie.id) ? ` · ${formatWatchDate(watchedDates.get(movie.id))}` : ""}</div>
+                </div>
+                <PosterRatingDot rating={r} size={36} />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const INSIGHT_TYPES = ["movie_twin", "vibe_check", "blind_spot", "taste_evolution", "movie_dna"];
 
@@ -4177,10 +4244,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
     }, 150);
   }, []);
   const [journalSearch, setJournalSearch] = useState("");
-  const [rankSort, setRankSort] = useState(() => {
-    const stored = loadFromStorage("cc_rankSort", "rating_desc");
-    return RANK_SORT_OPTIONS.some((o) => o.value === stored) ? stored : "rating_desc";
-  });
   const [journalSort, setJournalSort] = useState(() => {
     const stored = loadFromStorage("cc_journalSort", "date_desc");
     return JOURNAL_SORT_OPTIONS.some((o) => o.value === stored) ? stored : "date_desc";
@@ -4201,7 +4264,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
     preferencesService.getPreferences(user.id).then((prefs) => {
       if (cancelled) return;
       const t = prefs.ui_toggles;
-      if (t?.rankSort && RANK_SORT_OPTIONS.some((o) => o.value === t.rankSort)) setRankSort(t.rankSort);
       if (t?.journalSort && JOURNAL_SORT_OPTIONS.some((o) => o.value === t.journalSort)) setJournalSort(t.journalSort);
     });
     return () => { cancelled = true; };
@@ -4295,10 +4357,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
 
   // Persist sort preferences
   useEffect(() => {
-    saveToStorage("cc_rankSort", rankSort);
-    if (user) preferencesService.updateUIToggles(user.id, { rankSort }).catch(syncFailToast);
-  }, [rankSort]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
     saveToStorage("cc_journalSort", journalSort);
     if (user) preferencesService.updateUIToggles(user.id, { journalSort }).catch(syncFailToast);
   }, [journalSort]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -4307,7 +4365,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   // Fetch runtimes when runtime sort is active
   const runtimeFetchedRef = useRef(false);
   useEffect(() => {
-    const needsRuntime = rankSort === "runtime_desc" || journalSort === "runtime_desc";
+    const needsRuntime = journalSort === "runtime_desc";
     if (!needsRuntime || movies.length === 0) return;
     const missing = movies.filter((m) => !(m.id in runtimeCache));
     if (missing.length === 0 || runtimeFetchedRef.current) return;
@@ -4327,14 +4385,12 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
       }
     })();
     return () => { cancelled = true; };
-  }, [rankSort, journalSort, movies, runtimeCache]);
+  }, [journalSort, movies, runtimeCache]);
 
   // Reset fetch guard when sort changes away from runtime
   useEffect(() => {
-    if (rankSort !== "runtime_desc" && journalSort !== "runtime_desc") {
-      runtimeFetchedRef.current = false;
-    }
-  }, [rankSort, journalSort]);
+    if (journalSort !== "runtime_desc") runtimeFetchedRef.current = false;
+  }, [journalSort]);
 
   // Sort helper
   const sortMovies = useCallback((list, sortKey) => {
@@ -4366,10 +4422,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   }, [watchedRatings, watchedDates, runtimeCache]);
 
   // Sorted lists
-  const rankedMovies = useMemo(() => {
-    return sortMovies(movies, rankSort);
-  }, [movies, rankSort, sortMovies]);
-
   const sortedJournalMovies = useMemo(
     () => sortMovies(movies, journalSort),
     [movies, journalSort, sortMovies]
@@ -4381,19 +4433,14 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
     return sortedJournalMovies.filter((m) => (m.title || "").toLowerCase().includes(q));
   }, [sortedJournalMovies, journalSearch]);
 
-  const rankingStats = useMemo(() => {
-    if (rankedMovies.length === 0) return null;
-    const total = rankedMovies.length;
-    const ratedMovies = rankedMovies.filter((m) => watchedRatings.has(m.id));
-    const ratedCount = ratedMovies.length;
-    const avg = ratedCount > 0 ? Math.round(ratedMovies.reduce((s, m) => s + (watchedRatings.get(m.id) || 0), 0) / ratedCount) : 0;
-    const genreCounts = {};
-    rankedMovies.forEach((m) => { genreCounts[m.genre || "Other"] = (genreCounts[m.genre || "Other"] || 0) + 1; });
-    const topGenre = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
-    return { total, ratedCount, avg, topGenre };
-  }, [rankedMovies, watchedRatings]);
+  // For "Your rankings" sort: only movies with a personal rating count toward the podium/list.
+  // Rated movies are sorted desc by rating in sortMovies("rating_desc").
+  const ratedRanked = useMemo(
+    () => filteredJournalMovies.filter((m) => watchedRatings.has(m.id)),
+    [filteredJournalMovies, watchedRatings]
+  );
 
-  const TOGGLE_VIEWS = ["journal", "rankings", "stats"];
+  const TOGGLE_VIEWS = ["journal", "stats"];
   const toggleIndex = TOGGLE_VIEWS.indexOf(view);
 
   return (
@@ -4408,13 +4455,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                 <div className="saved-icon">{emptyJournal.icon}</div>
                 <div className="saved-title">{emptyJournal.title}</div>
                 <div className="saved-desc">{emptyJournal.desc}</div>
-              </>
-            )}
-            {view === "rankings" && (
-              <>
-                <div className="saved-icon">{emptyRankings.icon}</div>
-                <div className="saved-title">{emptyRankings.title}</div>
-                <div className="saved-desc">{emptyRankings.desc}</div>
               </>
             )}
             {view === "stats" && (
@@ -4453,8 +4493,21 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                     <SortDropdown options={JOURNAL_SORT_OPTIONS} value={journalSort} onChange={setJournalSort} />
                   </div>
                 </div>
+
                 {filteredJournalMovies.length === 0 && journalSearch.trim() ? (
                   <div className="journal-no-results">No movies found</div>
+                ) : journalSort === "rating_desc" ? (
+                  /* "Your rankings" — hero #1 + podium #2/#3 + numbered list */
+                  ratedRanked.length === 0 ? (
+                    <div className="rankings-empty">Rate movies to build your rankings.</div>
+                  ) : (
+                    <RankingsLayout
+                      ranked={ratedRanked}
+                      watchedRatings={watchedRatings}
+                      watchedDates={watchedDates}
+                      onOpen={setSelectedMovie}
+                    />
+                  )
                 ) : journalSort === "genre_group" ? (
                   (() => {
                     const groups = {};
@@ -4465,14 +4518,14 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                     });
                     return Object.entries(groups).map(([genre, gMovies]) => (
                       <div key={genre} className="journal-genre-group">
-                        <div className="journal-genre-header" data-aos="fade-right" data-aos-duration="300" style={{ color: GENRE_COLORS[genre] || "var(--text-secondary)" }}>{genre}</div>
-                        <div className="movies-grid" data-aos="fade-up" data-aos-duration="400">
+                        <div className="journal-genre-header" style={{ color: GENRE_COLORS[genre] || "var(--text-secondary)" }}>{genre}</div>
+                        <div className="jp-grid">
                           {gMovies.map((movie) => (
-                            <MovieTile
+                            <JournalPosterCard
                               key={movie.id}
                               movie={movie}
-                              isSaved={savedIds.has(movie.id)}
-                              onToggleSave={toggleSave}
+                              watchedDate={watchedDates?.get(movie.id)}
+                              note={watchedNotes?.get(movie.id)}
                               onClick={() => setSelectedMovie(movie)}
                             />
                           ))}
@@ -4481,99 +4534,42 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                     ));
                   })()
                 ) : (
-                  <div className="movies-grid" data-aos="fade-up" data-aos-duration="400">
-                    {filteredJournalMovies.map((movie) => (
-                      <MovieTile
-                        key={movie.id}
-                        movie={movie}
-                        isSaved={savedIds.has(movie.id)}
-                        onToggleSave={toggleSave}
-                        onClick={() => setSelectedMovie(movie)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {view === "rankings" && (
-              <>
-                {rankedMovies.length === 0 ? (
-                  <div className="rankings-empty">Rate movies in your journal to see them ranked here.</div>
-                ) : (
-                  <>
-                    {/* Stat Row + Sort */}
-                    <div className="rank-stat-row" data-aos="fade-right" data-aos-duration="300">
-                      <div className="rank-stat-text">
-                        {rankingStats && (
-                          <>
-                            <strong>{rankingStats.total}</strong> rated
-                            <span className="rank-stat-dot" />
-                            <span>Avg </span><strong>{rankingStats.avg}</strong>/100
-                            <span className="rank-stat-dot" />
-                            <span>Top: </span><strong>{rankingStats.topGenre}</strong>
-                          </>
-                        )}
-                      </div>
-                      <SortDropdown options={RANK_SORT_OPTIONS} value={rankSort} onChange={setRankSort} />
-                    </div>
-
-                    {/* Podium — Top 3 */}
-                    {rankSort === "rating_desc" && rankingStats?.ratedCount >= 3 && (
-                      <div className="podium-v2" data-aos="fade-up" data-aos-duration="500">
-                        {[1, 0, 2].map((idx) => {
-                          const m = rankedMovies[idx];
-                          const isFirst = idx === 0;
-                          const medalColor = idx === 0 ? "#C9A84C" : idx === 1 ? "#B0B0B0" : "#B87333";
-                          return (
-                            <div key={m.id} className={`podium-v2-slot ${isFirst ? "podium-v2-first" : ""}`} onClick={() => setSelectedMovie(m)}>
-                              <div className="podium-v2-poster-wrap">
-                                <div className={`podium-v2-poster ${isFirst ? "podium-v2-poster-lg" : ""}`}>
-                                  <PosterImage posterPath={m.poster_path} title={m.title} />
-                                </div>
-                                <div className="podium-v2-badge" style={{ background: medalColor }}>{idx + 1}</div>
-                              </div>
-                              <div className="podium-v2-title">{m.title}</div>
-                              <ScoreRing score={watchedRatings.get(m.id)} size={isFirst ? 40 : 34} />
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Ranking List #4+ */}
-                    <div className="rankings-list">
-                      {(rankSort === "rating_desc" && rankingStats?.ratedCount >= 3 ? rankedMovies.slice(3) : rankedMovies).map((movie, i) => {
-                        const rank = rankSort === "rating_desc" && rankingStats?.ratedCount >= 3 ? i + 4 : i + 1;
-                        return (
-                          <div key={movie.id} className="ranking-item" onClick={() => setSelectedMovie(movie)}>
-                            <span className="ranking-num">{rank}</span>
-                            <div className="ranking-poster">
-                              <PosterImage posterPath={movie.poster_path} title={movie.title} />
-                            </div>
-                            <div className="ranking-info">
-                              <div className="ranking-title">{movie.title}</div>
-                              <div className="ranking-meta">{movie.genre} · {movie.year}{watchedDates.get(movie.id) ? ` · ${formatWatchDate(watchedDates.get(movie.id))}` : ""}</div>
-                            </div>
-                            <ScoreRing score={watchedRatings.get(movie.id)} size={36} />
+                  /* Default poster wall: month-grouped when sorted by date, otherwise flat */
+                  (journalSort === "date_desc" || journalSort === "date_asc") ? (
+                    groupByMonth(filteredJournalMovies, watchedDates).map((g) => (
+                      <div key={g.key} className="jp-month-group">
+                        <div className="browse-section-header browse-section-header-v2">
+                          <div className="browse-section-titles">
+                            <div className="browse-section-eyebrow">— {g.eyebrow} —</div>
+                            <div className="browse-section-title">{g.label}</div>
                           </div>
-                        );
-                      })}
-                    </div>
-
-                    {insight && !insightLoading && movies.length >= 3 && (
-                      <div className="insight-banner" style={{ marginTop: 16 }}>
-                        <span className="insight-banner-icon">{INSIGHT_ICONS[insight.type]}</span>
-                        <span className="insight-banner-label">{INSIGHT_LABELS[insight.type]}</span>
-                        <span className="insight-banner-text">{insight.text}</span>
-                        <button className="insight-banner-refresh" onClick={refreshInsight} title="New insight">
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                          </svg>
-                        </button>
+                        </div>
+                        <div className="jp-grid">
+                          {g.movies.map((movie) => (
+                            <JournalPosterCard
+                              key={movie.id}
+                              movie={movie}
+                              watchedDate={watchedDates?.get(movie.id)}
+                              note={watchedNotes?.get(movie.id)}
+                              onClick={() => setSelectedMovie(movie)}
+                            />
+                          ))}
+                        </div>
                       </div>
-                    )}
-                  </>
+                    ))
+                  ) : (
+                    <div className="jp-grid">
+                      {filteredJournalMovies.map((movie) => (
+                        <JournalPosterCard
+                          key={movie.id}
+                          movie={movie}
+                          watchedDate={watchedDates?.get(movie.id)}
+                          note={watchedNotes?.get(movie.id)}
+                          onClick={() => setSelectedMovie(movie)}
+                        />
+                      ))}
+                    </div>
+                  )
                 )}
               </>
             )}
@@ -4591,7 +4587,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
         <div className="journal-float-toggle">
           <div className="journal-float-toggle-track" style={{ transform: `translateX(${toggleIndex * 100}%)` }} />
           <button className={`journal-float-toggle-btn ${view === "journal" ? "active" : ""}`} onClick={() => setView("journal")}>Journal</button>
-          <button className={`journal-float-toggle-btn ${view === "rankings" ? "active" : ""}`} onClick={() => setView("rankings")}>Rankings</button>
           <button className={`journal-float-toggle-btn ${view === "stats" ? "active" : ""}`} onClick={() => setView("stats")}>Stats</button>
         </div>,
         document.body
@@ -5265,18 +5260,8 @@ function MilestoneCelebration({ milestone, onDismiss }) {
   );
 }
 
-const RANK_SORT_OPTIONS = [
-  { value: "rating_desc", label: "My ranking (high to low)" },
-  { value: "tmdb_desc", label: "TMDB rating (high to low)" },
-  { value: "tmdb_asc", label: "TMDB rating (low to high)" },
-  { value: "year_desc", label: "Release year (newest)" },
-  { value: "year_asc", label: "Release year (oldest)" },
-  { value: "date_desc", label: "Date watched (recent)" },
-  { value: "runtime_desc", label: "Runtime (longest)" },
-  { value: "alpha_asc", label: "Alphabetical (A-Z)" },
-];
-
 const JOURNAL_SORT_OPTIONS = [
+  { value: "rating_desc", label: "Your rankings" },
   { value: "date_desc", label: "Date watched (recent)" },
   { value: "date_asc", label: "Date watched (oldest)" },
   { value: "tmdb_desc", label: "TMDB rating (high to low)" },

@@ -1973,14 +1973,9 @@ body {
   height: 100%;
 }
 
+/* Backdrop fade removed — backdrop image now reads at full clarity. */
 .modal-backdrop-fade {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 80px;
-  background: linear-gradient(to bottom, transparent, var(--bg-card));
-  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--bg-card) 92%, transparent));
+  display: none;
 }
 
 .modal-body {
@@ -7738,6 +7733,606 @@ body {
   overflow: hidden;
 }
 
+/* ── Journal poster wall ─────────────────────────── */
+.jp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+@media (min-width: 768px) {
+  .jp-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .jp-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+.jp-month-group {
+  margin-bottom: 24px;
+}
+
+.jp-month-group + .jp-month-group {
+  margin-top: 12px;
+}
+
+.jp-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+  min-width: 0;
+}
+
+.jp-poster {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+
+/* Absolute positioning means the poster image (or fallback) cannot influence the
+   parent's intrinsic size — the 2/3 aspect-ratio box is the single source of truth. */
+.jp-poster > img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.jp-poster .movie-poster-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+
+@media (hover: hover) {
+  .jp-card:hover .jp-poster {
+    transform: scale(1.04);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
+}
+
+.jp-date {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #F5F0EB;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.jp-note {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #F5F0EB;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.jp-note svg { width: 11px; height: 11px; }
+
+.jp-rating {
+  position: absolute;
+  bottom: -8px;
+  right: -8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 2px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="light"] .jp-rating {
+  background: #fff;
+}
+
+.jp-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: -0.1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 2px;
+  margin-top: 6px;
+  max-width: 100%;
+}
+
+.jp-rank-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  border: 2px solid;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  flex-shrink: 0;
+}
+
+[data-theme="light"] .jp-rank-dot { background: var(--bg-card); }
+
+/* ── Rankings hero + podium cards ────────────────── */
+.rk-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.rk-hero {
+  position: relative;
+  width: 100%;
+  min-height: 220px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: linear-gradient(180deg, #2A1520 0%, #1A0A14 100%);
+  isolation: isolate;
+  text-align: left;
+}
+
+@media (min-width: 768px) {
+  .rk-hero { min-height: 280px; }
+}
+
+.rk-hero-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.rk-hero-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(26, 10, 20, 0.95) 0%, rgba(26, 10, 20, 0.6) 50%, rgba(26, 10, 20, 0.1) 100%);
+  z-index: 1;
+}
+
+.rk-hero-content {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 16px;
+  height: 100%;
+  min-height: inherit;
+}
+
+.rk-hero-poster {
+  flex: 0 0 80px;
+  width: 80px;
+  height: 120px;
+  border-radius: 8px;
+  border: 3px solid #D4B05C;
+  overflow: hidden;
+  background: var(--bg-elevated);
+}
+
+.rk-hero-poster img,
+.rk-hero-poster .movie-poster-fallback {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rk-hero-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: #F5F0EB;
+}
+
+.rk-hero-badge {
+  display: inline-block;
+  width: fit-content;
+  background: #D4B05C;
+  color: #1A0A14;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.rk-hero-eyebrow {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(245, 240, 235, 0.7);
+  letter-spacing: 0.5px;
+}
+
+.rk-hero-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  line-height: 1.1;
+  color: #fff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+  margin: 0;
+}
+
+@media (min-width: 768px) {
+  .rk-hero-title { font-size: 26px; }
+}
+
+.rk-hero-sub {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  color: rgba(245, 240, 235, 0.85);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rk-hero-stars {
+  display: inline-flex;
+  align-items: center;
+}
+
+.rk-hero-ring {
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+/* #2 + #3 row */
+.rk-podium {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 768px) {
+  .rk-podium {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.rk-podium-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  color: inherit;
+  transition: border-color 200ms ease, transform 120ms ease;
+}
+
+.rk-podium-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.rk-podium-poster {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 72px;
+  border-radius: 6px;
+  border: 2px solid;
+  overflow: hidden;
+}
+
+.rk-podium-poster img,
+.rk-podium-poster .movie-poster-fallback {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rk-podium-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rk-podium-badge {
+  display: inline-block;
+  width: fit-content;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.rk-podium-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--text-primary);
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rk-podium-meta {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Stats — Editorial layout ────────────────────── */
+.stats-page {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding-bottom: 80px;
+}
+
+.stats-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stats-numbers-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (min-width: 768px) {
+  .stats-numbers-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+}
+
+.stats-metric {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+[data-theme="light"] .stats-metric {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.stats-metric-label {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.stats-metric-value {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.4px;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+@media (min-width: 768px) {
+  .stats-metric-value { font-size: 28px; }
+}
+
+/* Genre breakdown */
+.stats-genre-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stats-genre-row {
+  display: grid;
+  grid-template-columns: 84px 1fr 36px;
+  align-items: center;
+  gap: 12px;
+}
+
+.stats-genre-label {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.stats-genre-track {
+  height: 28px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+[data-theme="light"] .stats-genre-track {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.stats-genre-fill {
+  height: 100%;
+  background: var(--accent-burgundy);
+  border-radius: 0 4px 4px 0;
+  transition: width 600ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.stats-genre-count {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: right;
+}
+
+/* Rating distribution */
+.stats-rating-chart {
+  position: relative;
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 20px 16px 12px;
+  min-height: 200px;
+}
+
+.stats-rating-bars {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+  height: 160px;
+  align-items: stretch;
+}
+
+.stats-rating-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.stats-rating-bar-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.stats-rating-bar {
+  width: 100%;
+  background: var(--accent-burgundy);
+  border-radius: 4px 4px 0 0;
+  transition: height 600ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  min-height: 2px;
+}
+
+.stats-rating-label {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 9px;
+  color: var(--text-muted);
+  height: 12px;
+  white-space: nowrap;
+}
+
+.stats-rating-avg-line {
+  position: absolute;
+  top: 20px;
+  bottom: 24px;
+  width: 2px;
+  background: transparent;
+  border-left: 2px dashed #D4B05C;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.stats-rating-avg-label {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 8px;
+}
+
+.stats-rating-avg-label strong {
+  color: #D4B05C;
+  font-weight: 700;
+}
+
+.stats-empty {
+  padding: 60px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.stats-empty-icon { font-size: 36px; }
+
+.stats-empty-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.stats-empty-desc {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
 /* Star rating */
 .star-rating {
   position: relative;
@@ -9329,8 +9924,8 @@ body {
   left: 50%;
   transform: translateX(-50%);
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  width: 270px;
+  grid-template-columns: 1fr 1fr;
+  width: 220px;
   background: var(--bg-elevated);
   backdrop-filter: blur(20px) saturate(1.6);
   -webkit-backdrop-filter: blur(20px) saturate(1.6);
@@ -9344,7 +9939,7 @@ body {
   position: absolute;
   top: 4px;
   left: 4px;
-  width: calc(33.333% - 2.67px);
+  width: calc(50% - 4px);
   height: calc(100% - 8px);
   border-radius: 20px;
   background: var(--accent-burgundy);
