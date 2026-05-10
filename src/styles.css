@@ -6753,7 +6753,7 @@ body {
   width: calc(100% + 32px);
   margin-left: -16px;
   margin-right: -16px;
-  height: 42vh;
+  height: 320px;
   min-height: 260px;
   max-height: 360px;
   border-radius: 16px;
@@ -6792,7 +6792,7 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 0 20px 36px;
+  padding: 0 20px 16px;
   z-index: 2;
 }
 
@@ -6822,13 +6822,16 @@ body {
 
 .hero-title {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 800;
   color: #F5F0EB;
   letter-spacing: -0.5px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   line-height: 1.05;
   text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .hero-actions {
@@ -6882,12 +6885,14 @@ body {
 
 .hero-dots {
   position: absolute;
-  bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 20px;
+  right: 20px;
+  left: auto;
+  transform: none;
   display: flex;
   gap: 6px;
   z-index: 3;
+  align-items: center;
 }
 
 .hero-dot {
@@ -7123,8 +7128,8 @@ body {
 
 .reel-ring-wrap {
   position: relative;
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7138,11 +7143,16 @@ body {
 .reel-ring-num {
   position: relative;
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 19px;
+  font-size: 22px;
   font-weight: 800;
   color: var(--text-primary);
   letter-spacing: -0.5px;
   line-height: 1;
+}
+
+.reel-stat-num-hero {
+  font-size: 48px;
+  letter-spacing: -2px;
 }
 
 .reel-stat-films {
@@ -7286,6 +7296,7 @@ body {
 /* — Cinno Companion card — */
 .cinno-card {
   /* uses dash-card base */
+  margin-top: 4px;
 }
 
 .cinno-card-header {
@@ -7338,10 +7349,11 @@ body {
 .cinno-card-bubble {
   background: var(--bg-elevated);
   border-radius: 12px 12px 12px 4px;
-  padding: 10px 12px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 13px;
-  line-height: 1.4;
+  padding: 12px 14px;
+  font-family: Georgia, 'Palatino Linotype', serif;
+  font-style: italic;
+  font-size: 14px;
+  line-height: 1.5;
   color: var(--text-primary);
 }
 
@@ -7403,44 +7415,48 @@ body {
 
 /* — Cinno's Pick card — */
 .cinno-pick-card {
-  position: relative;
   overflow: hidden;
   padding: 0;
-  min-height: 220px;
-  background: var(--bg-elevated);
-  isolation: isolate;
+  min-height: 0;
+  background: var(--bg-card);
 }
 
-.cinno-pick-bg {
-  position: absolute;
-  inset: 0;
+.cinno-pick-inner {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  min-height: 140px;
+  transition: opacity 180ms ease;
+}
+
+.cinno-pick-inner.cinno-pick-fading {
+  opacity: 0;
+}
+
+.cinno-pick-poster-slab {
+  flex: 0 0 80px;
+  width: 80px;
+  overflow: hidden;
+  border-radius: 0;
+  position: relative;
+}
+
+.cinno-pick-poster-slab img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  z-index: 0;
-}
-
-.cinno-pick-gradient {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.45) 50%, rgba(0, 0, 0, 0.15) 100%);
-  z-index: 1;
+  display: block;
+  filter: brightness(0.88);
 }
 
 .cinno-pick-content {
-  position: relative;
-  z-index: 2;
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   padding: 12px 14px;
   gap: 8px;
-  transition: opacity 180ms ease;
-}
-
-.cinno-pick-content.cinno-pick-fading {
-  opacity: 0;
 }
 
 .cinno-pick-label {
@@ -7448,15 +7464,10 @@ body {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 1.6px;
-  color: #F5F0EB;
+  color: var(--accent-burgundy);
   text-transform: uppercase;
   align-self: flex-start;
-  background: rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  padding: 4px 8px;
-  border-radius: 4px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  padding: 0;
 }
 
 .cinno-pick-bottom {
@@ -7467,21 +7478,19 @@ body {
 
 .cinno-pick-title {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 800;
-  color: #fff;
+  color: var(--text-primary);
   letter-spacing: -0.3px;
-  line-height: 1.15;
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+  line-height: 1.2;
 }
 
 .cinno-pick-reason {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 12px;
+  font-size: 11px;
   font-style: italic;
-  color: rgba(245, 240, 235, 0.92);
+  color: var(--text-secondary);
   line-height: 1.35;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
 }
 
 .cinno-pick-reason-skel {
@@ -7507,18 +7516,16 @@ body {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 11px;
   font-weight: 600;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  color: #F5F0EB;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   transition: background 200ms ease, border-color 200ms ease, color 200ms ease;
 }
 
 .cinno-pick-btn:hover {
-  background: rgba(0, 0, 0, 0.7);
-  border-color: rgba(255, 255, 255, 0.45);
+  border-color: var(--accent-burgundy);
+  color: var(--accent-burgundy);
 }
 
 .cinno-pick-btn:disabled {
@@ -7637,6 +7644,61 @@ body {
   border: 1px solid var(--border);
   cursor: not-allowed;
   opacity: 0.65;
+}
+
+/* ── Home Stats Strip ─────────────────────────── */
+.home-stats-strip {
+  display: flex;
+  margin: 16px 0 4px;
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.home-stat-block {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 12px;
+  text-align: center;
+}
+
+.home-stat-block:not(:last-child) {
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.home-stat-num {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -1px;
+  line-height: 1;
+}
+
+.home-stat-label {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  line-height: 1.3;
+}
+
+.home-stat-up {
+  color: #5a9b6e;
+  font-size: 0.8em;
+}
+
+[data-theme="light"] .home-stats-strip {
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .home-stat-block:not(:last-child) {
+  border-right-color: rgba(0, 0, 0, 0.06);
 }
 
 /* ── From Your Journal section ────────────────── */
@@ -8383,40 +8445,68 @@ body {
   .home-dashboard:not(.home-dashboard-split) .home-dashboard-right > .reel-card { order: 1; }
   .home-dashboard:not(.home-dashboard-split) .home-dashboard-right > .cinno-card { order: 2; }
 
-  /* Dashboard layout — split (with editorial): editorial 40% | cards 60% */
+  /* Dashboard layout — split (with editorial): editorial 55% | cards 45% */
   .home-dashboard-split {
     display: grid;
-    grid-template-columns: 40fr 60fr;
-    gap: 24px;
+    grid-template-columns: 55fr 45fr;
+    gap: 20px;
     align-items: stretch;
   }
   .home-dashboard-split .home-dashboard-right {
-    grid-template-columns: 1fr 1fr;
-    grid-template-areas:
-      "reel chat"
-      "pick pick";
+    display: flex;
+    flex-direction: column;
     gap: 12px;
   }
-  .home-dashboard-split .home-dashboard-right > .reel-card { grid-area: reel; }
-  .home-dashboard-split .home-dashboard-right > .cinno-card { grid-area: chat; }
-  .home-dashboard-split .home-dashboard-right > .cinno-pick-card { grid-area: pick; }
+  .home-dashboard-split .home-dashboard-right > .reel-card,
+  .home-dashboard-split .home-dashboard-right > .cinno-pick-card {
+    flex: 1;
+    min-height: 0;
+  }
 
-  /* Editorial column: vertically centered within the column height (driven by the cards). */
+  /* Editorial (left) column — cream card background */
   .home-dashboard-split .home-dashboard-left {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    height: 100%;
+    background: #F5F0EB;
+    border-radius: 16px;
+    padding: 32px 28px;
+    min-height: 0;
   }
   .home-dashboard-left .taste-section {
     border-top: none;
     border-bottom: none;
-    padding: 4px 4px 0;
+    padding: 0;
     margin: 0;
   }
+  .home-dashboard-left .taste-eyebrow {
+    color: var(--accent-burgundy);
+  }
   .home-dashboard-left .taste-summary {
-    font-size: 30px;
+    font-size: 28px;
     letter-spacing: -0.6px;
+    color: #1A0A14;
+  }
+  .home-dashboard-left .taste-summary strong {
+    color: #1A0A14;
+    font-style: normal;
+  }
+  .home-dashboard-left .taste-summary strong:first-of-type {
+    color: var(--accent-burgundy);
+    font-style: italic;
+    text-decoration: underline;
+    text-decoration-color: var(--accent-burgundy);
+    text-underline-offset: 4px;
+  }
+  .home-dashboard-left .taste-summary em {
+    color: #1A0A14;
+  }
+  .home-dashboard-left .taste-stats {
+    color: rgba(26, 10, 20, 0.6);
+  }
+  .home-dashboard-left .taste-btn-disabled {
+    color: rgba(26, 10, 20, 0.45);
+    border-color: rgba(26, 10, 20, 0.2);
   }
 
   /* Legacy: kept for any callers still using .dash-row */
@@ -8427,8 +8517,9 @@ body {
   }
   .reel-stat-num { font-size: 26px; }
   .reel-bars { height: 60px; }
-  .cinno-pick-card { min-height: 100%; }
-  .cinno-pick-title { font-size: 20px; }
+  .cinno-pick-card { min-height: 0; }
+  .cinno-pick-poster-slab { flex: 0 0 100px; width: 100px; }
+  .cinno-pick-title { font-size: 17px; }
 
   /* Three-column journal recent cards on tablet+ */
   .journal-recent-row {
@@ -8437,23 +8528,23 @@ body {
   }
 
   /* Larger editorial summary on desktop */
-  .taste-summary { font-size: 38px; letter-spacing: -1px; }
+  .home-dashboard-left .taste-summary { font-size: 30px; letter-spacing: -0.8px; }
   .taste-summary-skeleton,
   .taste-summary-skeleton-short { height: 40px; }
-  .taste-section { padding: 36px 0 24px; margin: 36px 0 12px; }
 
   /* Hero banner — desktop */
   .hero-banner {
     width: calc(100% + 64px);
     margin-left: -32px;
     margin-right: -32px;
-    height: 55vh;
-    min-height: 400px;
-    max-height: 560px;
+    height: 360px;
+    min-height: 360px;
+    max-height: 360px;
     border-radius: 20px;
   }
-  .hero-title { font-size: 40px; }
-  .hero-content { padding: 0 40px 48px; }
+  .hero-title { font-size: 36px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hero-content { padding: 0 40px 20px; }
+  .hero-dots { right: 40px; bottom: 24px; }
 
   /* Browse sections — stacked full-width on desktop */
   .browse-sections {
@@ -8558,8 +8649,9 @@ body {
     margin-left: -40px;
     margin-right: -40px;
   }
-  .hero-title { font-size: 48px; }
-  .hero-content { padding: 0 48px 56px; }
+  .hero-title { font-size: 40px; }
+  .hero-content { padding: 0 48px 24px; }
+  .hero-dots { right: 48px; }
 
   /* Browse sections — consistent gap */
   .browse-sections {

@@ -1837,8 +1837,6 @@ function YourReelCard({ watchedDates, watchedRatings, watchedMovies }) {
   );
 
   const filmsDisplay = useAnimatedCount(stats.films, 600, 0);
-  const hoursDisplay = useAnimatedCount(stats.hours, 600, 1);
-  const avgDisplay = useAnimatedCount(stats.avgRating, 600, 1);
 
   const tfMeta = REEL_TIMEFRAMES.find((t) => t.id === timeframe);
   const showRing = tfMeta?.goal != null;
@@ -1866,21 +1864,13 @@ function YourReelCard({ watchedDates, watchedRatings, watchedMovies }) {
         <div className="reel-stat reel-stat-films">
           {showRing ? (
             <div className="reel-ring-wrap">
-              <ProgressRing value={Math.min(stats.films, tfMeta.goal)} goal={tfMeta.goal} size={56} stroke={5} />
+              <ProgressRing value={Math.min(stats.films, tfMeta.goal)} goal={tfMeta.goal} size={64} stroke={5} />
               <div className="reel-ring-num">{filmsDisplay}</div>
             </div>
           ) : (
-            <div className="reel-stat-num">{filmsDisplay}</div>
+            <div className="reel-stat-num reel-stat-num-hero">{filmsDisplay}</div>
           )}
           <div className="reel-stat-key">{showRing ? `of ${tfMeta.goal} goal` : "Films"}</div>
-        </div>
-        <div className="reel-stat">
-          <div className="reel-stat-num">{hoursDisplay}</div>
-          <div className="reel-stat-key">Hours</div>
-        </div>
-        <div className="reel-stat">
-          <div className="reel-stat-num">{avgDisplay}</div>
-          <div className="reel-stat-key">Avg rating</div>
         </div>
       </div>
 
@@ -2049,43 +2039,45 @@ function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, to
 
   if (!movie) return null;
 
-  const backdropUrl = movie.backdrop_path ? `${IMG_BASE}/w780${movie.backdrop_path}` : null;
+  const posterUrl = movie.poster_path ? `${IMG_BASE}/w185${movie.poster_path}` : (movie.backdrop_path ? `${IMG_BASE}/w300${movie.backdrop_path}` : null);
   const isSaved = savedIds?.has(movie.id);
 
   return (
     <div className="dash-card cinno-pick-card">
-      {backdropUrl && <img className="cinno-pick-bg" src={backdropUrl} alt="" aria-hidden="true" />}
-      <div className="cinno-pick-gradient" />
-      <div className={`cinno-pick-content${fading ? " cinno-pick-fading" : ""}`}>
-        <div className="cinno-pick-label">CINNO&apos;S PICK</div>
-        <div className="cinno-pick-bottom">
-          <div className="cinno-pick-title">{movie.title}</div>
-          {reasonLoading ? (
-            <div className="cinno-pick-reason-skel skel" />
-          ) : reason ? (
-            <div className="cinno-pick-reason">{reason}</div>
-          ) : null}
-          <div className="cinno-pick-actions">
-            <button
-              className="cinno-pick-btn"
-              onClick={shuffle}
-              disabled={pool.length < 2}
-              title="Shuffle"
-            >
-              <ShuffleIcon size={13} />
-              <span>Shuffle</span>
-            </button>
-            <button
-              className={`cinno-pick-btn${isSaved ? " saved" : ""}`}
-              onClick={() => toggleSave(movie)}
-              title={isSaved ? "Saved" : "Save"}
-            >
-              <BookmarkIcon />
-              <span>{isSaved ? "Saved" : "Save"}</span>
-            </button>
-            <button className="cinno-pick-btn" onClick={() => onOpenMovie(movie)} title="More info">
-              More info
-            </button>
+      <div className={`cinno-pick-inner${fading ? " cinno-pick-fading" : ""}`}>
+        {posterUrl && (
+          <div className="cinno-pick-poster-slab">
+            <img src={posterUrl} alt="" />
+          </div>
+        )}
+        <div className="cinno-pick-content">
+          <div className="cinno-pick-label">CINNO&apos;S PICK · FOR TONIGHT</div>
+          <div className="cinno-pick-bottom">
+            <div className="cinno-pick-title">{movie.title}</div>
+            {reasonLoading ? (
+              <div className="cinno-pick-reason-skel skel" />
+            ) : reason ? (
+              <div className="cinno-pick-reason">{reason}</div>
+            ) : null}
+            <div className="cinno-pick-actions">
+              <button
+                className={`cinno-pick-btn${isSaved ? " saved" : ""}`}
+                onClick={() => toggleSave(movie)}
+                title={isSaved ? "Saved" : "Save"}
+              >
+                <BookmarkIcon />
+                <span>{isSaved ? "Saved" : "+ Save"}</span>
+              </button>
+              <button
+                className="cinno-pick-btn"
+                onClick={shuffle}
+                disabled={pool.length < 2}
+                title="Shuffle"
+              >
+                <ShuffleIcon size={13} />
+                <span>Shuffle</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -2428,6 +2420,27 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
     }
     return false;
   }, [user, watchedDates]);
+
+  const homeStats = useMemo(() => {
+    if (!user || !watchedDates || !watchedMovies) return null;
+    const now = DateTime.now();
+    const cutoff = now.minus({ days: 30 }).startOf("day");
+    const ids = [];
+    watchedDates.forEach((dateStr, id) => {
+      const d = DateTime.fromISO((dateStr || "").slice(0, 10));
+      if (d.isValid && d >= cutoff) ids.push(id);
+    });
+    if (ids.length === 0) return null;
+    const movies = ids.map((id) => watchedMovies?.get(id)).filter(Boolean);
+    const ratings = ids.map((id) => watchedRatings?.get(id)).filter((r) => typeof r === "number");
+    const avgRating = ratings.length > 0 ? (ratings.reduce((a, b) => a + b, 0) / ratings.length / 10).toFixed(1) : null;
+    const genreCounts = {};
+    movies.forEach((m) => { if (m.genre) genreCounts[m.genre] = (genreCounts[m.genre] || 0) + 1; });
+    let topGenre = null, topCount = 0;
+    Object.entries(genreCounts).forEach(([g, c]) => { if (c > topCount) { topGenre = g; topCount = c; } });
+    const topPct = movies.length > 0 ? Math.round((topCount / movies.length) * 100) : 0;
+    return { films: ids.length, topGenre, topPct, avgRating };
+  }, [user, watchedDates, watchedMovies, watchedRatings]);
 
   // Hydrate from module cache when the keys still match (e.g. tab switch back to Home).
   // Otherwise initialize empty + loading=true so the skeleton shows immediately.
@@ -2843,7 +2856,6 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                       )}
                       <div className="hero-gradient" />
                       <div className="hero-content">
-                        <span className="hero-featured-badge">FEATURED</span>
                         <p className="hero-meta">{movie.genre} · {movie.year}</p>
                         <h2 className="hero-title">{movie.title}</h2>
                         <div className="hero-actions">
@@ -2862,9 +2874,6 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                             onClick={(e) => { e.stopPropagation(); toggleSave(movie); }}
                           >
                             {isHeroSaved ? "✓ Watchlist" : "+ Watchlist"}
-                          </button>
-                          <button className="hero-btn hero-btn-details" onClick={(e) => { e.stopPropagation(); setSelectedMovie(movie); }}>
-                            More info
                           </button>
                         </div>
                       </div>
@@ -2895,17 +2904,11 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                   />
                 </div>
               )}
-              {/* DOM order = mobile stack order: Reel → Chat → Pick.
-                  CSS grid-template-areas / order overrides this on desktop. */}
               <div className="home-dashboard-right">
                 <YourReelCard
                   watchedDates={watchedDates}
                   watchedRatings={watchedRatings}
                   watchedMovies={watchedMovies}
-                />
-                <CinnoCompanionCard
-                  goToCompanion={goToCompanion}
-                  startCinnoChat={startCinnoChat}
                 />
                 <CinnoPickCard
                   user={user}
@@ -2918,6 +2921,34 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                 />
               </div>
             </div>
+
+            {/* Stats Strip */}
+            {homeStats && (
+              <div className="home-stats-strip">
+                <div className="home-stat-block">
+                  <div className="home-stat-num">{homeStats.films}</div>
+                  <div className="home-stat-label">Films Watched</div>
+                </div>
+                {homeStats.topGenre && (
+                  <div className="home-stat-block">
+                    <div className="home-stat-num"><span className="home-stat-up">↑</span>{homeStats.topPct}%</div>
+                    <div className="home-stat-label">{homeStats.topGenre} This Month</div>
+                  </div>
+                )}
+                {homeStats.avgRating && (
+                  <div className="home-stat-block">
+                    <div className="home-stat-num">{homeStats.avgRating}</div>
+                    <div className="home-stat-label">Average Rating</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Cinno Companion — full-width below stats */}
+            <CinnoCompanionCard
+              goToCompanion={goToCompanion}
+              startCinnoChat={startCinnoChat}
+            />
 
             {/* Browse Sections — stacked full-width */}
             <div className="browse-sections">
