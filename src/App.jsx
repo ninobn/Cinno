@@ -2856,7 +2856,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                     return (
                       <div key={movie.id} className={`hero-slide ${isCurrent ? 'active' : ''}`}>
                         {movie.backdrop_path && (
-                          <img src={`${IMG_BASE}/w1280${movie.backdrop_path}`} alt="" className="hero-slide-bg" />
+                          <img src={`${IMG_BASE}/original${movie.backdrop_path}`} alt="" className="hero-slide-bg" />
                         )}
                         <div className="hero-gradient" />
                         <div className="hero-content">
