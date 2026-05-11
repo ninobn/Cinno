@@ -6780,12 +6780,8 @@ body {
   border-radius: 20px;
   overflow: hidden;
   margin-bottom: 0;
-  /* Multi-layer background: warm radial highlight (folded in from the
-     previous ::after) sits over the diagonal blue gradient. This frees
-     ::after for the legibility scrim below. */
-  background:
-    radial-gradient(circle at 78% 28%, rgba(210, 160, 80, 0.32) 0%, transparent 38%),
-    linear-gradient(135deg, #0a1628 0%, #2d5a87 100%);
+  /* Solid black fallback — shown only before the backdrop image loads. */
+  background: #000;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
   isolation: isolate;
 }
@@ -6811,14 +6807,12 @@ body {
   object-fit: cover;
   object-position: center 20%;
   display: block;
-  opacity: 0.55;
-  mix-blend-mode: luminosity;
 }
 
 .hero-gradient {
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(10, 22, 40, 0.45) 0%, rgba(45, 90, 135, 0.25) 60%, rgba(10, 22, 40, 0.55) 100%);
+  background: transparent;
 }
 
 .hero-content {
