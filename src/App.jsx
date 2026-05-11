@@ -2891,6 +2891,12 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                                 >
                                   {isHeroSaved ? "✓ Watchlist" : "+ Watchlist"}
                                 </button>
+                                <button
+                                  className="hero-btn hero-btn-details"
+                                  onClick={(e) => { e.stopPropagation(); setSelectedMovie(movie); }}
+                                >
+                                  More info
+                                </button>
                               </div>
                             </div>
                           </div>

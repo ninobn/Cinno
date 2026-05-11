@@ -6976,6 +6976,20 @@ body {
   color: #fff;
 }
 
+/* Tertiary CTA — softer ghost than Watchlist for clear 3-tier hierarchy
+   (Trailer wine > Watchlist ghost-strong > Details ghost-soft) */
+.hero-btn-details {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.hero-btn-details:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.06);
+}
+
 /* Soft transition strip — bridges the hard cut between the dark hero
    and the lighter page body beneath it. */
 .hero-bleed {
