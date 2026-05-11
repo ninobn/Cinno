@@ -7415,9 +7415,9 @@ body {
   background: var(--card);
   border: 1px solid var(--home-border);
   border-radius: 14px;
-  height: 144px;
-  min-height: 144px;
-  max-height: 144px;
+  height: 180px;
+  min-height: 180px;
+  max-height: 180px;
   flex-direction: row;
   gap: 0;
 }
@@ -7535,9 +7535,10 @@ body {
   color: var(--subtle);
   line-height: 1.4;
   margin-top: 4px;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .cinno-pick-reason-skel {
@@ -7556,7 +7557,8 @@ body {
   display: flex;
   gap: 8px;
   flex-wrap: nowrap;
-  margin-top: 8px;
+  flex-shrink: 0;
+  margin-top: auto;
 }
 
 .cinno-pick-btn {
