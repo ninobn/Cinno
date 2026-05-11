@@ -2847,67 +2847,80 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
               </div>
             )}
             {!trendingLoading && heroMovies.length > 0 && (
-              <div className="hero-banner">
-                {heroMovies.map((movie, i) => {
-                  const isCurrent = i === heroIndex;
-                  const trailerUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(movie.title + " official trailer")}`;
-                  const isHeroSaved = savedIds.has(movie.id);
-                  return (
-                    <div key={movie.id} className={`hero-slide ${isCurrent ? 'active' : ''}`}>
-                      {movie.backdrop_path && (
-                        <img src={`${IMG_BASE}/w1280${movie.backdrop_path}`} alt="" className="hero-slide-bg" />
-                      )}
-                      <div className="hero-gradient" />
-                      <div className="hero-content">
-                        <span className="hero-eyebrow-pill">{movie.genre} · {movie.year}</span>
-                        <div className="hero-bottom-row">
-                          <div className="hero-bottom-left">
-                            <h2 className="hero-title">{movie.title}</h2>
-                            <div className="hero-actions">
-                              <a
-                                className="hero-btn hero-btn-trailer"
-                                href={trailerUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>
-                                Watch Trailer
-                              </a>
-                              <button
-                                className={`hero-btn hero-btn-watchlist${isHeroSaved ? " saved" : ""}`}
-                                onClick={(e) => { e.stopPropagation(); toggleSave(movie); }}
-                              >
-                                {isHeroSaved ? "✓ Watchlist" : "+ Watchlist"}
-                              </button>
+              <>
+                <div className="hero-banner">
+                  {heroMovies.map((movie, i) => {
+                    const isCurrent = i === heroIndex;
+                    const trailerUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(movie.title + " official trailer")}`;
+                    const isHeroSaved = savedIds.has(movie.id);
+                    const hasRating = movie.rating && movie.rating !== "—";
+                    const hasSynopsis = movie.synopsis && movie.synopsis !== "No description available.";
+                    return (
+                      <div key={movie.id} className={`hero-slide ${isCurrent ? 'active' : ''}`}>
+                        {movie.backdrop_path && (
+                          <img src={`${IMG_BASE}/w1280${movie.backdrop_path}`} alt="" className="hero-slide-bg" />
+                        )}
+                        <div className="hero-gradient" />
+                        <div className="hero-content">
+                          <div className="hero-top-row">
+                            <span className="hero-eyebrow-pill">{movie.genre} · {movie.year}</span>
+                            {hasRating && (
+                              <span className="hero-rating">★ {movie.rating}</span>
+                            )}
+                          </div>
+                          <div className="hero-bottom-row">
+                            <div className="hero-bottom-left">
+                              <h2 className="hero-title">{movie.title}</h2>
+                              {hasSynopsis && (
+                                <p className="hero-synopsis">{movie.synopsis}</p>
+                              )}
+                              <div className="hero-actions">
+                                <a
+                                  className="hero-btn hero-btn-trailer"
+                                  href={trailerUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>
+                                  Watch Trailer
+                                </a>
+                                <button
+                                  className={`hero-btn hero-btn-watchlist${isHeroSaved ? " saved" : ""}`}
+                                  onClick={(e) => { e.stopPropagation(); toggleSave(movie); }}
+                                >
+                                  {isHeroSaved ? "✓ Watchlist" : "+ Watchlist"}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-                <div className="hero-pagination">
-                  {(() => {
-                    const total = Math.min(heroMovies.length, 5);
-                    const segSize = Math.ceil(heroMovies.length / total);
-                    const currentSeg = Math.floor(heroIndex / segSize);
-                    return (
-                      <>
-                        <span className="hero-counter">
-                          {String(currentSeg + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
-                        </span>
-                        <div className="hero-dots">
-                          {Array.from({ length: total }, (_, i) => {
-                            const isActive = currentSeg === i;
-                            return <button key={i} className={`hero-dot ${isActive ? 'active' : ''}`} onClick={() => setHeroIndex(i * segSize)} aria-label={`Go to slide ${i + 1}`} />;
-                          })}
-                        </div>
-                      </>
                     );
-                  })()}
+                  })}
+                  <div className="hero-pagination">
+                    {(() => {
+                      const total = Math.min(heroMovies.length, 5);
+                      const segSize = Math.ceil(heroMovies.length / total);
+                      const currentSeg = Math.floor(heroIndex / segSize);
+                      return (
+                        <>
+                          <span className="hero-counter">
+                            {String(currentSeg + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
+                          </span>
+                          <div className="hero-dots">
+                            {Array.from({ length: total }, (_, i) => {
+                              const isActive = currentSeg === i;
+                              return <button key={i} className={`hero-dot ${isActive ? 'active' : ''}`} onClick={() => setHeroIndex(i * segSize)} aria-label={`Go to slide ${i + 1}`} />;
+                            })}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
-              </div>
+                <div className="hero-bleed" aria-hidden="true" />
+              </>
             )}
 
             {/* Editorial + Dashboard Cards — side by side when there's taste content */}
