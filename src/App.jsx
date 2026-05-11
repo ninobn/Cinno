@@ -1924,7 +1924,7 @@ function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, sa
   // PRIMARY pool: user's watchlist (shared across Home + Watchlist via cc_tonightPickId).
   const savedPool = useMemo(() => {
     if (!savedMovies || savedMovies.size === 0) return [];
-    return Array.from(savedMovies.values()).filter((m) => m && m.backdrop_path);
+    return Array.from(savedMovies.values()).filter((m) => m && (m.backdrop_path || m.poster_path));
   }, [savedMovies]);
 
   // FALLBACK pool: TMDB popular (only after savedMovies is *confirmed* empty).
@@ -2086,7 +2086,9 @@ function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, sa
 
   if (!movie) return null;
 
-  const posterUrl = movie.poster_path ? `${IMG_BASE}/w185${movie.poster_path}` : (movie.backdrop_path ? `${IMG_BASE}/w300${movie.backdrop_path}` : null);
+  const posterUrl = movie.backdrop_path
+    ? `${IMG_BASE}/w1280${movie.backdrop_path}`
+    : (movie.poster_path ? `${IMG_BASE}/w500${movie.poster_path}` : null);
   const isSaved = savedIds?.has(movie.id);
 
   return (
