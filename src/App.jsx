@@ -1841,74 +1841,56 @@ function YourReelCard({ watchedDates, watchedRatings, watchedMovies }) {
   const tfMeta = REEL_TIMEFRAMES.find((t) => t.id === timeframe);
   const showRing = tfMeta?.goal != null;
 
+  const cycleTimeframe = () => {
+    const idx = REEL_TIMEFRAMES.findIndex((t) => t.id === timeframe);
+    setTimeframe(REEL_TIMEFRAMES[(idx + 1) % REEL_TIMEFRAMES.length].id);
+  };
+
   return (
     <div className="dash-card reel-card">
       <div className="reel-card-header">
         <div className="dash-card-label">YOUR REEL</div>
-        <div className="reel-tf-toggle" role="tablist">
-          {REEL_TIMEFRAMES.map((tf) => (
-            <button
-              key={tf.id}
-              role="tab"
-              aria-selected={timeframe === tf.id}
-              className={`reel-tf-pill${timeframe === tf.id ? " active" : ""}`}
-              onClick={() => setTimeframe(tf.id)}
-            >
-              {tf.label}
-            </button>
-          ))}
-        </div>
+        <button
+          type="button"
+          className="reel-tf-cycle"
+          onClick={cycleTimeframe}
+          aria-label={`Timeframe: ${tfMeta?.label || ""} (click to change)`}
+        >
+          {(tfMeta?.label || "").toUpperCase()} <span className="reel-tf-caret" aria-hidden="true">▾</span>
+        </button>
       </div>
 
-      <div className="reel-stats-row">
-        <div className="reel-stat reel-stat-films">
-          {showRing ? (
-            <div className="reel-ring-wrap">
-              <ProgressRing value={Math.min(stats.films, tfMeta.goal)} goal={tfMeta.goal} size={64} stroke={5} />
-              <div className="reel-ring-num">{filmsDisplay}</div>
-            </div>
-          ) : (
-            <div className="reel-stat-num reel-stat-num-hero">{filmsDisplay}</div>
-          )}
-          <div className="reel-stat-key">{showRing ? `of ${tfMeta.goal} goal` : "Films"}</div>
-        </div>
+      <div className="reel-focal">
+        <span className="reel-focal-num">{filmsDisplay}</span>
+        {showRing && (
+          <span className="reel-focal-goal"> / {tfMeta.goal}</span>
+        )}
+      </div>
+      <div className="reel-focal-label">{showRing ? "FILMS TOWARD GOAL" : "FILMS WATCHED"}</div>
+
+      <div className="reel-bars">
+        {stats.buckets.map((b) => {
+          const isFilled = b.count > 0;
+          return (
+            <div
+              key={b.key}
+              className={`reel-bar-block${isFilled ? " filled" : ""}`}
+              aria-label={`${b.label}: ${b.count} film${b.count === 1 ? "" : "s"}`}
+            />
+          );
+        })}
+      </div>
+      <div className="reel-bar-labels">
+        {stats.buckets.map((b) => (
+          <div key={b.key} className="reel-bar-label">
+            {timeframe === "week" ? b.label.charAt(0) : b.label}
+          </div>
+        ))}
       </div>
 
       {stats.films === 0 && (
         <div className="reel-empty-msg">Watch a movie to start tracking</div>
       )}
-
-      <div className="reel-bars">
-        {stats.buckets.map((b) => {
-          const pct = b.count === 0 ? 0 : Math.max(8, (b.count / stats.maxBar) * 100);
-          const isToday = timeframe === "week" && b.key === stats.todayKey;
-          return (
-            <div key={b.key} className="reel-bar-col">
-              <div className="reel-bar-track">
-                <div
-                  className={`reel-bar-fill${isToday ? " reel-bar-today" : ""}`}
-                  style={{ height: `${pct}%` }}
-                />
-              </div>
-              <div className="reel-bar-label">{b.label}</div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="reel-badges">
-        {badges.length > 0 ? badges.map((b) => (
-          <span key={b.id} className="reel-badge">
-            <span className="reel-badge-icon" aria-hidden="true">{b.icon}</span>
-            {b.label}
-          </span>
-        )) : (
-          <span className="reel-badge reel-badge-empty">
-            <span className="reel-badge-icon" aria-hidden="true">🎬</span>
-            Watch more to earn badges
-          </span>
-        )}
-      </div>
     </div>
   );
 }
@@ -2045,39 +2027,39 @@ function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, to
   return (
     <div className="dash-card cinno-pick-card">
       <div className={`cinno-pick-inner${fading ? " cinno-pick-fading" : ""}`}>
-        {posterUrl && (
-          <div className="cinno-pick-poster-slab">
-            <img src={posterUrl} alt="" />
-          </div>
-        )}
+        <div className="cinno-pick-slab">
+          <div className="cinno-pick-slab-glow" aria-hidden="true" />
+          {posterUrl && <img src={posterUrl} alt="" className="cinno-pick-slab-poster" />}
+          <div className="cinno-pick-slab-title">{movie.title}</div>
+        </div>
         <div className="cinno-pick-content">
-          <div className="cinno-pick-label">CINNO&apos;S PICK · FOR TONIGHT</div>
-          <div className="cinno-pick-bottom">
+          <div className="cinno-pick-top">
+            <div className="cinno-pick-label">◉ CINNO&apos;S PICK · FOR TONIGHT</div>
             <div className="cinno-pick-title">{movie.title}</div>
             {reasonLoading ? (
               <div className="cinno-pick-reason-skel skel" />
             ) : reason ? (
               <div className="cinno-pick-reason">{reason}</div>
             ) : null}
-            <div className="cinno-pick-actions">
-              <button
-                className={`cinno-pick-btn${isSaved ? " saved" : ""}`}
-                onClick={() => toggleSave(movie)}
-                title={isSaved ? "Saved" : "Save"}
-              >
-                <BookmarkIcon />
-                <span>{isSaved ? "Saved" : "+ Save"}</span>
-              </button>
-              <button
-                className="cinno-pick-btn"
-                onClick={shuffle}
-                disabled={pool.length < 2}
-                title="Shuffle"
-              >
-                <ShuffleIcon size={13} />
-                <span>Shuffle</span>
-              </button>
-            </div>
+          </div>
+          <div className="cinno-pick-actions">
+            <button
+              className={`cinno-pick-btn cinno-pick-btn-save${isSaved ? " saved" : ""}`}
+              onClick={() => toggleSave(movie)}
+              title={isSaved ? "Saved" : "Save"}
+            >
+              <BookmarkIcon />
+              <span>{isSaved ? "Saved" : "+ Save"}</span>
+            </button>
+            <button
+              className="cinno-pick-btn"
+              onClick={shuffle}
+              disabled={pool.length < 2}
+              title="Shuffle"
+            >
+              <ShuffleIcon size={13} />
+              <span>↻ Shuffle</span>
+            </button>
           </div>
         </div>
       </div>
@@ -2093,12 +2075,12 @@ function CinnoCompanionCard({ goToCompanion, startCinnoChat }) {
     <div className="dash-card cinno-card">
       <div className="cinno-card-header">
         <div className="cinno-card-brand">
-          <CinnoLogo size={28} />
+          <span className="cinno-card-avatar" aria-hidden="true">C</span>
           <span className="cinno-card-name">Cinno</span>
         </div>
         <div className="cinno-card-status">
           <span className="cinno-status-dot" />
-          ONLINE · READY
+          <span>ONLINE</span>
         </div>
       </div>
       <div className="cinno-card-bubble">{greeting}</div>
@@ -2109,7 +2091,7 @@ function CinnoCompanionCard({ goToCompanion, startCinnoChat }) {
       </div>
       <button className="cinno-mini-input" onClick={goToCompanion}>
         <span>Ask Cinno anything…</span>
-        <SendIcon />
+        <span className="cinno-mini-send" aria-hidden="true">➤</span>
       </button>
     </div>
   );
@@ -2194,16 +2176,24 @@ const TASTE_SYSTEM_PROMPT = "You are Cinno, a witty, concise film companion. Gen
 
 function parseInlineMarkdown(text) {
   // Tokenize **bold** and *italic*. Returns an array of React nodes.
+  // The first emphasized phrase (bold or italic) gets className="taste-accent".
   const nodes = [];
   let remaining = text;
   let key = 0;
+  let firstAccentUsed = false;
   const re = /(\*\*([^*]+)\*\*|\*([^*]+)\*)/;
   while (remaining.length > 0) {
     const m = remaining.match(re);
     if (!m) { nodes.push(remaining); break; }
     if (m.index > 0) nodes.push(remaining.slice(0, m.index));
-    if (m[2]) nodes.push(<strong key={key++}>{m[2]}</strong>);
-    else if (m[3]) nodes.push(<em key={key++}>{m[3]}</em>);
+    const accentClass = !firstAccentUsed ? "taste-accent" : undefined;
+    if (m[2]) {
+      nodes.push(<strong key={key++} className={accentClass}>{m[2]}</strong>);
+      firstAccentUsed = true;
+    } else if (m[3]) {
+      nodes.push(<em key={key++} className={accentClass}>{m[3]}</em>);
+      firstAccentUsed = true;
+    }
     remaining = remaining.slice(m.index + m[0].length);
   }
   return nodes;
@@ -2324,18 +2314,12 @@ function YourTasteSection({ user, getAccessToken, watchedMovies, watchedDates, w
   if (monthStats.films === 0) return null;
   if (failed && !summary) return null;
 
-  const statsParts = [];
-  if (monthStats.hours !== null) {
-    statsParts.push(`${monthStats.hours.toFixed(1)} hours across ${monthStats.films} film${monthStats.films === 1 ? "" : "s"}`);
-  } else {
-    statsParts.push(`${monthStats.films} film${monthStats.films === 1 ? "" : "s"} watched`);
-  }
-  if (monthStats.topGenre) statsParts.push(`${monthStats.topGenre} up ${monthStats.topPct}%`);
-  if (monthStats.avgRating !== null) statsParts.push(`Average rating ${(monthStats.avgRating / 10).toFixed(1)}`);
-
   return (
     <div className="taste-section">
-      <div className="taste-eyebrow">★ YOUR TASTE · {monthStats.monthLabel}</div>
+      <div className="taste-eyebrow">
+        <span className="taste-eyebrow-bar" aria-hidden="true" />
+        <span>YOUR TASTE · {monthStats.monthLabel}</span>
+      </div>
       {loading && !summary ? (
         <>
           <div className="taste-summary-skeleton skel" />
@@ -2344,7 +2328,26 @@ function YourTasteSection({ user, getAccessToken, watchedMovies, watchedDates, w
       ) : (
         <h2 className="taste-summary">{parseInlineMarkdown(summary || "")}</h2>
       )}
-      <p className="taste-stats">{statsParts.join(" · ")}.</p>
+
+      <div className="taste-meta-strip">
+        <div className="taste-meta-stat">
+          <div className="taste-meta-num">{monthStats.films}</div>
+          <div className="taste-meta-label">Films Watched</div>
+        </div>
+        {monthStats.topGenre && (
+          <div className="taste-meta-stat">
+            <div className="taste-meta-num taste-meta-num-up">↑{monthStats.topPct}%</div>
+            <div className="taste-meta-label">{monthStats.topGenre} This Month</div>
+          </div>
+        )}
+        {monthStats.avgRating !== null && (
+          <div className="taste-meta-stat">
+            <div className="taste-meta-num">{(monthStats.avgRating / 10).toFixed(1)}</div>
+            <div className="taste-meta-label">Average Rating</div>
+          </div>
+        )}
+      </div>
+
       <div className="taste-actions">
         <button className="taste-btn taste-btn-primary" onClick={goToJournal}>Open journal</button>
         <button className="taste-btn taste-btn-disabled" disabled title="Coming soon">Year in review →</button>
@@ -2856,36 +2859,53 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                       )}
                       <div className="hero-gradient" />
                       <div className="hero-content">
-                        <p className="hero-meta">{movie.genre} · {movie.year}</p>
-                        <h2 className="hero-title">{movie.title}</h2>
-                        <div className="hero-actions">
-                          <a
-                            className="hero-btn hero-btn-trailer"
-                            href={trailerUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>
-                            Watch trailer
-                          </a>
-                          <button
-                            className={`hero-btn hero-btn-watchlist${isHeroSaved ? " saved" : ""}`}
-                            onClick={(e) => { e.stopPropagation(); toggleSave(movie); }}
-                          >
-                            {isHeroSaved ? "✓ Watchlist" : "+ Watchlist"}
-                          </button>
+                        <span className="hero-eyebrow-pill">{movie.genre} · {movie.year}</span>
+                        <div className="hero-bottom-row">
+                          <div className="hero-bottom-left">
+                            <h2 className="hero-title">{movie.title}</h2>
+                            <div className="hero-actions">
+                              <a
+                                className="hero-btn hero-btn-trailer"
+                                href={trailerUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21" /></svg>
+                                Watch Trailer
+                              </a>
+                              <button
+                                className={`hero-btn hero-btn-watchlist${isHeroSaved ? " saved" : ""}`}
+                                onClick={(e) => { e.stopPropagation(); toggleSave(movie); }}
+                              >
+                                {isHeroSaved ? "✓ Watchlist" : "+ Watchlist"}
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
                   );
                 })}
-                <div className="hero-dots">
-                  {Array.from({ length: Math.min(heroMovies.length, 5) }, (_, i) => {
-                    const segSize = Math.ceil(heroMovies.length / Math.min(heroMovies.length, 5));
-                    const isActive = Math.floor(heroIndex / segSize) === i;
-                    return <button key={i} className={`hero-dot ${isActive ? 'active' : ''}`} onClick={() => setHeroIndex(i * segSize)} />;
-                  })}
+                <div className="hero-pagination">
+                  {(() => {
+                    const total = Math.min(heroMovies.length, 5);
+                    const segSize = Math.ceil(heroMovies.length / total);
+                    const currentSeg = Math.floor(heroIndex / segSize);
+                    return (
+                      <>
+                        <span className="hero-counter">
+                          {String(currentSeg + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
+                        </span>
+                        <div className="hero-dots">
+                          {Array.from({ length: total }, (_, i) => {
+                            const isActive = currentSeg === i;
+                            return <button key={i} className={`hero-dot ${isActive ? 'active' : ''}`} onClick={() => setHeroIndex(i * segSize)} aria-label={`Go to slide ${i + 1}`} />;
+                          })}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             )}
@@ -2905,11 +2925,17 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                 </div>
               )}
               <div className="home-dashboard-right">
-                <YourReelCard
-                  watchedDates={watchedDates}
-                  watchedRatings={watchedRatings}
-                  watchedMovies={watchedMovies}
-                />
+                <div className="home-dashboard-right-top">
+                  <YourReelCard
+                    watchedDates={watchedDates}
+                    watchedRatings={watchedRatings}
+                    watchedMovies={watchedMovies}
+                  />
+                  <CinnoCompanionCard
+                    goToCompanion={goToCompanion}
+                    startCinnoChat={startCinnoChat}
+                  />
+                </div>
                 <CinnoPickCard
                   user={user}
                   isGuest={isGuest}
@@ -2921,34 +2947,6 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                 />
               </div>
             </div>
-
-            {/* Stats Strip */}
-            {homeStats && (
-              <div className="home-stats-strip">
-                <div className="home-stat-block">
-                  <div className="home-stat-num">{homeStats.films}</div>
-                  <div className="home-stat-label">Films Watched</div>
-                </div>
-                {homeStats.topGenre && (
-                  <div className="home-stat-block">
-                    <div className="home-stat-num"><span className="home-stat-up">↑</span>{homeStats.topPct}%</div>
-                    <div className="home-stat-label">{homeStats.topGenre} This Month</div>
-                  </div>
-                )}
-                {homeStats.avgRating && (
-                  <div className="home-stat-block">
-                    <div className="home-stat-num">{homeStats.avgRating}</div>
-                    <div className="home-stat-label">Average Rating</div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Cinno Companion — full-width below stats */}
-            <CinnoCompanionCard
-              goToCompanion={goToCompanion}
-              startCinnoChat={startCinnoChat}
-            />
 
             {/* Browse Sections — stacked full-width */}
             <div className="browse-sections">
