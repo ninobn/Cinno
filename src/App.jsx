@@ -3561,8 +3561,50 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
     [savedMovies]
   );
 
-  // Runtime data lives in localStorage; reload whenever savedMovies changes.
-  const runtimeCache = useMemo(() => loadFromStorage("cc_runtimeCache", {}), [savedMovies]);
+  // Runtime data lives in localStorage and is shared with the Journal tab.
+  // We keep a local mirror so missing runtimes fetched from TMDB are reflected
+  // immediately in stats / headline / hero meta without a remount.
+  const [runtimeCache, setRuntimeCache] = useState(() => loadFromStorage("cc_runtimeCache", {}));
+  const runtimeFetchAttempted = useRef(new Set());
+
+  // Persist runtime cache on update (same storage key the Journal tab uses).
+  useEffect(() => { saveToStorage("cc_runtimeCache", runtimeCache); }, [runtimeCache]);
+
+  // Fetch missing runtimes from TMDB in parallel — display enrichment only,
+  // never written back to Supabase. Skips films we've already attempted (so a
+  // null result doesn't loop) and films with a cached runtime > 0.
+  useEffect(() => {
+    if (!savedMovies || savedMovies.size === 0) return;
+    const ids = Array.from(savedMovies.keys());
+    const missing = ids.filter((id) => {
+      const cached = runtimeCache[id];
+      if (typeof cached === "number" && cached > 0) return false;
+      if (runtimeFetchAttempted.current.has(id)) return false;
+      return true;
+    });
+    if (missing.length === 0) return;
+    missing.forEach((id) => runtimeFetchAttempted.current.add(id));
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.all(
+        missing.map((id) =>
+          getMovieDetails(id)
+            .then((d) => ({ id, runtime: d?.runtime || null }))
+            .catch(() => ({ id, runtime: null }))
+        )
+      );
+      if (cancelled) return;
+      const batch = {};
+      results.forEach((r) => {
+        if (typeof r.runtime === "number" && r.runtime > 0) batch[r.id] = r.runtime;
+      });
+      if (Object.keys(batch).length > 0) {
+        setRuntimeCache((prev) => ({ ...prev, ...batch }));
+      }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedMovies]);
 
   // Tonight's Pick — shared with Home tab via cc_tonightPickId.
   const tonightPickMovie = useMemo(() => {
@@ -3588,15 +3630,6 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
     }
   }, [tonightPickId, savedMovies]);
 
-  // Two other random films from savedMovies (different from the main pick).
-  // Stable as long as the main pick or pool composition doesn't change.
-  const altPicks = useMemo(() => {
-    if (movies.length < 3 || !tonightPickMovie) return [];
-    const others = movies.filter((m) => m.id !== tonightPickMovie.id);
-    const shuffled = [...others].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, 2);
-  }, [movies, tonightPickMovie]);
-
   // AI reasoning quote — read from CinnoPickCard's localStorage cache if available.
   const tonightPickReason = useMemo(() => {
     if (!tonightPickMovie) return null;
@@ -3620,14 +3653,16 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
   }, [tonightPickMovie]);
 
   // Aggregate stats for the page header strip + headline.
+  // Films with missing/null runtime are excluded from the runtime sum entirely
+  // (not counted as 0). If every runtime is missing, display "?" instead of 0.
   const watchlistStats = useMemo(() => {
     let totalMinutes = 0;
-    let longestMin = 0;
+    let countedWithRuntime = 0;
     movies.forEach((m) => {
       const rt = runtimeCache[m.id];
       if (typeof rt === "number" && rt > 0) {
         totalMinutes += rt;
-        if (rt > longestMin) longestMin = rt;
+        countedWithRuntime += 1;
       }
     });
     let oldest = null;
@@ -3637,10 +3672,10 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
       if (t.isValid && (!oldest || t < oldest)) oldest = t;
     });
     const oldestMonths = oldest ? Math.max(0, Math.floor(DateTime.now().diff(oldest, "months").months)) : 0;
+    const totalHours = countedWithRuntime > 0 ? Math.floor(totalMinutes / 60) : "?";
     return {
       count: movies.length,
-      totalHours: Math.floor(totalMinutes / 60),
-      longestMin,
+      totalHours,
       oldestMonths,
     };
   }, [movies, runtimeCache]);
@@ -3700,14 +3735,6 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
       />
     );
   }
-
-  // Brief category label for alt-pick chips, derived from runtime.
-  const runtimeCategory = (minutes) => {
-    if (!minutes || minutes <= 0) return "DISCOVER";
-    if (minutes < 90) return "QUICK";
-    if (minutes <= 130) return "MID";
-    return "EPIC";
-  };
 
   const tonightRuntime = tonightPickMovie ? runtimeCache[tonightPickMovie.id] : null;
   const tonightRuntimeLabel = formatRuntime(tonightRuntime);
@@ -3802,27 +3829,6 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
                         className="wl-tonight-hero-poster"
                       />
                     )}
-                    {altPicks.length === 2 && (
-                      <div className="wl-tonight-alts" onClick={(e) => e.stopPropagation()}>
-                        <div className="wl-tonight-alts-label">OR TRY</div>
-                        {altPicks.map((alt) => {
-                          const altRt = runtimeCache[alt.id];
-                          const altRtLabel = formatRuntime(altRt);
-                          return (
-                            <button
-                              key={alt.id}
-                              className="wl-tonight-alt"
-                              onClick={(e) => { e.stopPropagation(); setTonightPickId(alt.id); saveToStorage("cc_tonightPickId", alt.id); }}
-                              title={`Switch tonight's pick to ${alt.title}`}
-                            >
-                              <span className="wl-tonight-alt-swatch" />
-                              <span className="wl-tonight-alt-title">{alt.title}</span>
-                              <span className="wl-tonight-alt-meta">{runtimeCategory(altRt)}{altRtLabel ? ` · ${altRtLabel}` : ""}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
@@ -3848,10 +3854,6 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
               <div className="wl-stat">
                 <div className="wl-stat-num">{watchlistStats.totalHours}h</div>
                 <div className="wl-stat-label">Total Runtime</div>
-              </div>
-              <div className="wl-stat">
-                <div className="wl-stat-num">{watchlistStats.longestMin > 0 ? formatRuntime(watchlistStats.longestMin) : "—"}</div>
-                <div className="wl-stat-label">Longest Sitting</div>
               </div>
               <div className="wl-stat">
                 <div className="wl-stat-num wl-stat-num-warn">{watchlistStats.oldestMonths} mo</div>
@@ -3923,15 +3925,11 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
                           <div className="wl-tile-overlay-eyebrow">{movie.genre || "FILM"}{runtimeCache[movie.id] ? ` · ${formatRuntime(runtimeCache[movie.id])}` : ""}</div>
                           <div className="wl-tile-overlay-actions">
                             <button
-                              className="wl-tile-overlay-watch"
-                              onClick={(e) => { e.stopPropagation(); setSelectedMovie(movie); }}
-                            >▶ Watch</button>
-                            <button
-                              className="wl-tile-overlay-menu"
+                              className="wl-tile-overlay-remove"
                               onClick={(e) => { e.stopPropagation(); toggleSave(movie); }}
                               title="Remove from watchlist"
                               aria-label="Remove from watchlist"
-                            >···</button>
+                            >Remove from watchlist</button>
                           </div>
                         </div>
                       </div>
