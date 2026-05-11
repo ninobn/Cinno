@@ -10747,3 +10747,110 @@ body {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
+/* ─────────────────────────────────────────────────────────────
+   MOBILE RESPONSIVENESS — narrow-viewport guardrails
+   These rules only ADD constraints on small screens; they never
+   re-style desktop. Two breakpoints:
+     ≤600px  — general phones (iOS zoom prevention)
+     ≤480px  — portrait phones (top bar, hero, tap targets)
+     ≤360px  — very narrow phones (iPhone SE etc)
+   ───────────────────────────────────────────────────────────── */
+
+/* iOS auto-zoom prevention: any input/textarea with font-size < 16px
+   triggers Safari zoom-on-focus, which forces horizontal scroll on the
+   whole page. Bumping to 16px on mobile only is the standard fix.
+   !important is justified here — we need to beat existing class-based
+   font-size rules (e.g. .topbar-search input { font-size: 13px }). */
+@media (max-width: 600px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Portrait phones — primary nav-bar reachability fix */
+@media (max-width: 480px) {
+  /* Top bar: tighten padding and gaps so the hamburger fits on screen */
+  .topbar {
+    padding: 0 12px;
+    gap: 8px;
+  }
+  .topbar-actions {
+    gap: 6px;
+  }
+
+  /* Search bar: constrain so it doesn't push the right-side controls off-screen */
+  .topbar-search {
+    width: 120px;
+    max-width: 40vw;
+    flex: 0 0 auto;
+  }
+  /* Search input keeps 16px to defeat iOS zoom (inherits via the rule above,
+     but restate inside the topbar-specific selector for specificity safety) */
+  .topbar-search input {
+    font-size: 16px;
+  }
+
+  /* Tap-target minimums (Apple HIG 44x44) for all topbar interactive elements */
+  .topbar-mobile-menu-btn,
+  .topbar-user-btn,
+  .topbar-settings-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .topbar-signin-btn {
+    min-height: 44px;
+  }
+
+  /* Keep dropdowns/menus inside the viewport — never overflow right edge */
+  .user-dropdown {
+    max-width: calc(100vw - 16px);
+  }
+  .mobile-menu {
+    max-width: 90vw;
+  }
+
+  /* Home hero banner — don't dominate a portrait screen */
+  .hero-banner {
+    height: 220px;
+  }
+  .hero-title {
+    font-size: 24px;
+  }
+  .hero-content {
+    padding: 16px 18px;
+  }
+  .hero-eyebrow-pill {
+    font-size: 9px;
+    padding: 4px 8px;
+  }
+  .hero-btn {
+    padding: 8px 14px;
+    font-size: 12px;
+    min-height: 36px;
+  }
+  .hero-pagination {
+    right: 18px;
+    bottom: 16px;
+  }
+
+  /* Defensive: no accidental horizontal scroll inside the content area */
+  .content {
+    padding-left: 12px;
+    padding-right: 12px;
+    overflow-x: hidden;
+  }
+}
+
+/* Very narrow phones (iPhone SE 320px etc) — hide brand text to free up space.
+   Logo remains as the identity anchor. */
+@media (max-width: 360px) {
+  .topbar-brand-text {
+    display: none;
+  }
+  .topbar-search {
+    width: 100px;
+  }
+}
+
