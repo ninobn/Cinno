@@ -1920,19 +1920,52 @@ function firstSentence(text) {
   return (m ? m[0] : text).trim();
 }
 
-function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, toggleSave }) {
-  const [pool, setPool] = useState(() =>
+function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, savedMovies, toggleSave }) {
+  // PRIMARY pool: user's watchlist (shared across Home + Watchlist via cc_tonightPickId).
+  const savedPool = useMemo(() => {
+    if (!savedMovies || savedMovies.size === 0) return [];
+    return Array.from(savedMovies.values()).filter((m) => m && m.backdrop_path);
+  }, [savedMovies]);
+
+  // FALLBACK pool: TMDB popular (only when savedPool is empty).
+  const [tmdbPool, setTmdbPool] = useState(() =>
     _cinnoPickPool.userId === (user?.id || null) ? _cinnoPickPool.movies : []
   );
-  const [pickIdx, setPickIdx] = useState(() => Math.floor(Math.random() * Math.max(1, _cinnoPickPool.movies.length)));
+  const useSavedPool = savedPool.length > 0;
+  const pool = useSavedPool ? savedPool : tmdbPool;
+
+  // Shared pick id, persisted in localStorage so Home <-> Watchlist stay in sync.
+  const [pickId, setPickId] = useState(() => loadFromStorage("cc_tonightPickId", null));
   const [reason, setReason] = useState(null);
   const [reasonLoading, setReasonLoading] = useState(false);
   const [fading, setFading] = useState(false);
 
-  const movie = pool.length > 0 ? pool[pickIdx % pool.length] : null;
+  const movie = useMemo(() => {
+    if (pool.length === 0) return null;
+    if (pickId) {
+      const found = pool.find((m) => m.id === pickId);
+      if (found) return found;
+    }
+    return pool[0];
+  }, [pool, pickId]);
 
-  // One-time pool fetch per session (cached at module level).
+  // Validate stored pickId against the active pool; if missing/stale, pick a fresh random.
   useEffect(() => {
+    if (pool.length === 0) return;
+    const stored = loadFromStorage("cc_tonightPickId", null);
+    if (stored && pool.some((m) => m.id === stored)) {
+      if (stored !== pickId) setPickId(stored);
+      return;
+    }
+    const rand = pool[Math.floor(Math.random() * pool.length)];
+    setPickId(rand.id);
+    saveToStorage("cc_tonightPickId", rand.id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pool.length, useSavedPool]);
+
+  // Fetch TMDB fallback pool ONLY when the saved pool is empty.
+  useEffect(() => {
+    if (useSavedPool) return;
     if (_cinnoPickPool.userId === (user?.id || null) && _cinnoPickPool.movies.length > 0) return;
     let cancelled = false;
     const randomPage = 1 + Math.floor(Math.random() * 10);
@@ -1945,15 +1978,14 @@ function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, to
           .filter((m) => !savedIds?.has(m.id));
         _cinnoPickPool.userId = user?.id || null;
         _cinnoPickPool.movies = filtered;
-        setPool(filtered);
-        setPickIdx(Math.floor(Math.random() * Math.max(1, filtered.length)));
+        setTmdbPool(filtered);
       })
       .catch((err) => {
         console.error("[CinnoPick] getPopular failed:", err?.message || err);
       });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [user?.id, useSavedPool]);
 
   // AI reason — cached per (date + movie) in localStorage; falls back to overview.
   useEffect(() => {
@@ -2010,11 +2042,16 @@ function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, to
     if (pool.length < 2 || fading) return;
     setFading(true);
     setTimeout(() => {
-      let next = pickIdx;
-      while (next === pickIdx && pool.length > 1) {
-        next = Math.floor(Math.random() * pool.length);
+      let next = movie;
+      let attempts = 0;
+      while (next?.id === movie?.id && pool.length > 1 && attempts < 20) {
+        next = pool[Math.floor(Math.random() * pool.length)];
+        attempts += 1;
       }
-      setPickIdx(next);
+      if (next?.id) {
+        setPickId(next.id);
+        saveToStorage("cc_tonightPickId", next.id);
+      }
       setFading(false);
     }, 180);
   };
@@ -2025,26 +2062,26 @@ function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, to
   const isSaved = savedIds?.has(movie.id);
 
   return (
-    <div className="dash-card cinno-pick-card">
-      <div className={`cinno-pick-inner${fading ? " cinno-pick-fading" : ""}`}>
-        <div className="cinno-pick-slab">
-          <div className="cinno-pick-slab-glow" aria-hidden="true" />
-          {posterUrl && <img src={posterUrl} alt="" className="cinno-pick-slab-poster" />}
-          <div className="cinno-pick-slab-title">{movie.title}</div>
+    <div className="dash-card tonight-pick-card">
+      <div className={`tonight-pick-inner${fading ? " tonight-pick-fading" : ""}`}>
+        <div className="tonight-pick-slab">
+          <div className="tonight-pick-slab-glow" aria-hidden="true" />
+          {posterUrl && <img src={posterUrl} alt="" className="tonight-pick-slab-poster" />}
+          <div className="tonight-pick-slab-title">{movie.title}</div>
         </div>
-        <div className="cinno-pick-content">
-          <div className="cinno-pick-top">
-            <div className="cinno-pick-label">◉ CINNO&apos;S PICK · FOR TONIGHT</div>
-            <div className="cinno-pick-title">{movie.title}</div>
+        <div className="tonight-pick-content">
+          <div className="tonight-pick-top">
+            <div className="tonight-pick-label">◉ TONIGHT&apos;S PICK · FOR TONIGHT</div>
+            <div className="tonight-pick-title">{movie.title}</div>
             {reasonLoading ? (
-              <div className="cinno-pick-reason-skel skel" />
+              <div className="tonight-pick-reason-skel skel" />
             ) : reason ? (
-              <div className="cinno-pick-reason">{reason}</div>
+              <div className="tonight-pick-reason">{reason}</div>
             ) : null}
           </div>
-          <div className="cinno-pick-actions">
+          <div className="tonight-pick-actions">
             <button
-              className={`cinno-pick-btn cinno-pick-btn-save${isSaved ? " saved" : ""}`}
+              className={`tonight-pick-btn tonight-pick-btn-save${isSaved ? " saved" : ""}`}
               onClick={() => toggleSave(movie)}
               title={isSaved ? "Saved" : "Save"}
             >
@@ -2052,7 +2089,7 @@ function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, to
               <span>{isSaved ? "Saved" : "+ Save"}</span>
             </button>
             <button
-              className="cinno-pick-btn"
+              className="tonight-pick-btn"
               onClick={shuffle}
               disabled={pool.length < 2}
               title="Shuffle"
@@ -2369,7 +2406,7 @@ const _personalizedRailsCache = {
 
 // ─── Search Tab ────────────────────────────────────────────────────────────────
 
-function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, scrollPositions, watchedRatings, setWatchedRating, query, setQuery, watchedMovies, watchedDates, watchedNotes, setWatchedNote, goToCompanion, startCinnoChat, goToJournal }) {
+function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, scrollPositions, watchedRatings, setWatchedRating, query, setQuery, watchedMovies, watchedDates, watchedNotes, setWatchedNote, savedMovies, goToCompanion, startCinnoChat, goToJournal }) {
   const [searchResults, setSearchResults] = useState([]);
   const [searchRetry, setSearchRetry] = useState(0);
   const [movies, setMovies] = useState([]);
@@ -2954,6 +2991,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                   getAccessToken={getAccessToken}
                   watchedIds={watchedIds}
                   savedIds={savedIds}
+                  savedMovies={savedMovies}
                   toggleSave={toggleSave}
                 />
               </div>
@@ -3509,11 +3547,10 @@ function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, w
 
 function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched, startDebrief, collections, createCollection, renameCollection, deleteCollection, toggleMovieInCollection, onStartMoviePicker, scrollPositions, watchedRatings, setWatchedRating, listsLoading }) {
   const [selectedMovie, setSelectedMovie] = useMovieModal();
-  const [emptyMsg] = useState(() => pickRandom(EMPTY_WATCHLIST));
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeCollection, setActiveCollection] = useState(null);
   const [watchlistView, setWatchlistView] = useState("grid");
-  const [upNextId, setUpNextId] = useState(() => loadFromStorage("cc_upNextId", null));
+  const [tonightPickId, setTonightPickId] = useState(() => loadFromStorage("cc_tonightPickId", null));
   const savedContentRef = useScrollRestore("saved", scrollPositions);
 
   // Re-trigger AOS animations after view toggle so the grid doesn't stay invisible
@@ -3524,31 +3561,101 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
     [savedMovies]
   );
 
-  // Up Next logic: persist pick, default to oldest movie in watchlist
-  const upNextMovie = useMemo(() => {
-    if (movies.length === 0) return null;
-    // If stored pick is still in watchlist, use it
-    if (upNextId && savedMovies.has(upNextId)) return savedMovies.get(upNextId);
-    // Otherwise pick the first (oldest added) movie
-    return movies[0] || null;
-  }, [movies, upNextId, savedMovies]);
+  // Runtime data lives in localStorage; reload whenever savedMovies changes.
+  const runtimeCache = useMemo(() => loadFromStorage("cc_runtimeCache", {}), [savedMovies]);
 
-  const shuffleUpNext = () => {
+  // Tonight's Pick — shared with Home tab via cc_tonightPickId.
+  const tonightPickMovie = useMemo(() => {
+    if (movies.length === 0) return null;
+    if (tonightPickId && savedMovies.has(tonightPickId)) return savedMovies.get(tonightPickId);
+    return movies[0] || null;
+  }, [movies, tonightPickId, savedMovies]);
+
+  const shuffleTonightPick = () => {
     if (movies.length <= 1) return;
-    const others = movies.filter((m) => m.id !== (upNextMovie?.id));
+    const others = movies.filter((m) => m.id !== (tonightPickMovie?.id));
     if (others.length === 0) return;
     const pick = others[Math.floor(Math.random() * others.length)];
-    setUpNextId(pick.id);
-    saveToStorage("cc_upNextId", pick.id);
+    setTonightPickId(pick.id);
+    saveToStorage("cc_tonightPickId", pick.id);
   };
 
-  // Clear stored pick if it was removed from watchlist
+  // Clear stored pick if its film was removed from the watchlist.
   useEffect(() => {
-    if (upNextId && !savedMovies.has(upNextId)) {
-      setUpNextId(null);
-      removeFromStorage("cc_upNextId");
+    if (tonightPickId && !savedMovies.has(tonightPickId)) {
+      setTonightPickId(null);
+      removeFromStorage("cc_tonightPickId");
     }
-  }, [upNextId, savedMovies]);
+  }, [tonightPickId, savedMovies]);
+
+  // Two other random films from savedMovies (different from the main pick).
+  // Stable as long as the main pick or pool composition doesn't change.
+  const altPicks = useMemo(() => {
+    if (movies.length < 3 || !tonightPickMovie) return [];
+    const others = movies.filter((m) => m.id !== tonightPickMovie.id);
+    const shuffled = [...others].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 2);
+  }, [movies, tonightPickMovie]);
+
+  // AI reasoning quote — read from CinnoPickCard's localStorage cache if available.
+  const tonightPickReason = useMemo(() => {
+    if (!tonightPickMovie) return null;
+    const today = DateTime.now().toFormat("yyyy-MM-dd");
+    const cached = loadFromStorage(`cc_cinno_pick_${today}_${tonightPickMovie.id}`, null);
+    if (cached?.reason) return cached.reason;
+    // Fallback: days-since-added phrasing
+    if (tonightPickMovie.savedAt) {
+      const t = DateTime.fromISO(tonightPickMovie.savedAt);
+      if (t.isValid) {
+        const days = Math.max(0, Math.floor(DateTime.now().diff(t, "days").days));
+        return `Added ${days} day${days === 1 ? "" : "s"} ago — tonight feels right.`;
+      }
+    }
+    return "Tonight feels right.";
+  }, [tonightPickMovie]);
+
+  const trailerUrl = useMemo(() => {
+    if (!tonightPickMovie) return "#";
+    return `https://www.youtube.com/results?search_query=${encodeURIComponent(tonightPickMovie.title + " official trailer")}`;
+  }, [tonightPickMovie]);
+
+  // Aggregate stats for the page header strip + headline.
+  const watchlistStats = useMemo(() => {
+    let totalMinutes = 0;
+    let longestMin = 0;
+    movies.forEach((m) => {
+      const rt = runtimeCache[m.id];
+      if (typeof rt === "number" && rt > 0) {
+        totalMinutes += rt;
+        if (rt > longestMin) longestMin = rt;
+      }
+    });
+    let oldest = null;
+    movies.forEach((m) => {
+      if (!m.savedAt) return;
+      const t = DateTime.fromISO(m.savedAt);
+      if (t.isValid && (!oldest || t < oldest)) oldest = t;
+    });
+    const oldestMonths = oldest ? Math.max(0, Math.floor(DateTime.now().diff(oldest, "months").months)) : 0;
+    return {
+      count: movies.length,
+      totalHours: Math.floor(totalMinutes / 60),
+      longestMin,
+      oldestMonths,
+    };
+  }, [movies, runtimeCache]);
+
+  // "Sitting too long" — films saved more than 60 days ago, oldest first, capped at 6.
+  const sittingTooLong = useMemo(() => {
+    return movies
+      .filter((m) => {
+        if (!m.savedAt) return false;
+        const t = DateTime.fromISO(m.savedAt);
+        return t.isValid && DateTime.now().diff(t, "days").days > 60;
+      })
+      .sort((a, b) => (a.savedAt || "").localeCompare(b.savedAt || ""))
+      .slice(0, 6);
+  }, [movies]);
 
   const handleShareCollection = async (e, collection) => {
     e.stopPropagation();
@@ -3594,77 +3701,245 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
     );
   }
 
+  // Brief category label for alt-pick chips, derived from runtime.
+  const runtimeCategory = (minutes) => {
+    if (!minutes || minutes <= 0) return "DISCOVER";
+    if (minutes < 90) return "QUICK";
+    if (minutes <= 130) return "MID";
+    return "EPIC";
+  };
+
+  const tonightRuntime = tonightPickMovie ? runtimeCache[tonightPickMovie.id] : null;
+  const tonightRuntimeLabel = formatRuntime(tonightRuntime);
+
   return (
     <>
-      <div className="content" ref={savedContentRef}>
-        {/* Up Next Banner — immersive backdrop */}
-        {upNextMovie ? (
-          <div className="upnext-banner" onClick={() => setSelectedMovie(upNextMovie)}>
-            <div className="upnext-banner-backdrop">
-              {(upNextMovie.backdrop_path || upNextMovie.poster_path) && (
-                <img
-                  src={`${IMG_BASE}/w1280${upNextMovie.backdrop_path || upNextMovie.poster_path}`}
-                  alt=""
-                  className="upnext-banner-img"
-                />
-              )}
-            </div>
-            <div className="upnext-banner-gradient" />
-            <div className="upnext-banner-content">
-              <div className="upnext-banner-poster">
-                <PosterImage posterPath={upNextMovie.poster_path} title={upNextMovie.title} />
-              </div>
-              <div className="upnext-banner-info">
-                <div className="upnext-banner-label">Up Next</div>
-                <div className="upnext-banner-title">{upNextMovie.title}</div>
-                <div className="upnext-banner-meta">{upNextMovie.genre} · {upNextMovie.year}</div>
-                {upNextMovie.savedAt && <div className="upnext-banner-added">{formatAddedDate(upNextMovie.savedAt)}</div>}
-                <div className="upnext-banner-prompt">Watch tonight?</div>
-                <div className="upnext-banner-actions">
-                  <button className="upnext-banner-details-btn" onClick={(e) => { e.stopPropagation(); setSelectedMovie(upNextMovie); }}>More Info</button>
-                  <button className="upnext-banner-shuffle-btn" onClick={(e) => { e.stopPropagation(); shuffleUpNext(); }} title="Pick a different movie">
-                    <ShuffleIcon size={14} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
+      <div className="content wl-content" ref={savedContentRef}>
         {movies.length === 0 && listsLoading ? (
           <SkeletonGrid count={9} />
         ) : movies.length === 0 ? (
-          <div className="saved-empty">
-            <div className="saved-icon">{emptyMsg.icon}</div>
-            <div className="saved-title">{emptyMsg.title}</div>
-            <div className="saved-desc">{emptyMsg.desc}</div>
+          /* SECTION 7 — EMPTY STATE */
+          <div className="wl-empty">
+            <div className="wl-empty-left">
+              <div className="wl-empty-eyebrow">EMPTY FOLDER · ALL</div>
+              <h2 className="wl-empty-headline">
+                Nothing saved yet.
+                <span className="wl-empty-headline-italic"> Let's fix that.</span>
+              </h2>
+              <p className="wl-empty-body">
+                Ask Cinno for tonight's pick, or jump into Discover to start building a list of films that feel like you.
+              </p>
+              <div className="wl-empty-ctas">
+                <button className="wl-empty-cta-primary" onClick={() => {}}>Ask Cinno</button>
+                <button className="wl-empty-cta-secondary" onClick={() => {}}>Browse Discover</button>
+              </div>
+            </div>
+            <div className="wl-empty-right">
+              <div className="wl-empty-fan" />
+              <div className="wl-empty-fan" />
+              <div className="wl-empty-fan" />
+              <div className="wl-empty-fan" />
+            </div>
           </div>
         ) : (
           <>
-            <div className="watchlist-header-row" data-aos="fade-right" data-aos-duration="300">
-              <div className="watchlist-title-row">
-                <span className="watchlist-title">Watchlist</span>
-                <span className="watchlist-count-pill">{movies.length}</span>
-              </div>
-              <button
-                className="watchlist-view-toggle"
-                onClick={() => setWatchlistView((v) => v === "grid" ? "list" : "grid")}
-                title={watchlistView === "grid" ? "Switch to list" : "Switch to grid"}
-              >
-                {watchlistView === "grid" ? <ListIcon /> : <GridIcon />}
-              </button>
-            </div>
-            {watchlistView === "grid" ? (
-              <div className="movies-grid" data-aos="fade-up" data-aos-duration="400">
-                {movies.map((movie) => (
-                  <MovieTile
-                    key={movie.id}
-                    movie={movie}
-                    isSaved={true}
-                    onToggleSave={toggleSave}
-                    onClick={() => setSelectedMovie(movie)}
+            {/* SECTION 1 — TONIGHT'S PICK HERO */}
+            {tonightPickMovie && (
+              <div className="wl-tonight-hero" onClick={() => setSelectedMovie(tonightPickMovie)}>
+                {(tonightPickMovie.backdrop_path || tonightPickMovie.poster_path) && (
+                  <img
+                    src={`${IMG_BASE}/w1280${tonightPickMovie.backdrop_path || tonightPickMovie.poster_path}`}
+                    alt=""
+                    className="wl-tonight-hero-bg"
                   />
+                )}
+                <div className="wl-tonight-hero-scrim" aria-hidden="true" />
+                <div className="wl-tonight-hero-grid">
+                  <div className="wl-tonight-hero-left">
+                    <div className="wl-tonight-hero-eyebrow">
+                      <span className="wl-tonight-hero-dot" aria-hidden="true" />
+                      <span>TONIGHT&apos;S PICK · FOR TONIGHT</span>
+                    </div>
+                    <h2 className="wl-tonight-hero-title">{tonightPickMovie.title}</h2>
+                    <div className="wl-tonight-hero-meta">
+                      {tonightPickMovie.year && <span>{tonightPickMovie.year}</span>}
+                      {tonightPickMovie.genre && <span>· {tonightPickMovie.genre}</span>}
+                      {tonightPickMovie.rating && tonightPickMovie.rating !== "—" && <span>· ★ {tonightPickMovie.rating}</span>}
+                      {tonightRuntimeLabel && <span>· {tonightRuntimeLabel}</span>}
+                    </div>
+                    {tonightPickReason && (
+                      <p className="wl-tonight-hero-quote">{tonightPickReason}</p>
+                    )}
+                    <div className="wl-tonight-hero-actions">
+                      <a
+                        className="wl-tonight-hero-btn-primary"
+                        href={trailerUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        ▶ Watch Trailer
+                      </a>
+                      <button
+                        className="wl-tonight-hero-btn-ghost"
+                        onClick={(e) => { e.stopPropagation(); shuffleTonightPick(); }}
+                      >
+                        ↻ Pick again
+                      </button>
+                      <button
+                        className="wl-tonight-hero-btn-ghost"
+                        onClick={(e) => { e.stopPropagation(); setSelectedMovie(tonightPickMovie); }}
+                      >
+                        More info
+                      </button>
+                    </div>
+                  </div>
+                  <div className="wl-tonight-hero-right">
+                    {tonightPickMovie.poster_path && (
+                      <img
+                        src={`${IMG_BASE}/w342${tonightPickMovie.poster_path}`}
+                        alt=""
+                        className="wl-tonight-hero-poster"
+                      />
+                    )}
+                    {altPicks.length === 2 && (
+                      <div className="wl-tonight-alts" onClick={(e) => e.stopPropagation()}>
+                        <div className="wl-tonight-alts-label">OR TRY</div>
+                        {altPicks.map((alt) => {
+                          const altRt = runtimeCache[alt.id];
+                          const altRtLabel = formatRuntime(altRt);
+                          return (
+                            <button
+                              key={alt.id}
+                              className="wl-tonight-alt"
+                              onClick={(e) => { e.stopPropagation(); setTonightPickId(alt.id); saveToStorage("cc_tonightPickId", alt.id); }}
+                              title={`Switch tonight's pick to ${alt.title}`}
+                            >
+                              <span className="wl-tonight-alt-swatch" />
+                              <span className="wl-tonight-alt-title">{alt.title}</span>
+                              <span className="wl-tonight-alt-meta">{runtimeCategory(altRt)}{altRtLabel ? ` · ${altRtLabel}` : ""}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SECTION 2 — PAGE HEADER + STAT STRIP */}
+            <div className="wl-header">
+              <div className="wl-eyebrow">
+                <span className="wl-eyebrow-bar" aria-hidden="true" />
+                <span>YOUR WATCHLIST</span>
+              </div>
+              <h1 className="wl-headline">
+                {watchlistStats.count} film{watchlistStats.count === 1 ? "" : "s"} sit waiting — that&apos;s{" "}
+                <span className="watchlist-accent">{watchlistStats.totalHours}h of you.</span>
+              </h1>
+            </div>
+
+            <div className="wl-stat-strip">
+              <div className="wl-stat">
+                <div className="wl-stat-num">{watchlistStats.count}</div>
+                <div className="wl-stat-label">Films to Watch</div>
+              </div>
+              <div className="wl-stat">
+                <div className="wl-stat-num">{watchlistStats.totalHours}h</div>
+                <div className="wl-stat-label">Total Runtime</div>
+              </div>
+              <div className="wl-stat">
+                <div className="wl-stat-num">{watchlistStats.longestMin > 0 ? formatRuntime(watchlistStats.longestMin) : "—"}</div>
+                <div className="wl-stat-label">Longest Sitting</div>
+              </div>
+              <div className="wl-stat">
+                <div className="wl-stat-num wl-stat-num-warn">{watchlistStats.oldestMonths} mo</div>
+                <div className="wl-stat-label">Oldest Unwatched</div>
+              </div>
+            </div>
+
+            {/* SECTION 3 — FOLDER / COLLECTION BAR */}
+            <div className="wl-folder-bar">
+              <div className="wl-folder-bar-left">
+                <button
+                  className={`wl-folder-pill${activeCollection === null ? " active" : ""}`}
+                  onClick={() => setActiveCollection(null)}
+                >
+                  <span>All</span>
+                  <span className="wl-folder-count">{movies.length}</span>
+                </button>
+                {collections.map((col) => (
+                  <button
+                    key={col.id}
+                    className={`wl-folder-pill${activeCollection === col.id ? " active" : ""}`}
+                    onClick={() => setActiveCollection(col.id)}
+                  >
+                    <span>{col.name}</span>
+                    <span className="wl-folder-count">{col.movieIds.length}</span>
+                  </button>
                 ))}
+                <button className="wl-folder-pill wl-folder-pill-add" onClick={() => setShowCreateModal(true)}>
+                  + New folder
+                </button>
+              </div>
+              <div className="wl-folder-bar-right">
+                <span className="wl-sort-label">SORT</span>
+                <button className="wl-sort-pill" onClick={() => {}}>Recently added ▾</button>
+                <div className="wl-view-toggle">
+                  <button
+                    className={`wl-view-toggle-btn${watchlistView === "grid" ? " active" : ""}`}
+                    onClick={() => setWatchlistView("grid")}
+                    title="Grid view"
+                    aria-label="Grid view"
+                  >▦</button>
+                  <button
+                    className={`wl-view-toggle-btn${watchlistView === "list" ? " active" : ""}`}
+                    onClick={() => setWatchlistView("list")}
+                    title="List view"
+                    aria-label="List view"
+                  >☰</button>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 4 — MOVIE GRID */}
+            {watchlistView === "grid" ? (
+              <div className="wl-grid">
+                {movies.map((movie) => {
+                  return (
+                    <div
+                      key={movie.id}
+                      className="wl-tile"
+                      onClick={() => setSelectedMovie(movie)}
+                    >
+                      <div className="wl-tile-poster">
+                        <div className="wl-tile-bookmark" aria-hidden="true" />
+                        {movie.rating && movie.rating !== "—" && (
+                          <span className="wl-tile-rating">★ {movie.rating}</span>
+                        )}
+                        <PosterImage posterPath={movie.poster_path} title={movie.title} />
+                        <div className="wl-tile-overlay">
+                          <div className="wl-tile-overlay-eyebrow">{movie.genre || "FILM"}{runtimeCache[movie.id] ? ` · ${formatRuntime(runtimeCache[movie.id])}` : ""}</div>
+                          <div className="wl-tile-overlay-actions">
+                            <button
+                              className="wl-tile-overlay-watch"
+                              onClick={(e) => { e.stopPropagation(); setSelectedMovie(movie); }}
+                            >▶ Watch</button>
+                            <button
+                              className="wl-tile-overlay-menu"
+                              onClick={(e) => { e.stopPropagation(); toggleSave(movie); }}
+                              title="Remove from watchlist"
+                              aria-label="Remove from watchlist"
+                            >···</button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="wl-tile-title">{movie.title}</div>
+                      <div className="wl-tile-meta">{movie.year || ""}{movie.genre ? ` · ${movie.genre}` : ""}</div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="watchlist-list">
@@ -3692,52 +3967,70 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
                 })}
               </div>
             )}
-          </>
-        )}
 
-        {/* Collections — compact pill chips */}
-        {collections.length > 0 && (
-          <div className="collections-chips-section">
-            <div className="collections-chips-header" data-aos="fade-right" data-aos-duration="300">
-              <span className="collections-chips-title">Collections</span>
-            </div>
-            <div className="collections-chips-row">
-              {collections.map((col) => (
-                <button
-                  key={col.id}
-                  className="collection-chip"
-                  onClick={() => setActiveCollection(col.id)}
-                >
-                  <span className="collection-chip-name">{col.name}</span>
-                  <span className="collection-chip-count">{col.movieIds.length}</span>
-                </button>
-              ))}
-              <button className="collection-chip collection-chip-add" onClick={() => setShowCreateModal(true)} title="New collection">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                <span className="collection-chip-name">New</span>
-              </button>
-            </div>
-          </div>
-        )}
-        {collections.length === 0 && (
-          <div className="collections-chips-section">
-            <div className="collections-chips-row">
-              <button className="collection-chip collection-chip-add" onClick={() => setShowCreateModal(true)} title="New collection">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                <span className="collection-chip-name">Create a collection</span>
-              </button>
-            </div>
-          </div>
+            {/* SECTION 5 — SITTING TOO LONG */}
+            {sittingTooLong.length > 0 && (
+              <div className="wl-sitting">
+                <div className="wl-sitting-header">
+                  <div className="wl-sitting-header-left">
+                    <div className="wl-eyebrow">
+                      <span className="wl-eyebrow-bar" aria-hidden="true" />
+                      <span>SITTING TOO LONG</span>
+                    </div>
+                    <h2 className="wl-sitting-headline">Some films have been waiting a while.</h2>
+                  </div>
+                  <button className="wl-sitting-rerank" onClick={() => {}}>
+                    <span className="wl-sitting-rerank-dot" aria-hidden="true" />
+                    Re-rank with Cinno
+                  </button>
+                </div>
+                <div className="wl-sitting-grid">
+                  {sittingTooLong.map((movie) => {
+                    const t = DateTime.fromISO(movie.savedAt);
+                    const months = t.isValid ? Math.max(1, Math.floor(DateTime.now().diff(t, "months").months)) : 0;
+                    const rt = runtimeCache[movie.id];
+                    return (
+                      <div key={movie.id} className="wl-sitting-card">
+                        <div className="wl-sitting-card-poster">
+                          <PosterImage posterPath={movie.poster_path} title={movie.title} />
+                        </div>
+                        <div className="wl-sitting-card-info">
+                          <div className="wl-sitting-card-top">
+                            <div className="wl-sitting-card-eyebrow">
+                              <span className="wl-sitting-card-dot" aria-hidden="true" />
+                              <span>SITTING {months} MONTH{months === 1 ? "" : "S"}</span>
+                            </div>
+                            <div className="wl-sitting-card-title">{movie.title}</div>
+                            <div className="wl-sitting-card-meta">
+                              {movie.year || ""}{movie.genre ? ` · ${movie.genre}` : ""}{rt ? ` · ${formatRuntime(rt)}` : ""}
+                            </div>
+                          </div>
+                          <div className="wl-sitting-card-actions">
+                            <button
+                              className="wl-sitting-card-watch"
+                              onClick={(e) => { e.stopPropagation(); setSelectedMovie(movie); }}
+                            >▶ Watch</button>
+                            <button
+                              className="wl-sitting-card-remove"
+                              onClick={(e) => { e.stopPropagation(); toggleSave(movie); }}
+                            >Remove</button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* Floating Movie Picker FAB */}
-      <button className="movie-picker-fab" onClick={onStartMoviePicker} title="Movie Picker">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
-          <path d="M20 3v4" /><path d="M22 5h-4" />
-        </svg>
+      {/* SECTION 6 — FLOATING CINNO BUTTON */}
+      <button className="wl-fab" onClick={onStartMoviePicker} title="Cinno picker" aria-label="Open Cinno picker">
+        ✦
       </button>
+
       {selectedMovie && (
         <MovieModal
           key={selectedMovie.id}
@@ -7378,6 +7671,7 @@ function MainApp() {
             query={searchQuery} setQuery={setSearchQuery}
             watchedMovies={watchedMovies} watchedDates={watchedDates}
             watchedNotes={watchedNotes} setWatchedNote={setWatchedNote}
+            savedMovies={savedMovies}
             goToCompanion={goToCompanion} startCinnoChat={startCinnoChat}
             goToJournal={goToJournal}
           />
