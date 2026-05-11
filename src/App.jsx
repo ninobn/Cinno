@@ -1920,19 +1920,24 @@ function firstSentence(text) {
   return (m ? m[0] : text).trim();
 }
 
-function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, savedMovies, toggleSave }) {
+function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, savedMovies, listsLoading, toggleSave }) {
   // PRIMARY pool: user's watchlist (shared across Home + Watchlist via cc_tonightPickId).
   const savedPool = useMemo(() => {
     if (!savedMovies || savedMovies.size === 0) return [];
     return Array.from(savedMovies.values()).filter((m) => m && m.backdrop_path);
   }, [savedMovies]);
 
-  // FALLBACK pool: TMDB popular (only when savedPool is empty).
+  // FALLBACK pool: TMDB popular (only after savedMovies is *confirmed* empty).
   const [tmdbPool, setTmdbPool] = useState(() =>
     _cinnoPickPool.userId === (user?.id || null) ? _cinnoPickPool.movies : []
   );
   const useSavedPool = savedPool.length > 0;
-  const pool = useSavedPool ? savedPool : tmdbPool;
+  // Only treat the watchlist as "empty" once the lists fetch has settled. While
+  // listsLoading is true, we hold the slot instead of falling back to TMDB —
+  // otherwise Home would write a TMDB id into cc_tonightPickId before the user's
+  // saved films have a chance to load, diverging from the Watchlist tab.
+  const savedConfirmedEmpty = !listsLoading && savedPool.length === 0;
+  const pool = useSavedPool ? savedPool : (savedConfirmedEmpty ? tmdbPool : []);
 
   // Shared pick id, persisted in localStorage so Home <-> Watchlist stay in sync.
   const [pickId, setPickId] = useState(() => loadFromStorage("cc_tonightPickId", null));
@@ -1949,9 +1954,12 @@ function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, sa
     return pool[0];
   }, [pool, pickId]);
 
-  // Validate stored pickId against the active pool; if missing/stale, pick a fresh random.
+  // Validate stored pickId against the active pool; if missing/stale, pick a fresh
+  // random AND persist it. Skipped entirely while we're still waiting on
+  // savedMovies to load (would otherwise stamp a TMDB id over a valid watchlist id).
   useEffect(() => {
     if (pool.length === 0) return;
+    if (!useSavedPool && !savedConfirmedEmpty) return;
     const stored = loadFromStorage("cc_tonightPickId", null);
     if (stored && pool.some((m) => m.id === stored)) {
       if (stored !== pickId) setPickId(stored);
@@ -1961,11 +1969,13 @@ function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, sa
     setPickId(rand.id);
     saveToStorage("cc_tonightPickId", rand.id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pool.length, useSavedPool]);
+  }, [pool.length, useSavedPool, savedConfirmedEmpty]);
 
-  // Fetch TMDB fallback pool ONLY when the saved pool is empty.
+  // Fetch TMDB fallback pool ONLY once savedMovies is confirmed empty
+  // (i.e., the lists fetch finished and there are no saved films).
   useEffect(() => {
     if (useSavedPool) return;
+    if (!savedConfirmedEmpty) return;
     if (_cinnoPickPool.userId === (user?.id || null) && _cinnoPickPool.movies.length > 0) return;
     let cancelled = false;
     const randomPage = 1 + Math.floor(Math.random() * 10);
@@ -1985,7 +1995,7 @@ function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, sa
       });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, useSavedPool]);
+  }, [user?.id, useSavedPool, savedConfirmedEmpty]);
 
   // AI reason — cached per (date + movie) in localStorage; falls back to overview.
   useEffect(() => {
@@ -2042,19 +2052,37 @@ function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, sa
     if (pool.length < 2 || fading) return;
     setFading(true);
     setTimeout(() => {
-      let next = movie;
-      let attempts = 0;
-      while (next?.id === movie?.id && pool.length > 1 && attempts < 20) {
-        next = pool[Math.floor(Math.random() * pool.length)];
-        attempts += 1;
-      }
-      if (next?.id) {
-        setPickId(next.id);
-        saveToStorage("cc_tonightPickId", next.id);
+      // Prefer the saved pool when available — mirrors the Watchlist shuffle
+      // (anti-self filter + random pick + persist). Falls back to the TMDB
+      // pool only when the user has no saved films.
+      if (useSavedPool) {
+        const others = savedPool.filter((m) => m.id !== (movie?.id));
+        if (others.length === 0) { setFading(false); return; }
+        const pick = others[Math.floor(Math.random() * others.length)];
+        setPickId(pick.id);
+        saveToStorage("cc_tonightPickId", pick.id);
+      } else {
+        let next = movie;
+        let attempts = 0;
+        while (next?.id === movie?.id && tmdbPool.length > 1 && attempts < 20) {
+          next = tmdbPool[Math.floor(Math.random() * tmdbPool.length)];
+          attempts += 1;
+        }
+        if (next?.id) {
+          setPickId(next.id);
+          saveToStorage("cc_tonightPickId", next.id);
+        }
       }
       setFading(false);
     }, 180);
   };
+
+  // Loading state — we have a logged-in user whose saved films haven't loaded yet.
+  // Hold the card slot (don't fall back to TMDB) so the Home pick can match Watchlist
+  // once Supabase responds.
+  if (!movie && !useSavedPool && !savedConfirmedEmpty) {
+    return <div className="dash-card tonight-pick-card" aria-hidden="true" />;
+  }
 
   if (!movie) return null;
 
@@ -2406,7 +2434,7 @@ const _personalizedRailsCache = {
 
 // ─── Search Tab ────────────────────────────────────────────────────────────────
 
-function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, scrollPositions, watchedRatings, setWatchedRating, query, setQuery, watchedMovies, watchedDates, watchedNotes, setWatchedNote, savedMovies, goToCompanion, startCinnoChat, goToJournal }) {
+function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, scrollPositions, watchedRatings, setWatchedRating, query, setQuery, watchedMovies, watchedDates, watchedNotes, setWatchedNote, savedMovies, listsLoading, goToCompanion, startCinnoChat, goToJournal }) {
   const [searchResults, setSearchResults] = useState([]);
   const [searchRetry, setSearchRetry] = useState(0);
   const [movies, setMovies] = useState([]);
@@ -2992,6 +3020,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                   watchedIds={watchedIds}
                   savedIds={savedIds}
                   savedMovies={savedMovies}
+                  listsLoading={listsLoading}
                   toggleSave={toggleSave}
                 />
               </div>
@@ -7669,7 +7698,7 @@ function MainApp() {
             query={searchQuery} setQuery={setSearchQuery}
             watchedMovies={watchedMovies} watchedDates={watchedDates}
             watchedNotes={watchedNotes} setWatchedNote={setWatchedNote}
-            savedMovies={savedMovies}
+            savedMovies={savedMovies} listsLoading={listsLoading}
             goToCompanion={goToCompanion} startCinnoChat={startCinnoChat}
             goToJournal={goToJournal}
           />
