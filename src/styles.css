@@ -10771,36 +10771,48 @@ body {
 
 /* Portrait phones — primary nav-bar reachability fix */
 @media (max-width: 480px) {
-  /* Top bar: tighten padding and gaps so the hamburger fits on screen */
+  /* Top bar: tighten padding and gaps so the hamburger fits on screen.
+     Explicit nowrap + visible overflow ensures the right-side controls
+     (avatar, hamburger) are never clipped or pushed off-screen. */
   .topbar {
     padding: 0 12px;
     gap: 8px;
+    flex-wrap: nowrap;
+    overflow: visible;
   }
   .topbar-actions {
     gap: 6px;
+    flex-shrink: 0;
   }
 
-  /* Search bar: constrain so it doesn't push the right-side controls off-screen */
+  /* Search bar: constrain to a fixed narrow width so it can't crowd
+     the dropdown trigger off-screen on a 390px viewport. */
   .topbar-search {
-    width: 120px;
-    max-width: 40vw;
-    flex: 0 0 auto;
+    width: 100px;
+    max-width: 100px;
+    flex: 0 1 auto;
+    flex-shrink: 1;
+    min-width: 0;
   }
   /* Search input keeps 16px to defeat iOS zoom (inherits via the rule above,
      but restate inside the topbar-specific selector for specificity safety) */
   .topbar-search input {
     font-size: 16px;
+    min-width: 0;
   }
 
-  /* Tap-target minimums (Apple HIG 44x44) for all topbar interactive elements */
+  /* Tap-target minimums (Apple HIG 44x44) for all topbar interactive elements.
+     flex-shrink: 0 guarantees the dropdown trigger never gets squeezed. */
   .topbar-mobile-menu-btn,
   .topbar-user-btn,
   .topbar-settings-btn {
     min-width: 44px;
     min-height: 44px;
+    flex-shrink: 0;
   }
   .topbar-signin-btn {
     min-height: 44px;
+    flex-shrink: 0;
   }
 
   /* Keep dropdowns/menus inside the viewport — never overflow right edge */
@@ -10848,9 +10860,6 @@ body {
 @media (max-width: 360px) {
   .topbar-brand-text {
     display: none;
-  }
-  .topbar-search {
-    width: 100px;
   }
 }
 

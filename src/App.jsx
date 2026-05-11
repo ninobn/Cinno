@@ -1920,7 +1920,7 @@ function firstSentence(text) {
   return (m ? m[0] : text).trim();
 }
 
-function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, toggleSave, onOpenMovie }) {
+function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, toggleSave }) {
   const [pool, setPool] = useState(() =>
     _cinnoPickPool.userId === (user?.id || null) ? _cinnoPickPool.movies : []
   );
@@ -2943,7 +2943,6 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                   watchedIds={watchedIds}
                   savedIds={savedIds}
                   toggleSave={toggleSave}
-                  onOpenMovie={setSelectedMovie}
                 />
               </div>
             </div>
