@@ -2847,14 +2847,12 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
               </div>
             )}
             {!trendingLoading && heroMovies.length > 0 && (
-              <>
-                <div className="hero-banner">
+              <div className="hero-banner">
                   {heroMovies.map((movie, i) => {
                     const isCurrent = i === heroIndex;
                     const trailerUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(movie.title + " official trailer")}`;
                     const isHeroSaved = savedIds.has(movie.id);
                     const hasRating = movie.rating && movie.rating !== "—";
-                    const hasSynopsis = movie.synopsis && movie.synopsis !== "No description available.";
                     return (
                       <div key={movie.id} className={`hero-slide ${isCurrent ? 'active' : ''}`}>
                         {movie.backdrop_path && (
@@ -2871,9 +2869,6 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                           <div className="hero-bottom-row">
                             <div className="hero-bottom-left">
                               <h2 className="hero-title">{movie.title}</h2>
-                              {hasSynopsis && (
-                                <p className="hero-synopsis">{movie.synopsis}</p>
-                              )}
                               <div className="hero-actions">
                                 <a
                                   className="hero-btn hero-btn-trailer"
@@ -2924,9 +2919,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                       );
                     })()}
                   </div>
-                </div>
-                <div className="hero-bleed" aria-hidden="true" />
-              </>
+              </div>
             )}
 
             {/* Editorial + Dashboard Cards — side by side when there's taste content */}
