@@ -143,3 +143,30 @@ export async function migrateLocalDiscover(userId, localData) {
     return null;
   }
 }
+
+// ─── Recommendations (written by ml/recommender.py cron) ────────────────────
+
+export async function fetchRecommendations(userId) {
+  if (!supabase) throw new Error("No Supabase client");
+  const { data, error } = await supabase
+    .from("recommendations")
+    .select("tmdb_id, score, reason, title, poster_path, backdrop_path, genre_ids, release_date, vote_average, overview")
+    .eq("user_id", userId)
+    .order("score", { ascending: false })
+    .limit(100);
+  if (error) throw error;
+  return data || [];
+}
+
+export async function hasRecentRecommendations(userId) {
+  if (!supabase) throw new Error("No Supabase client");
+  const cutoff = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from("recommendations")
+    .select("generated_at")
+    .eq("user_id", userId)
+    .gte("generated_at", cutoff)
+    .limit(1);
+  if (error) return false;
+  return (data || []).length > 0;
+}

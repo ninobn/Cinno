@@ -5873,6 +5873,50 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
 
   const loadMoviesRef = useRef(null);
 
+  const loadRecommendedMovies = async () => {
+    if (!user || isGuest) return null;
+    try {
+      const recs = await discoverService.fetchRecommendations(user.id);
+      if (!recs || recs.length === 0) return null;
+
+      // Build movies directly from cached rec fields — no per-movie TMDB call.
+      // Tagline fetch for the first 4 cards happens in loadMovies, same as the TMDB path.
+      const results = recs
+        .filter((rec) => !exclusionSet.has(rec.tmdb_id) && rec.poster_path)
+        .slice(0, 50)
+        .map((rec) => {
+          const movie = tmdbToMovie({
+            id: rec.tmdb_id,
+            title: rec.title,
+            poster_path: rec.poster_path,
+            backdrop_path: rec.backdrop_path,
+            genre_ids: rec.genre_ids ?? [],
+            release_date: rec.release_date,
+            vote_average: rec.vote_average,
+            overview: rec.overview,
+          });
+          // Attach recommendation reason for potential future UI use
+          movie._reason = rec.reason;
+          movie._score = rec.score;
+          return movie;
+        });
+
+      if (results.length === 0) return null;
+
+      // Sort by score descending, then shuffle top half slightly for variety
+      results.sort((a, b) => (b._score || 0) - (a._score || 0));
+      const topHalf = results.slice(0, Math.ceil(results.length / 2));
+      const bottomHalf = results.slice(Math.ceil(results.length / 2));
+      topHalf.sort(() => Math.random() - 0.5);
+      const shuffled = [...topHalf, ...bottomHalf];
+
+      return shuffled.slice(0, SESSION_LIMIT);
+    } catch (e) {
+      console.warn("[discover] Failed to load recommendations:", e);
+      return null;
+    }
+  };
+
   const loadMovies = async (genreIds = [], append = false) => {
     const version = ++fetchVersionRef.current;
 
@@ -5883,6 +5927,29 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     }
 
     try {
+      // Try recommendations first (logged-in users only, no genre filter active)
+      if (!append && user && !isGuest && genreIds.length === 0) {
+        const recommended = await loadRecommendedMovies();
+        if (recommended && recommended.length >= 5) {
+          if (fetchVersionRef.current === version) {
+            setMovies(recommended);
+            setCurrentIndex(0);
+            recommended.slice(0, 4).forEach((m) => {
+              getMovieDetails(m.id).then((d) => {
+                setCardDetails((prev) => ({
+                  ...prev,
+                  [m.id]: { tagline: d.tagline || "" }
+                }));
+              }).catch(() => {});
+            });
+            setLoading(false);
+            return recommended.length;
+          }
+        }
+      }
+      // Fall through to existing TMDB fetch if recommendations unavailable
+      // (guest user, genre filter active, not enough recommendations, or fetch failed)
+
       const discoverParams = {
         "vote_average.gte": "6.5",
         "vote_count.gte": "100",

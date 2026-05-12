@@ -200,6 +200,13 @@ def write_recommendations(supabase, user_id, scored_movies):
         rows.append({
             "user_id": user_id,
             "tmdb_id": movie["id"],
+            "title": movie.get("title"),
+            "poster_path": movie.get("poster_path"),
+            "backdrop_path": movie.get("backdrop_path"),
+            "genre_ids": genre_ids,
+            "release_date": movie.get("release_date"),
+            "vote_average": movie.get("vote_average"),
+            "overview": movie.get("overview"),
             "score": round(score, 4),
             "reason": reason,
             "generated_at": datetime.now(timezone.utc).isoformat()
