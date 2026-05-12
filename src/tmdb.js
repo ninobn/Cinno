@@ -26,6 +26,7 @@ export function tmdbToMovie(m) {
     year: (m.release_date || "").slice(0, 4) || "—",
     rating: m.vote_average ? m.vote_average.toFixed(1) : "—",
     genre,
+    genre_ids: m.genre_ids ?? [],
     poster_path: m.poster_path,
     backdrop_path: m.backdrop_path,
     synopsis: m.overview || "No description available.",

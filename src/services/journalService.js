@@ -209,6 +209,7 @@ export async function migrateLocalJournal(userId, localData) {
         year: m?.year && m.year !== "\u2014" ? parseInt(m.year) : null,
         rating: m?.rating && m.rating !== "\u2014" ? parseFloat(m.rating) : null,
         synopsis: m?.synopsis || null,
+        genre_ids: m?.genre_ids ?? [],
         cached_at: now,
       };
     });
@@ -271,6 +272,7 @@ async function ensureMovieCached(movie) {
       year: null,
       rating: null,
       synopsis: null,
+      genre_ids: movie.genre_ids ?? [],
       cached_at: new Date().toISOString(),
     }, { onConflict: "tmdb_id" });
   if (error) console.error("Failed to insert placeholder movies_cache row:", error);

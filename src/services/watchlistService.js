@@ -28,6 +28,7 @@ export async function upsertMovieCache(movie) {
         year: movie.year && movie.year !== "—" ? parseInt(movie.year) : null,
         rating: movie.rating && movie.rating !== "—" ? parseFloat(movie.rating) : null,
         synopsis: movie.synopsis || null,
+        genre_ids: movie.genre_ids ?? [],
         cached_at: new Date().toISOString(),
       }, { onConflict: "tmdb_id" });
     if (error) throw error;
@@ -46,6 +47,7 @@ async function upsertMovieCacheBatch(movies) {
       year: m.year && m.year !== "—" ? parseInt(m.year) : null,
       rating: m.rating && m.rating !== "—" ? parseFloat(m.rating) : null,
       synopsis: m.synopsis || null,
+      genre_ids: m.genre_ids ?? [],
       cached_at: new Date().toISOString(),
     }));
     const { error } = await supabase

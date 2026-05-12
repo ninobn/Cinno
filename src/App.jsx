@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback, useId } from "react";
 import { createPortal } from "react-dom";
-import { getTrending, getPopular, getSimilar, searchMovies, discoverByGenres, discoverMovies, discoverMoviesRaw, getWatchProviders, getMovieDetails, getMovieById, getSmartContext, tmdbToMovie, IMG_BASE } from "./tmdb.js";
+import { getTrending, getPopular, getSimilar, searchMovies, discoverByGenres, discoverMovies, discoverMoviesRaw, getWatchProviders, getMovieDetails, getMovieById, getSmartContext, tmdbToMovie, IMG_BASE, GENRE_MAP } from "./tmdb.js";
 import { useAuth } from "./AuthContext.jsx";
 import { useFloating, offset, flip, shift, autoUpdate, FloatingPortal } from "@floating-ui/react";
 import { DateTime } from "luxon";
@@ -5725,6 +5725,20 @@ function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
 const GENRE_ID_TO_LABEL = {};
 GENRE_FILTERS.forEach((g) => { GENRE_ID_TO_LABEL[g.id] = g.label; });
 
+// Map a movie's genre_ids → { genreName: weight } for swipe_history.genre_scores.
+// "skipped" (Later) carries no taste signal; only liked/disliked update the model.
+function computeGenreScores(movie, action) {
+  if (!movie?.genre_ids || movie.genre_ids.length === 0) return null;
+  const weight = action === "liked" ? 1 : action === "disliked" ? -1 : 0;
+  if (weight === 0) return null;
+  const scores = {};
+  for (const genreId of movie.genre_ids) {
+    const genreName = GENRE_MAP[genreId];
+    if (genreName) scores[genreName] = weight;
+  }
+  return Object.keys(scores).length > 0 ? scores : null;
+}
+
 function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, setWatchedRating, watchedRatings, watchedMovies, isGuest, guardAction }) {
   const { user } = useAuth();
   const SESSION_LIMIT = 30;
@@ -6054,7 +6068,8 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       // Fire-and-forget: record swipe to Supabase
       if (user) {
         const dbAction = action === "save" ? "liked" : action === "skip" ? "disliked" : "skipped";
-        discoverService.recordSwipe(user.id, movie.id, dbAction).catch(syncFailToast);
+        const genreScores = computeGenreScores(movie, dbAction);
+        discoverService.recordSwipe(user.id, movie.id, dbAction, genreScores).catch(syncFailToast);
       }
     }, 250);
   }, [movies, currentIndex, savedIds, toggleSave, isGuest, guardAction, user]);
@@ -6072,7 +6087,8 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     setTimeout(() => setCounterBump(false), 200);
     // Fire-and-forget: record as "liked" in Supabase (watched = positive signal)
     if (user) {
-      discoverService.recordSwipe(user.id, watchedModal.id, "liked").catch(syncFailToast);
+      const genreScores = computeGenreScores(watchedModal, "liked");
+      discoverService.recordSwipe(user.id, watchedModal.id, "liked", genreScores).catch(syncFailToast);
     }
   }, [watchedModal, watchedSlider, toggleWatched, setWatchedRating, user]);
 
@@ -6182,13 +6198,13 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
       <div className="discover-container">
         <div className="discover-header">
           <div className="discover-undo-btn disabled"><UndoIcon /></div>
-          <span className="discover-session-count" style={{ opacity: 0.3 }}>0 / 30 discovered</span>
+          <span className="discover-session-count" style={{ opacity: 0.3 }}>0 DISCOVERED · 30 REMAINING</span>
           <div className="discover-undo-btn disabled">
             <ShuffleIcon size={14} />
           </div>
           <div className="genre-dropdown" style={{ marginTop: 0 }}>
             <div className="genre-dropdown-trigger" style={{ opacity: 0.3 }}>
-              <span>Filter by genre</span>
+              <span>GENRE</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <polyline points="6 9 12 15 18 9" />
               </svg>
@@ -6216,10 +6232,6 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
           <div className="discover-action-group">
             <div className="discover-action-btn discover-skip-btn" style={{ opacity: 0.3 }}><SwipeXIcon /></div>
             <span className="discover-action-label" style={{ opacity: 0.3 }}>Skip</span>
-          </div>
-          <div className="discover-action-group">
-            <div className="discover-action-btn discover-maybe-btn" style={{ opacity: 0.3 }}><ClockIcon /></div>
-            <span className="discover-action-label" style={{ opacity: 0.3 }}>Later</span>
           </div>
           <div className="discover-action-group">
             <div className="discover-action-btn discover-like-btn" style={{ opacity: 0.3 }}><SwipeHeartIcon /></div>
@@ -6315,7 +6327,9 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
         >
           <UndoIcon />
         </button>
-        <span className={`discover-session-count${counterBump ? " bump" : ""}`}>{swipeCount} / {SESSION_LIMIT} discovered</span>
+        <span className={`discover-session-count${counterBump ? " bump" : ""}`}>
+          {swipeCount} DISCOVERED · {Math.max(0, SESSION_LIMIT - swipeCount)} REMAINING
+        </span>
         <button className="discover-undo-btn" onClick={() => loadMoviesRef.current([...activeGenresRef.current])} title="Shuffle">
           <ShuffleIcon size={20} />
         </button>
@@ -6326,30 +6340,38 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
             onClick={() => setFilterOpen(f => !f)}
             aria-expanded={filterOpen}
           >
-            <span>{activeGenres.size > 0 ? `Genres (${activeGenres.size})` : "Filter by genre"}</span>
+            <span>{activeGenres.size > 0 ? `GENRE · ${activeGenres.size}` : "GENRE"}</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
-          {filterOpen && (
-            <div className="genre-dropdown-panel" ref={discoverGenreFloating.refs.setFloating} style={discoverGenreFloating.floatingStyles}>
-              {GENRE_FILTERS.map((g) => (
-                <button
-                  key={g.id}
-                  className={`genre-option ${activeGenres.has(g.id) ? "active" : ""}`}
-                  onClick={() => toggleGenreChip(g.id)}
-                >
-                  <span className="genre-option-check">{activeGenres.has(g.id) ? "✓" : ""}</span>
-                  {g.label}
-                </button>
-              ))}
-              {activeGenres.size > 0 && (
-                <button className="genre-clear-btn" onClick={() => { clearGenreFilters(); setFilterOpen(false); }}>
-                  Clear all
-                </button>
-              )}
-            </div>
-          )}
+          <div
+            className="genre-dropdown-panel"
+            ref={discoverGenreFloating.refs.setFloating}
+            style={{
+              ...discoverGenreFloating.floatingStyles,
+              opacity: filterOpen ? 1 : 0,
+              pointerEvents: filterOpen ? 'auto' : 'none',
+              transform: `${discoverGenreFloating.floatingStyles?.transform || ''} translateY(${filterOpen ? '0' : '-4px'})`.trim(),
+              transition: 'opacity 0.15s ease, transform 0.15s ease',
+            }}
+          >
+            {GENRE_FILTERS.map((g) => (
+              <button
+                key={g.id}
+                className={`genre-option ${activeGenres.has(g.id) ? "active" : ""}`}
+                onClick={() => toggleGenreChip(g.id)}
+              >
+                <span className="genre-option-check">{activeGenres.has(g.id) ? "✓" : ""}</span>
+                {g.label}
+              </button>
+            ))}
+            {activeGenres.size > 0 && (
+              <button className="genre-clear-btn" onClick={() => { clearGenreFilters(); setFilterOpen(false); }}>
+                Clear all
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -6446,12 +6468,6 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
             <SwipeXIcon />
           </button>
           <span className="discover-action-label">Skip</span>
-        </div>
-        <div className="discover-action-group">
-          <button className="discover-action-btn discover-maybe-btn" onClick={() => handleAction("maybe")} aria-label="Maybe later">
-            <ClockIcon />
-          </button>
-          <span className="discover-action-label">Later</span>
         </div>
         <div className="discover-action-group">
           <button className="discover-action-btn discover-like-btn" onClick={() => handleAction("save")} aria-label="Save to watchlist">
