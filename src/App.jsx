@@ -1920,7 +1920,7 @@ function firstSentence(text) {
   return (m ? m[0] : text).trim();
 }
 
-function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, savedMovies, listsLoading, toggleSave }) {
+function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, savedMovies, listsLoading, toggleSave, setSelectedMovie }) {
   // PRIMARY pool: user's watchlist (shared across Home + Watchlist via cc_tonightPickId).
   const savedPool = useMemo(() => {
     if (!savedMovies || savedMovies.size === 0) return [];
@@ -2101,7 +2101,7 @@ function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, sa
         </div>
         <div className="tonight-pick-content">
           <div className="tonight-pick-top">
-            <div className="tonight-pick-label">◉ TONIGHT&apos;S PICK · FOR TONIGHT</div>
+            <div className="tonight-pick-label">◉ TONIGHT&apos;S PICK · FROM WATCHLIST</div>
             <div className="tonight-pick-title">{movie.title}</div>
             {reasonLoading ? (
               <div className="tonight-pick-reason-skel skel" />
@@ -2111,12 +2111,11 @@ function CinnoPickCard({ user, isGuest, getAccessToken, watchedIds, savedIds, sa
           </div>
           <div className="tonight-pick-actions">
             <button
-              className={`tonight-pick-btn tonight-pick-btn-save${isSaved ? " saved" : ""}`}
-              onClick={() => toggleSave(movie)}
-              title={isSaved ? "Saved" : "Save"}
+              className="tonight-pick-btn"
+              onClick={() => setSelectedMovie(movie)}
+              title="More info"
             >
-              <BookmarkIcon />
-              <span>{isSaved ? "Saved" : "+ Save"}</span>
+              <span>More info</span>
             </button>
             <button
               className="tonight-pick-btn"
@@ -2919,7 +2918,6 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                     const isCurrent = i === heroIndex;
                     const trailerUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(movie.title + " official trailer")}`;
                     const isHeroSaved = savedIds.has(movie.id);
-                    const hasRating = movie.rating && movie.rating !== "—";
                     return (
                       <div key={movie.id} className={`hero-slide ${isCurrent ? 'active' : ''}`}>
                         {movie.backdrop_path && (
@@ -2927,12 +2925,6 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                         )}
                         <div className="hero-gradient" />
                         <div className="hero-content">
-                          <div className="hero-top-row">
-                            <span className="hero-eyebrow-pill">{movie.genre} · {movie.year}</span>
-                            {hasRating && (
-                              <span className="hero-rating">★ {movie.rating}</span>
-                            )}
-                          </div>
                           <div className="hero-bottom-row">
                             <div className="hero-bottom-left">
                               <h2 className="hero-title">{movie.title}</h2>
@@ -2966,26 +2958,6 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                       </div>
                     );
                   })}
-                  <div className="hero-pagination">
-                    {(() => {
-                      const total = Math.min(heroMovies.length, 5);
-                      const segSize = Math.ceil(heroMovies.length / total);
-                      const currentSeg = Math.floor(heroIndex / segSize);
-                      return (
-                        <>
-                          <span className="hero-counter">
-                            {String(currentSeg + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
-                          </span>
-                          <div className="hero-dots">
-                            {Array.from({ length: total }, (_, i) => {
-                              const isActive = currentSeg === i;
-                              return <button key={i} className={`hero-dot ${isActive ? 'active' : ''}`} onClick={() => setHeroIndex(i * segSize)} aria-label={`Go to slide ${i + 1}`} />;
-                            })}
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </div>
               </div>
             )}
 
@@ -3024,6 +2996,7 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
                   savedMovies={savedMovies}
                   listsLoading={listsLoading}
                   toggleSave={toggleSave}
+                  setSelectedMovie={setSelectedMovie}
                 />
               </div>
             </div>
