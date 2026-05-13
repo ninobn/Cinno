@@ -5699,10 +5699,11 @@ const GENRE_ID_TO_LABEL = {};
 GENRE_FILTERS.forEach((g) => { GENRE_ID_TO_LABEL[g.id] = g.label; });
 
 // Map a movie's genre_ids → { genreName: weight } for swipe_history.genre_scores.
-// "skipped" (Later) carries no taste signal; only liked/disliked update the model.
+// liked = strong positive, disliked = strong negative, skipped (Later) = mild positive.
 function computeGenreScores(movie, action) {
   if (!movie?.genre_ids || movie.genre_ids.length === 0) return null;
-  const weight = action === "liked" ? 1 : action === "disliked" ? -1 : 0;
+  const weight = action === "liked" ? 1 : action === "disliked" ? -1 :
+                 action === "skipped" ? 0.25 : 0;
   if (weight === 0) return null;
   const scores = {};
   for (const genreId of movie.genre_ids) {
@@ -6084,7 +6085,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     setTimeout(() => { // matches 250ms swipe-out animation
       if (action === "save") {
         if (!savedIds.has(movie.id)) toggleSave(movie);
-      } else if (action === "maybe") {
+      } else if (action === "later") {
         setMaybeLater((prev) => {
           if (prev.some((m) => m.id === movie.id)) return prev;
           return [{ ...movie, addedAt: Date.now() }, ...prev].slice(0, 50);
@@ -6107,7 +6108,9 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
 
       // Fire-and-forget: record swipe to Supabase
       if (user) {
-        const dbAction = action === "save" ? "liked" : action === "skip" ? "disliked" : "skipped";
+        const dbAction = action === "save" ? "liked" :
+                         action === "skip" ? "disliked" :
+                         action === "later" ? "skipped" : "skipped";
         const genreScores = computeGenreScores(movie, dbAction);
         discoverService.recordSwipe(user.id, movie.id, dbAction, genreScores).catch(syncFailToast);
       }
@@ -6142,7 +6145,7 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
     if (action === "save") {
       if (savedIds.has(movie.id)) toggleSave(movie);
     }
-    if (action === "maybe") {
+    if (action === "later") {
       setMaybeLater((prev) => prev.filter((m) => m.id !== movie.id));
     }
     setSwipeCount((c) => Math.max(0, c - 1));
@@ -6284,6 +6287,10 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
               </svg>
             </div>
             <span className="discover-action-label" style={{ opacity: 0.3 }}>Watched</span>
+          </div>
+          <div className="discover-action-group">
+            <div className="discover-action-btn discover-maybe-btn" style={{ opacity: 0.3 }}><ClockIcon /></div>
+            <span className="discover-action-label" style={{ opacity: 0.3 }}>Later</span>
           </div>
         </div>
       </div>
@@ -6523,6 +6530,12 @@ function DiscoverTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDeb
             </svg>
           </button>
           <span className="discover-action-label">Watched</span>
+        </div>
+        <div className="discover-action-group">
+          <button className="discover-action-btn discover-maybe-btn" onClick={() => handleAction("later")} aria-label="Save for later">
+            <ClockIcon />
+          </button>
+          <span className="discover-action-label">Later</span>
         </div>
       </div>
 

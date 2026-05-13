@@ -29,7 +29,8 @@ SWIPE_WEIGHTS = {
 JOURNAL_RATING_WEIGHT = 1.5
 WATCHLIST_WEIGHT = 1.0
 CANDIDATE_PAGES = 5
-MAX_RECOMMENDATIONS = 50
+MAX_RECOMMENDATIONS = 60
+SOFT_EXCLUDE_KEEP_PROB = 0.2  # watchlist films appear 20% of the time as reminders
 
 
 def get_supabase():
@@ -50,7 +51,15 @@ def fetch_all_users(supabase):
 
 
 def build_taste_profile(supabase, user_id):
+    """Build per-genre taste scores and three exclusion buckets:
+      hard_exclude — never recommend (disliked swipes, liked swipes, journal entries)
+      soft_exclude — recommend with 20% probability (watchlist saves; user may want a nudge)
+      later_ids    — explicitly not excluded (skipped swipes recirculate)
+    """
     genre_scores = {}
+    hard_exclude = set()
+    soft_exclude = set()
+    later_ids = set()
 
     # Signal 1 — swipe history genre scores
     swipes = supabase.from_("swipe_history")\
@@ -58,11 +67,15 @@ def build_taste_profile(supabase, user_id):
         .eq("user_id", user_id)\
         .execute()
 
-    seen_ids = set()
     for row in swipes.data or []:
-        seen_ids.add(row["tmdb_id"])
+        tmdb_id = row["tmdb_id"]
+        action = row["action"]
+        if action == "liked" or action == "disliked":
+            hard_exclude.add(tmdb_id)
+        elif action == "skipped":
+            later_ids.add(tmdb_id)  # do NOT exclude — let it recirculate
         if row.get("genre_scores") and isinstance(row["genre_scores"], dict):
-            weight = SWIPE_WEIGHTS.get(row["action"], 0)
+            weight = SWIPE_WEIGHTS.get(action, 0)
             for genre, score in row["genre_scores"].items():
                 genre_scores[genre] = genre_scores.get(genre, 0) + (score * weight)
 
@@ -73,7 +86,7 @@ def build_taste_profile(supabase, user_id):
         print(f"[recommender] User {user_id[:8]}... swipe scores all <= 0, falling back to journal/watchlist as primary signal")
         genre_scores = {}
 
-    # Signal 2 — journal personal ratings
+    # Signal 2 — journal personal ratings (always hard-excluded: already watched)
     journal = supabase.from_("journal_entries")\
         .select("tmdb_id, personal_rating")\
         .eq("user_id", user_id)\
@@ -81,7 +94,7 @@ def build_taste_profile(supabase, user_id):
         .execute()
 
     for entry in journal.data or []:
-        seen_ids.add(entry["tmdb_id"])
+        hard_exclude.add(entry["tmdb_id"])
         if not entry.get("personal_rating"):
             continue
         cache = supabase.from_("movies_cache")\
@@ -98,7 +111,7 @@ def build_taste_profile(supabase, user_id):
                 genre_scores[genre_name] = genre_scores.get(genre_name, 0) + \
                     (rating_signal * JOURNAL_RATING_WEIGHT)
 
-    # Signal 3 — watchlist saves (implicit positive signal)
+    # Signal 3 — watchlist saves (implicit positive signal, soft-excluded from recs)
     watchlist = supabase.from_("collection_movies")\
         .select("tmdb_id, collections!inner(user_id, is_default)")\
         .eq("collections.user_id", user_id)\
@@ -106,7 +119,7 @@ def build_taste_profile(supabase, user_id):
         .execute()
 
     for item in watchlist.data or []:
-        seen_ids.add(item["tmdb_id"])
+        soft_exclude.add(item["tmdb_id"])
         cache = supabase.from_("movies_cache")\
             .select("genre_ids")\
             .eq("tmdb_id", item["tmdb_id"])\
@@ -120,23 +133,32 @@ def build_taste_profile(supabase, user_id):
                 genre_scores[genre_name] = genre_scores.get(genre_name, 0) + WATCHLIST_WEIGHT
 
     print(f"[recommender] User {user_id[:8]}... taste profile: {dict(sorted(genre_scores.items(), key=lambda x: -x[1])[:5])}")
-    return genre_scores, seen_ids
+    print(f"[recommender] User {user_id[:8]}... exclusions: hard={len(hard_exclude)} soft={len(soft_exclude)} later={len(later_ids)}")
+    return genre_scores, hard_exclude, soft_exclude, later_ids
 
 
 def fetch_candidate_movies(genre_scores):
-    candidates = []
-    seen_candidate_ids = set()
-
-    # Get top 3 preferred genres
-    top_genres = sorted(genre_scores.items(), key=lambda x: -x[1])[:3]
+    """Three-bucket fetch:
+      taste    — top 3 positive-score genres (TMDB discover by genre + popularity)
+      adjacent — up to 2 neutral/unexplored genres (vote_average.gte=7.0, vote_count.gte=200)
+      wildcard — no genre filter, top-rated quality films from a randomized page
+    Returns a dict {"taste": [movies], "adjacent": [movies], "wildcard": [movies]}.
+    The same movie can appear in multiple buckets; dedup happens later by source priority.
+    """
     genre_name_to_id = {v: k for k, v in GENRE_MAP.items()}
 
+    # ─── BUCKET 1: TASTE — top 3 genres by positive score ──────────────────
+    taste = []
+    taste_ids = set()
+    top_genres = sorted(genre_scores.items(), key=lambda x: -x[1])[:3]
+    taste_genre_names = set()
     for genre_name, score in top_genres:
         if score <= 0:
             continue
         genre_id = genre_name_to_id.get(genre_name)
         if not genre_id:
             continue
+        taste_genre_names.add(genre_name)
         for page in range(1, CANDIDATE_PAGES + 1):
             url = f"{TMDB_BASE}/discover/movie"
             params = {
@@ -144,40 +166,89 @@ def fetch_candidate_movies(genre_scores):
                 "with_genres": genre_id,
                 "sort_by": "popularity.desc",
                 "vote_count.gte": 100,
-                "page": page
+                "page": page,
             }
             resp = requests.get(url, params=params, timeout=10)
             if resp.status_code != 200:
                 continue
             for m in resp.json().get("results", []):
-                if m["id"] not in seen_candidate_ids:
-                    seen_candidate_ids.add(m["id"])
-                    candidates.append(m)
+                if m["id"] not in taste_ids:
+                    taste_ids.add(m["id"])
+                    taste.append(m)
 
-    # Fallback — if no strong genre preference (empty profile or all-negative
-    # swipes that got reset), fetch top-rated films with quality gates.
-    if not candidates:
-        for page in range(1, 4):
-            url = f"{TMDB_BASE}/discover/movie"
-            params = {
-                "api_key": TMDB_API_KEY,
-                "sort_by": "vote_average.desc",
-                "vote_average.gte": 7.5,
-                "vote_count.gte": 500,
-                "page": page,
-            }
-            resp = requests.get(url, params=params, timeout=10)
-            if resp.status_code == 200:
+    # ─── BUCKET 2: ADJACENT — neutral or unexplored genres ─────────────────
+    # A genre is "adjacent" if the user has neither strongly disliked it (score > -3)
+    # nor strongly liked it (score < 5). Genres with no score at all count as neutral.
+    adjacent = []
+    adjacent_ids = set()
+    adjacent_pool = []
+    for genre_name in GENRE_MAP.values():
+        if genre_name in taste_genre_names:
+            continue
+        score = genre_scores.get(genre_name, 0)
+        if -3 < score < 5:
+            adjacent_pool.append(genre_name)
+
+    if adjacent_pool:
+        picks = random.sample(adjacent_pool, min(2, len(adjacent_pool)))
+        for genre_name in picks:
+            genre_id = genre_name_to_id.get(genre_name)
+            if not genre_id:
+                continue
+            for page in range(1, 3):  # 2 pages per adjacent genre
+                url = f"{TMDB_BASE}/discover/movie"
+                params = {
+                    "api_key": TMDB_API_KEY,
+                    "with_genres": genre_id,
+                    "sort_by": "popularity.desc",
+                    "vote_average.gte": 7.0,
+                    "vote_count.gte": 200,
+                    "page": page,
+                }
+                resp = requests.get(url, params=params, timeout=10)
+                if resp.status_code != 200:
+                    continue
                 for m in resp.json().get("results", []):
-                    if m["id"] not in seen_candidate_ids:
-                        seen_candidate_ids.add(m["id"])
-                        candidates.append(m)
+                    if m["id"] not in adjacent_ids:
+                        adjacent_ids.add(m["id"])
+                        adjacent.append(m)
 
-    print(f"[recommender] Fetched {len(candidates)} candidate movies")
-    return candidates
+    # ─── BUCKET 3: WILDCARD — top-rated, no genre filter ───────────────────
+    # Exclude films whose primary genre is in the strongly-disliked set (score < -5).
+    strongly_disliked_ids = {
+        genre_name_to_id[name]
+        for name, score in genre_scores.items()
+        if score < -5 and name in genre_name_to_id
+    }
+    wildcard = []
+    wildcard_ids = set()
+    wildcard_page = random.randint(1, 10)
+    for page in (wildcard_page, wildcard_page + 1):
+        url = f"{TMDB_BASE}/discover/movie"
+        params = {
+            "api_key": TMDB_API_KEY,
+            "sort_by": "vote_average.desc",
+            "vote_average.gte": 7.5,
+            "vote_count.gte": 500,
+            "page": page,
+        }
+        resp = requests.get(url, params=params, timeout=10)
+        if resp.status_code != 200:
+            continue
+        for m in resp.json().get("results", []):
+            if m["id"] in wildcard_ids:
+                continue
+            primary_genre = (m.get("genre_ids") or [None])[0]
+            if primary_genre in strongly_disliked_ids:
+                continue
+            wildcard_ids.add(m["id"])
+            wildcard.append(m)
+
+    print(f"[recommender] Buckets — taste={len(taste)} adjacent={len(adjacent)} wildcard={len(wildcard)}")
+    return {"taste": taste, "adjacent": adjacent, "wildcard": wildcard}
 
 
-def score_movie(movie, genre_scores):
+def score_movie(movie, genre_scores, source="taste"):
     score = 0.0
     genre_ids = movie.get("genre_ids", [])
 
@@ -195,7 +266,22 @@ def score_movie(movie, genre_scores):
     vote_avg = movie.get("vote_average", 0)
     score += (vote_avg / 10) * 0.5
 
+    # Discovery bonus — ensures off-taste recs aren't always outscored
+    if source == "adjacent":
+        score += 0.5
+    elif source == "wildcard":
+        score += 1.0
+
     return score
+
+
+def build_reason(source, top_genre):
+    if source == "taste":
+        return f"Matches your taste in {top_genre}" if top_genre else "Matches your taste"
+    if source == "adjacent":
+        return f"Something different — {top_genre} you haven't explored yet" if top_genre else "Something different"
+    # wildcard
+    return "Something completely new — highly rated"
 
 
 def write_recommendations(supabase, user_id, scored_movies):
@@ -207,10 +293,9 @@ def write_recommendations(supabase, user_id, scored_movies):
 
     # Insert new recommendations
     rows = []
-    for movie, score in scored_movies[:MAX_RECOMMENDATIONS]:
+    for movie, score, source in scored_movies[:MAX_RECOMMENDATIONS]:
         genre_ids = movie.get("genre_ids", [])
         top_genre = GENRE_MAP.get(genre_ids[0]) if genre_ids else None
-        reason = f"Matches your taste in {top_genre}" if top_genre else "Highly rated pick"
         rows.append({
             "user_id": user_id,
             "tmdb_id": movie["id"],
@@ -222,27 +307,40 @@ def write_recommendations(supabase, user_id, scored_movies):
             "vote_average": movie.get("vote_average"),
             "overview": movie.get("overview"),
             "score": round(score, 4),
-            "reason": reason,
+            "reason": build_reason(source, top_genre),
+            "source": source,
             "generated_at": datetime.now(timezone.utc).isoformat()
         })
 
     if rows:
         supabase.from_("recommendations").insert(rows).execute()
-        print(f"[recommender] Wrote {len(rows)} recommendations for user {user_id[:8]}...")
+        source_counts = {}
+        for r in rows:
+            source_counts[r["source"]] = source_counts.get(r["source"], 0) + 1
+        print(f"[recommender] Wrote {len(rows)} recommendations for user {user_id[:8]}... ({source_counts})")
 
 
 def process_user(supabase, user_id):
     try:
-        genre_scores, seen_ids = build_taste_profile(supabase, user_id)
-        candidates = fetch_candidate_movies(genre_scores)
+        genre_scores, hard_exclude, soft_exclude, later_ids = build_taste_profile(supabase, user_id)
+        buckets = fetch_candidate_movies(genre_scores)
 
-        # Filter out already seen movies
-        unseen = [m for m in candidates if m["id"] not in seen_ids]
+        # Walk buckets in priority order so a movie appearing in multiple buckets
+        # keeps the higher-priority source (taste > adjacent > wildcard).
+        scored_by_id = {}
+        for source in ("taste", "adjacent", "wildcard"):
+            for m in buckets.get(source, []):
+                tmdb_id = m["id"]
+                if tmdb_id in scored_by_id:
+                    continue
+                if tmdb_id in hard_exclude:
+                    continue
+                if tmdb_id in soft_exclude and random.random() >= SOFT_EXCLUDE_KEEP_PROB:
+                    continue
+                score = score_movie(m, genre_scores, source=source)
+                scored_by_id[tmdb_id] = (m, score, source)
 
-        # Score all unseen candidates
-        scored = [(m, score_movie(m, genre_scores)) for m in unseen]
-        scored.sort(key=lambda x: -x[1])
-
+        scored = sorted(scored_by_id.values(), key=lambda x: -x[1])
         write_recommendations(supabase, user_id, scored)
     except Exception as e:
         print(f"[recommender] ERROR processing user {user_id[:8]}...: {e}")
