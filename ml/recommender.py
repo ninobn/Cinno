@@ -66,6 +66,13 @@ def build_taste_profile(supabase, user_id):
             for genre, score in row["genre_scores"].items():
                 genre_scores[genre] = genre_scores.get(genre, 0) + (score * weight)
 
+    # If swipe history yielded no positive signal (all scores <= 0), reset so
+    # journal ratings + watchlist become the primary signal instead of being
+    # dragged below zero by accumulated dislike weight.
+    if genre_scores and all(score <= 0 for score in genre_scores.values()):
+        print(f"[recommender] User {user_id[:8]}... swipe scores all <= 0, falling back to journal/watchlist as primary signal")
+        genre_scores = {}
+
     # Signal 2 — journal personal ratings
     journal = supabase.from_("journal_entries")\
         .select("tmdb_id, personal_rating")\
@@ -147,11 +154,18 @@ def fetch_candidate_movies(genre_scores):
                     seen_candidate_ids.add(m["id"])
                     candidates.append(m)
 
-    # Fallback — if no strong genre preference, fetch popular films
+    # Fallback — if no strong genre preference (empty profile or all-negative
+    # swipes that got reset), fetch top-rated films with quality gates.
     if not candidates:
         for page in range(1, 4):
-            url = f"{TMDB_BASE}/movie/popular"
-            params = {"api_key": TMDB_API_KEY, "page": page}
+            url = f"{TMDB_BASE}/discover/movie"
+            params = {
+                "api_key": TMDB_API_KEY,
+                "sort_by": "vote_average.desc",
+                "vote_average.gte": 7.5,
+                "vote_count.gte": 500,
+                "page": page,
+            }
             resp = requests.get(url, params=params, timeout=10)
             if resp.status_code == 200:
                 for m in resp.json().get("results", []):
