@@ -23,7 +23,7 @@ GENRE_MAP = {
 SWIPE_WEIGHTS = {
     "liked": 2.0,
     "disliked": -2.0,
-    "skipped": 0.0
+    "skipped": 1.0
 }
 
 JOURNAL_RATING_WEIGHT = 1.5
