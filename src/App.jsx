@@ -7571,6 +7571,19 @@ function MainApp() {
     });
     if (newlyUnlocked.length > 0) {
       setUnlockedBadges((prev) => [...prev, ...newlyUnlocked]);
+
+      // Fresh device / localStorage clear: unlockedBadges was empty before this
+      // run, so the entire backlog is about to "newly unlock" off Supabase
+      // hydration. Silently mark them as seen so we don't cascade-toast for
+      // achievements earned long ago. Real-time unlocks after this point
+      // (unlockedBadges no longer empty) toast normally.
+      if (unlockedBadges.length === 0) {
+        const seen = loadFromStorage("cc_badge_seen", []);
+        const merged = Array.from(new Set([...seen, ...newlyUnlocked]));
+        saveToStorage("cc_badge_seen", merged);
+        return;
+      }
+
       const seen = loadFromStorage("cc_badge_seen", []);
       const toastBadges = new Map();
       newlyUnlocked.forEach((tierId) => {
