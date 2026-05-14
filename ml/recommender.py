@@ -340,7 +340,27 @@ def process_user(supabase, user_id):
                 score = score_movie(m, genre_scores, source=source)
                 scored_by_id[tmdb_id] = (m, score, source)
 
-        scored = sorted(scored_by_id.values(), key=lambda x: -x[1])
+        # Enforce hard bucket caps so adjacent + wildcard always contribute
+        # meaningful diversity even when taste scores dominate.
+        by_source = {"taste": [], "adjacent": [], "wildcard": []}
+        for entry in scored_by_id.values():
+            by_source[entry[2]].append(entry)
+        for source in by_source:
+            by_source[source].sort(key=lambda x: -x[1])
+
+        taste_capped = by_source["taste"][:36]
+        adjacent_capped = by_source["adjacent"][:12]
+        wildcard_capped = by_source["wildcard"][:12]
+
+        deficit = (12 - len(adjacent_capped)) + (12 - len(wildcard_capped))
+        if deficit > 0:
+            taste_overflow = by_source["taste"][36:36 + deficit]
+            taste_capped = taste_capped + taste_overflow
+
+        scored = sorted(
+            taste_capped + adjacent_capped + wildcard_capped,
+            key=lambda x: -x[1],
+        )
         write_recommendations(supabase, user_id, scored)
     except Exception as e:
         print(f"[recommender] ERROR processing user {user_id[:8]}...: {e}")
