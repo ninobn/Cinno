@@ -5402,110 +5402,6 @@ The user is using the movie picker — they want to decide what to watch right n
 
 // ─── Settings Modal ────────────────────────────────────────────────────────────
 
-function BadgeUnlockCelebration({ badge, onDismiss }) {
-  const canvasRef = useRef(null);
-  const animRef = useRef(null);
-
-  useEffect(() => {
-    if (!badge) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-
-    const tierNum = badge.tierNum || 1;
-    const tierKey = ["bronze", "silver", "gold"][tierNum - 1];
-    const baseColor = TIER_COLORS[tierKey] || TIER_COLORS.bronze;
-    const r = parseInt(baseColor.slice(1, 3), 16);
-    const g = parseInt(baseColor.slice(3, 5), 16);
-    const b = parseInt(baseColor.slice(5, 7), 16);
-
-    const particles = [];
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2 - 40;
-    for (let i = 0; i < 60; i++) {
-      const angle = (Math.PI * 2 * i) / 60 + (Math.random() - 0.5) * 0.5;
-      const speed = 2 + Math.random() * 5;
-      const lightness = 0.6 + Math.random() * 0.4;
-      particles.push({
-        x: cx, y: cy,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 2,
-        size: 2 + Math.random() * 4,
-        color: `rgba(${Math.round(r * lightness)}, ${Math.round(g * lightness)}, ${Math.round(b * lightness)}, `,
-        life: 0.7 + Math.random() * 0.3,
-        decay: 0.012 + Math.random() * 0.008,
-      });
-    }
-
-    const start = performance.now();
-    function draw(now) {
-      const elapsed = (now - start) / 1000;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (elapsed < 0.8) {
-        // Glowing orb phase
-        const orbProgress = Math.min(elapsed / 0.6, 1);
-        const orbSize = 20 + orbProgress * 15;
-        const pulse = 1 + Math.sin(elapsed * 12) * 0.15;
-        const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, orbSize * pulse * 2);
-        gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${0.8 * (1 - elapsed / 0.8)})`);
-        gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${0.3 * (1 - elapsed / 0.8)})`);
-        gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(cx, cy, orbSize * pulse * 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      if (elapsed > 0.5) {
-        // Particle burst phase
-        particles.forEach((p) => {
-          if (p.life <= 0) return;
-          p.x += p.vx;
-          p.y += p.vy;
-          p.vy += 0.08;
-          p.vx *= 0.98;
-          p.life -= p.decay;
-          ctx.fillStyle = p.color + Math.max(p.life, 0) + ")";
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.size * Math.max(p.life, 0.1), 0, Math.PI * 2);
-          ctx.fill();
-        });
-      }
-      if (elapsed < 2.5) {
-        animRef.current = requestAnimationFrame(draw);
-      } else {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
-    }
-    animRef.current = requestAnimationFrame(draw);
-    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
-  }, [badge]);
-
-  if (!badge) return null;
-  const tierNum = badge.tierNum || 1;
-  const tierName = TIER_NAMES[tierNum] || "Bronze";
-  const tierColor = TIER_COLORS[["bronze", "silver", "gold"][tierNum - 1]] || TIER_COLORS.bronze;
-  const Icon = badge.icon;
-
-  return createPortal(
-    <div className="badge-unlock-overlay" onClick={onDismiss}>
-      <canvas ref={canvasRef} className="badge-unlock-canvas" />
-      <div className="badge-unlock-content">
-        <div className="badge-unlock-icon-wrap" style={{ '--tier-color': tierColor }}>
-          <div className="badge-unlock-icon" style={{ color: tierColor }}><Icon /></div>
-        </div>
-        <div className="badge-unlock-label">UNLOCKED</div>
-        <div className="badge-unlock-title">{badge.title}</div>
-        <div className="badge-unlock-tier" style={{ color: tierColor }}>{tierName}</div>
-        <div className="badge-unlock-desc">{badge.desc}</div>
-        <div className="badge-unlock-hint">Tap anywhere to dismiss</div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
 function MilestoneCelebration({ milestone, onDismiss }) {
   const canvasRef = useRef(null);
   const animRef = useRef(null);
@@ -6898,7 +6794,6 @@ function MainApp() {
   });
   const [unlockedBadges, setUnlockedBadges] = useState(() => loadFromStorage("cc_badges", []));
   const [watchedDates, setWatchedDates] = useState(() => new Map(loadFromStorage("cc_watchedDates", [])));
-  const [badgeToast, setBadgeToast] = useState(null);
   const [activeMilestone, setActiveMilestone] = useState(null);
   const prevWatchedCount = useRef(watchedIds.size);
   const [chats, setChats] = useState([]);
@@ -7543,19 +7438,25 @@ function MainApp() {
   const showNextCelebration = useCallback(() => {
     if (badgeCelebrationQueue.current.length === 0) return;
     const badge = badgeCelebrationQueue.current.shift();
-    setBadgeToast(badge);
-  }, []);
 
-  const dismissCelebration = useCallback(() => {
-    setBadgeToast(null);
-    // Mark as seen
-    if (badgeToast) {
-      const seenKey = `${badgeToast.id}_t${badgeToast.tierNum}`;
-      const seen = loadFromStorage("cc_badge_seen", []);
-      if (!seen.includes(seenKey)) saveToStorage("cc_badge_seen", [...seen, seenKey]);
+    const tierNames = ["Bronze", "Silver", "Gold"];
+    const tierName = tierNames[(badge.tierNum - 1)] || "Bronze";
+
+    const seenKey = `${badge.id}_t${badge.tierNum}`;
+    const seen = loadFromStorage("cc_badge_seen", []);
+    if (!seen.includes(seenKey)) {
+      saveToStorage("cc_badge_seen", [...seen, seenKey]);
     }
-    setTimeout(() => showNextCelebration(), 400);
-  }, [badgeToast, showNextCelebration]);
+
+    Toast.fire({
+      icon: "success",
+      title: `🏅 ${badge.title} — ${tierName} unlocked`,
+      timer: 3500,
+      position: "top",
+    });
+
+    setTimeout(() => showNextCelebration(), 3800);
+  }, []);
 
   useEffect(() => {
     const ctx = { watchedMovies, watchedRatings, collections, watchedDates, chats };
@@ -7597,9 +7498,9 @@ function MainApp() {
         const badge = BADGE_DEFS.find((b) => b.id === badgeId);
         if (badge) badgeCelebrationQueue.current.push({ ...badge, tierNum });
       });
-      if (!badgeToast) showNextCelebration();
+      showNextCelebration();
     }
-  }, [watchedMovies, watchedRatings, collections, watchedDates, unlockedBadges, showNextCelebration, badgeToast, chats]);
+  }, [watchedMovies, watchedRatings, collections, watchedDates, unlockedBadges, showNextCelebration, chats]);
   // ── Milestone celebration check ────────────────────────────
   useEffect(() => {
     const count = watchedIds.size;
@@ -7854,7 +7755,6 @@ function MainApp() {
         />
       )}
 
-      <BadgeUnlockCelebration badge={badgeToast} onDismiss={dismissCelebration} />
       <MilestoneCelebration milestone={activeMilestone} onDismiss={() => setActiveMilestone(null)} />
       {guestModal}
     </div>
