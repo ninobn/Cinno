@@ -7702,7 +7702,7 @@ body {
 .jp-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
+  gap: 16px;
   margin-bottom: 8px;
 }
 
@@ -7714,7 +7714,7 @@ body {
 
 @media (min-width: 1024px) {
   .jp-grid {
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(8, 1fr);
   }
 }
 
@@ -7729,8 +7729,7 @@ body {
 .jp-card {
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
+  gap: 8px;
   background: none;
   border: none;
   padding: 0;
@@ -7749,8 +7748,8 @@ body {
   border-radius: 8px;
   overflow: hidden;
   background: var(--bg-elevated);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  transition: transform 200ms ease, box-shadow 200ms ease;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 /* Absolute positioning means the poster image (or fallback) cannot influence the
@@ -7776,79 +7775,58 @@ body {
 
 @media (hover: hover) {
   .jp-card:hover .jp-poster {
-    transform: scale(1.04);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
   }
 }
 
-.jp-date {
+.jp-hover-overlay {
   position: absolute;
-  top: 6px;
-  left: 6px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #F5F0EB;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  padding: 3px 7px;
-  border-radius: 999px;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  inset: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, transparent 55%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
 }
 
-.jp-note {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
-  color: #F5F0EB;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+@media (hover: hover) {
+  .jp-card:hover .jp-hover-overlay {
+    opacity: 1;
+  }
 }
 
-.jp-note svg { width: 11px; height: 11px; }
-
-.jp-rating {
+.jp-hover-score {
   position: absolute;
-  bottom: -8px;
-  right: -8px;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--bg-card);
-  border: 2px solid;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  bottom: 10px;
+  left: 10px;
+  right: 10px;
+  line-height: 1;
+  font-family: inherit;
+}
+
+.jp-hover-score-num {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.jp-hover-score-max {
+  margin-left: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
-  font-weight: 700;
-  letter-spacing: -0.3px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-}
-
-[data-theme="light"] .jp-rating {
-  background: #fff;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .jp-title {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-primary);
-  letter-spacing: -0.1px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 0 2px;
-  margin-top: 6px;
   max-width: 100%;
 }
 
@@ -9935,113 +9913,252 @@ body {
   color: rgba(0, 0, 0, 0.6);
 }
 
-/* ── Journal Header Card (unified toolbar) ───────── */
-.journal-header-card {
-  background: var(--bg-card);
-  border-radius: 16px;
-  padding: 16px;
-  margin-bottom: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+/* ── Journal Editorial Header ────────────────────── */
+.journal-editorial-header {
+  margin-bottom: 28px;
   position: relative;
   z-index: 9999;
 }
 
-.journal-header-top {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.journal-header-title {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -0.3px;
-}
-
-.journal-header-count {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--text-muted);
-}
-
-.journal-header-bottom {
+.je-eyebrow-row {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.journal-header-search {
+.je-eyebrow-block {
+  width: 24px;
+  height: 2px;
+  background: var(--accent);
+}
+
+.je-eyebrow-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+}
+
+.je-headline {
+  margin: 12px 0 0 0;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 52px;
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  text-wrap: balance;
+  max-width: 720px;
+}
+
+.journal-headline-accent {
+  color: var(--accent-orange);
+  font-style: italic;
+  border-bottom: 2px solid var(--accent-orange);
+  padding-bottom: 2px;
+}
+
+.je-stat-strip {
+  margin-top: 24px;
+  border-top: 1px solid rgba(245, 240, 235, 0.18);
+  border-bottom: 1px solid rgba(245, 240, 235, 0.18);
+  padding: 18px 0;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.je-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.je-stat-num {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.je-stat-num-accent {
+  color: var(--accent-orange);
+}
+
+.je-stat-label {
+  margin-top: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  text-transform: uppercase;
+  font-size: 9px;
+  color: rgba(245, 240, 235, 0.6);
+  letter-spacing: 0.15em;
+}
+
+.je-controls-row {
+  margin-top: 20px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 0 12px;
-  height: 36px;
+  gap: 12px;
+}
+
+.je-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid rgba(245, 240, 235, 0.1);
+  border-radius: 999px;
+  padding: 8px 16px;
   flex: 1;
+  max-width: 320px;
   min-width: 0;
-  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.journal-header-search:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-dim);
-}
-
-.journal-header-search .search-icon {
+.je-search .search-icon {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
+  color: var(--subtle);
+  display: inline-flex;
 }
 
-.journal-header-search .search-icon svg {
+.je-search .search-icon svg {
   width: 14px;
   height: 14px;
 }
 
-.journal-header-search input {
+.je-search input {
   flex: 1;
   background: none;
   border: none;
   outline: none;
-  color: var(--text-primary);
+  color: var(--ink);
   font-size: 13px;
   font-family: 'Plus Jakarta Sans', sans-serif;
   min-width: 0;
 }
 
-.journal-header-search input::placeholder {
-  color: var(--text-muted);
+.je-search input::placeholder {
+  color: var(--subtle);
 }
 
-.journal-header-search .search-clear {
-  padding: 4px;
+.je-search .search-clear {
+  background: none;
+  border: none;
+  color: var(--subtle);
+  cursor: pointer;
+  padding: 0 0 0 4px;
   font-size: 13px;
+  line-height: 1;
 }
 
-/* Make the sort dropdown match the search height inside the card */
-.journal-header-bottom .sort-dropdown-btn {
-  height: 36px;
-  padding: 0 12px;
+.je-controls-row .sort-dropdown-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 8px 14px;
   font-size: 12px;
+  color: var(--ink);
+  height: auto;
 }
 
-/* Light theme */
-[data-theme="light"] .journal-header-card {
-  background: var(--bg-card);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+.je-controls-row .sort-dropdown-btn:hover {
+  border-color: var(--accent);
 }
 
-[data-theme="light"] .journal-header-search {
-  border-color: rgba(0, 0, 0, 0.1);
+.je-controls-row .sort-dropdown:has(.sort-dropdown-menu) .sort-dropdown-btn {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.je-view-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.je-view-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--subtle);
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  cursor: pointer;
+  border-radius: 999px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.je-view-toggle-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Light theme overrides — flip the alpha-on-cream borders/labels to alpha-on-ink. */
+[data-theme="light"] .je-stat-strip {
+  border-top-color: rgba(26, 20, 16, 0.18);
+  border-bottom-color: rgba(26, 20, 16, 0.18);
+}
+
+[data-theme="light"] .je-stat-label {
+  color: #6b5e52;
+}
+
+[data-theme="light"] .journal-headline-accent {
+  color: var(--accent);
+}
+
+[data-theme="light"] .je-search {
   background: #fff;
+  border-color: var(--border);
+}
+
+[data-theme="light"] .je-controls-row .sort-dropdown-btn {
+  border-color: var(--border);
+}
+
+[data-theme="light"] .je-view-toggle {
+  border-color: var(--border);
+}
+
+[data-theme="light"] .je-view-toggle-btn.active {
+  color: #fff;
+}
+
+/* Mobile: shrink headline, drop to 3 columns, hide tail stats, wrap controls. */
+@media (max-width: 600px) {
+  .je-headline {
+    font-size: 32px;
+  }
+  .je-stat-strip {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .je-stat-hide-mobile {
+    display: none;
+  }
+  .je-controls-row {
+    flex-wrap: wrap;
+  }
+  .je-search {
+    max-width: none;
+    flex: 1 1 100%;
+  }
+  .je-view-toggle {
+    margin-left: auto;
+  }
 }
 
 /* ── Light Theme ────────────────────────────────── */

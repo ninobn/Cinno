@@ -4279,20 +4279,22 @@ function NoteIcon({ size = 12 }) {
   );
 }
 
-// Compact poster card used by the new Journal poster wall.
-// Shows date badge + note indicator. Rating circle is reserved for the Rankings view.
-function JournalPosterCard({ movie, watchedDate, note, onClick }) {
-  const dateLabel = (() => {
-    if (!watchedDate) return null;
-    const dt = DateTime.fromISO(watchedDate.slice(0, 10));
-    return dt.isValid ? dt.toFormat("MMM d") : null;
-  })();
+// Compact poster card used by the Journal poster wall.
+// Personal rating surfaces in a hover-only gradient overlay (0-100 scale).
+function JournalPosterCard({ movie, rating, onClick }) {
+  const hasRating = typeof rating === "number";
   return (
     <button className="jp-card" onClick={onClick} type="button">
       <div className="jp-poster">
         <PosterImage posterPath={movie.poster_path} title={movie.title} />
-        {dateLabel && <span className="jp-date">{dateLabel}</span>}
-        {note && <span className="jp-note" title="Has note"><NoteIcon /></span>}
+        <div className="jp-hover-overlay">
+          {hasRating && (
+            <div className="jp-hover-score">
+              <span className="jp-hover-score-num">{rating}</span>
+              <span className="jp-hover-score-max">/100</span>
+            </div>
+          )}
+        </div>
       </div>
       <div className="jp-title">{movie.title}</div>
     </button>
@@ -4775,6 +4777,30 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
     [filteredJournalMovies, watchedRatings]
   );
 
+  // Editorial-header stat strip — derived from the same filtered list.
+  const journalStats = useMemo(() => {
+    const totalMinutes = filteredJournalMovies.reduce(
+      (sum, m) => sum + (runtimeCache[m.id] || 0), 0
+    );
+    const hours = totalMinutes > 0 ? Math.floor(totalMinutes / 60) : null;
+
+    const ratings = filteredJournalMovies
+      .map((m) => watchedRatings?.get(m.id))
+      .filter((r) => typeof r === "number");
+    const avg = ratings.length > 0
+      ? (ratings.reduce((s, r) => s + r, 0) / ratings.length).toFixed(1)
+      : null;
+    const highest = ratings.length > 0 ? Math.max(...ratings) : null;
+
+    const genreCounts = {};
+    filteredJournalMovies.forEach((m) => {
+      if (m.genre) genreCounts[m.genre] = (genreCounts[m.genre] || 0) + 1;
+    });
+    const topGenre = Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+    return { count: filteredJournalMovies.length, hours, avg, topGenre, highest };
+  }, [filteredJournalMovies, runtimeCache, watchedRatings]);
+
   const TOGGLE_VIEWS = ["journal", "stats"];
   const toggleIndex = TOGGLE_VIEWS.indexOf(view);
 
@@ -4806,14 +4832,40 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
           <>
             {view === "journal" && (
               <>
-                {/* Unified toolbar card */}
-                <div className="journal-header-card" data-aos="fade-right" data-aos-duration="300">
-                  <div className="journal-header-top">
-                    <div className="journal-header-title">Your Journal</div>
-                    <div className="journal-header-count">{filteredJournalMovies.length} watched</div>
+                {/* Editorial header: eyebrow → headline → stat strip → controls row */}
+                <div className="journal-editorial-header" data-aos="fade-right" data-aos-duration="300">
+                  <div className="je-eyebrow-row">
+                    <div className="je-eyebrow-block" />
+                    <div className="je-eyebrow-text">YOUR JOURNAL · THE ARCHIVE</div>
                   </div>
-                  <div className="journal-header-bottom">
-                    <div className="journal-header-search">
+                  <h1 className="je-headline">
+                    {filteredJournalMovies.length} films logged — here&apos;s the{" "}
+                    <span className="journal-headline-accent">shape of you</span>.
+                  </h1>
+                  <div className="je-stat-strip">
+                    <div className="je-stat">
+                      <div className="je-stat-num">{journalStats.count}</div>
+                      <div className="je-stat-label">FILMS LOGGED</div>
+                    </div>
+                    <div className="je-stat">
+                      <div className="je-stat-num">{journalStats.hours ?? "—"}</div>
+                      <div className="je-stat-label">HOURS</div>
+                    </div>
+                    <div className="je-stat">
+                      <div className="je-stat-num">{journalStats.avg ?? "—"}</div>
+                      <div className="je-stat-label">AVG</div>
+                    </div>
+                    <div className="je-stat je-stat-hide-mobile">
+                      <div className="je-stat-num">{journalStats.topGenre ?? "—"}</div>
+                      <div className="je-stat-label">TOP GENRE</div>
+                    </div>
+                    <div className="je-stat je-stat-hide-mobile">
+                      <div className="je-stat-num je-stat-num-accent">{journalStats.highest ?? "—"}</div>
+                      <div className="je-stat-label">HIGHEST</div>
+                    </div>
+                  </div>
+                  <div className="je-controls-row">
+                    <div className="je-search">
                       <span className="search-icon"><SearchIcon /></span>
                       <input
                         type="text"
@@ -4826,6 +4878,18 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                       )}
                     </div>
                     <SortDropdown options={JOURNAL_SORT_OPTIONS} value={journalSort} onChange={setJournalSort} />
+                    <div className="je-view-toggle">
+                      <button
+                        className={`je-view-toggle-btn ${view === "journal" ? "active" : ""}`}
+                        onClick={() => setView("journal")}
+                        type="button"
+                      >Journal</button>
+                      <button
+                        className={`je-view-toggle-btn ${view === "stats" ? "active" : ""}`}
+                        onClick={() => setView("stats")}
+                        type="button"
+                      >Stats</button>
+                    </div>
                   </div>
                 </div>
 
@@ -4859,8 +4923,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                             <JournalPosterCard
                               key={movie.id}
                               movie={movie}
-                              watchedDate={watchedDates?.get(movie.id)}
-                              note={watchedNotes?.get(movie.id)}
+                              rating={watchedRatings?.get(movie.id)}
                               onClick={() => setSelectedMovie(movie)}
                             />
                           ))}
@@ -4884,8 +4947,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                             <JournalPosterCard
                               key={movie.id}
                               movie={movie}
-                              watchedDate={watchedDates?.get(movie.id)}
-                              note={watchedNotes?.get(movie.id)}
+                              rating={watchedRatings?.get(movie.id)}
                               onClick={() => setSelectedMovie(movie)}
                             />
                           ))}
@@ -4898,8 +4960,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                         <JournalPosterCard
                           key={movie.id}
                           movie={movie}
-                          watchedDate={watchedDates?.get(movie.id)}
-                          note={watchedNotes?.get(movie.id)}
+                          rating={watchedRatings?.get(movie.id)}
                           onClick={() => setSelectedMovie(movie)}
                         />
                       ))}
@@ -4917,8 +4978,9 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
         </div>
       </div>
 
-      {/* Floating Toggle Pill — portaled to body to escape overflow/transform clipping */}
-      {createPortal(
+      {/* Floating Toggle Pill — portaled to body. Only shown in Stats view since the
+          Journal view's editorial header has its own inline segmented toggle. */}
+      {view === "stats" && createPortal(
         <div className="journal-float-toggle">
           <div className="journal-float-toggle-track" style={{ transform: `translateX(${toggleIndex * 100}%)` }} />
           <button className={`journal-float-toggle-btn ${view === "journal" ? "active" : ""}`} onClick={() => setView("journal")}>Journal</button>
