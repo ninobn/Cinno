@@ -87,6 +87,15 @@ const GENRE_COLORS = {
   War: "#7A8A6B", Western: "#AD8A5E", Film: "#7A7878",
 };
 
+// Returns 0 (morning), 1 (afternoon), or 2 (evening) based on the local hour.
+// Used by editorial headlines to rotate copy across the day.
+function getTimeSlot() {
+  const hour = new Date().getHours();
+  if (hour >= 0 && hour < 8) return 0;
+  if (hour >= 8 && hour < 16) return 1;
+  return 2;
+}
+
 // ─── Luxon date formatting helpers ──────────────────────────────────────────────
 
 function formatWatchDate(dateStr) {
@@ -2386,12 +2395,20 @@ function YourTasteSection({ user, getAccessToken, watchedMovies, watchedDates, w
         <span className="taste-eyebrow-bar" aria-hidden="true" />
         <span>YOUR TASTE · {monthStats.monthLabel}</span>
       </div>
-      {loading && !summary ? (
-        <>
-          <div className="taste-summary-skeleton skel" />
-          <div className="taste-summary-skeleton skel taste-summary-skeleton-short" />
-        </>
-      ) : (
+      {loading && !summary ? (() => {
+        const TASTE_FALLBACK_HEADLINES = [
+          { before: "Your taste is",                        accent: "all your own",       after: "." },
+          { before: "Films say more about you than",        accent: "you think",          after: "." },
+          { before: "A month of watching.",                 accent: "What does it say?",  after: ""  },
+        ];
+        const activeTasteHeadline = TASTE_FALLBACK_HEADLINES[getTimeSlot()];
+        return (
+          <h2 className="taste-summary">
+            {activeTasteHeadline.before}{" "}
+            <span className="taste-accent">{activeTasteHeadline.accent}</span>{activeTasteHeadline.after}
+          </h2>
+        );
+      })() : (
         <h2 className="taste-summary">{parseInlineMarkdown(summary || "")}</h2>
       )}
 
@@ -3577,10 +3594,17 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
   // Fetch missing runtimes from TMDB in parallel — display enrichment only,
   // never written back to Supabase. Skips films we've already attempted (so a
   // null result doesn't loop) and films with a cached runtime > 0.
+  // Depends on movies.length (a primitive) so the effect re-fires when the
+  // watchlist count changes without churning on Map identity per render.
   useEffect(() => {
-    if (!savedMovies || savedMovies.size === 0) return;
-    const ids = Array.from(savedMovies.keys());
-    const missing = ids.filter((id) => {
+    if (movies.length === 0) return;
+    // Happy-path short-circuit: every watchlist film already has a positive
+    // cached runtime, so there's nothing to fetch.
+    if (movies.every((m) => {
+      const rt = runtimeCache[m.id];
+      return typeof rt === "number" && rt > 0;
+    })) return;
+    const missing = movies.map((m) => m.id).filter((id) => {
       const cached = runtimeCache[id];
       if (typeof cached === "number" && cached > 0) return false;
       if (runtimeFetchAttempted.current.has(id)) return false;
@@ -3593,7 +3617,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
       const results = await Promise.all(
         missing.map((id) =>
           getMovieDetails(id)
-            .then((d) => ({ id, runtime: d?.runtime || null }))
+            .then((details) => ({ id, runtime: details?.runtime || null }))
             .catch(() => ({ id, runtime: null }))
         )
       );
@@ -3608,7 +3632,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
     })();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [savedMovies]);
+  }, [movies.length]);
 
   // Tonight's Pick — shared with Home tab via cc_tonightPickId.
   const tonightPickMovie = useMemo(() => {
@@ -3839,31 +3863,33 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
             )}
 
             {/* SECTION 2 — PAGE HEADER + STAT STRIP */}
-            <div className="wl-header">
-              <div className="wl-eyebrow">
-                <span className="wl-eyebrow-bar" aria-hidden="true" />
-                <span>YOUR WATCHLIST</span>
-              </div>
-              <h1 className="wl-headline">
-                {watchlistStats.count} film{watchlistStats.count === 1 ? "" : "s"} sit waiting — that&apos;s{" "}
-                <span className="watchlist-accent">{watchlistStats.totalHours}h of you.</span>
-              </h1>
-            </div>
-
-            <div className="wl-stat-strip">
-              <div className="wl-stat">
-                <div className="wl-stat-num">{watchlistStats.count}</div>
-                <div className="wl-stat-label">Films to Watch</div>
-              </div>
-              <div className="wl-stat">
-                <div className="wl-stat-num">{watchlistStats.totalHours}h</div>
-                <div className="wl-stat-label">Total Runtime</div>
-              </div>
-              <div className="wl-stat">
-                <div className="wl-stat-num wl-stat-num-warn">{watchlistStats.oldestMonths} mo</div>
-                <div className="wl-stat-label">Oldest Unwatched</div>
-              </div>
-            </div>
+            {(() => {
+              const WATCHLIST_HEADLINES = [
+                { before: "films. All chosen.",       accent: "None watched yet.", after: "" },
+                { before: "A collection worth",       accent: `${watchlistStats.totalHours}h of your life`, after: "." },
+                { before: "films you meant to watch.", accent: "The list doesn't lie.", after: "" },
+              ];
+              // If runtimes haven't loaded yet, slot 1 would render "?h of your life" —
+              // fall back to slot 0 until totalHours resolves to a number.
+              const watchlistSlot = getTimeSlot() === 1 && watchlistStats.totalHours === "?"
+                ? 0
+                : getTimeSlot();
+              const activeHeadline = WATCHLIST_HEADLINES[watchlistSlot];
+              const showCount = watchlistSlot !== 1;
+              return (
+                <div className="wl-header">
+                  <div className="wl-eyebrow">
+                    <span className="wl-eyebrow-bar" aria-hidden="true" />
+                    <span>YOUR WATCHLIST</span>
+                  </div>
+                  <h1 className="wl-headline">
+                    {showCount && `${watchlistStats.count} `}
+                    {activeHeadline.before}{" "}
+                    <span className="watchlist-accent">{activeHeadline.accent}</span>{activeHeadline.after}
+                  </h1>
+                </div>
+              );
+            })()}
 
             {/* SECTION 3 — FOLDER / COLLECTION BAR */}
             <div className="wl-folder-bar">
@@ -4804,6 +4830,66 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   const TOGGLE_VIEWS = ["journal", "stats"];
   const toggleIndex = TOGGLE_VIEWS.indexOf(view);
 
+  // ── Group masthead component shared across all sort views ────────────
+  function JournalGroupMasthead({ anchor, anchorItalic, anchorHighlight, label, count, isFirst }) {
+    return (
+      <div className={`jg-masthead${isFirst ? " jg-masthead--first" : ""}`}>
+        <div className="jg-masthead-inner">
+          <div className={`jg-anchor${anchorItalic ? " jg-anchor--italic" : ""}${anchorHighlight ? " jg-anchor--highlight" : ""}`}>
+            {anchor}
+          </div>
+          <div className="jg-masthead-center">
+            <div className="jg-label">{label}</div>
+          </div>
+          <div className="jg-count">{count} FILMS</div>
+        </div>
+      </div>
+    );
+  }
+
+  function groupByDecade(movies) {
+    const buckets = [
+      { key: "2020s", label: "The 2020s", anchor: "20s", min: 2020, max: 2029 },
+      { key: "2010s", label: "The 2010s", anchor: "10s", min: 2010, max: 2019 },
+      { key: "2000s", label: "The 2000s", anchor: "00s", min: 2000, max: 2009 },
+      { key: "90s",   label: "The 90s",   anchor: "90s", min: 1990, max: 1999 },
+      { key: "80s",   label: "The 80s",   anchor: "80s", min: 1980, max: 1989 },
+      { key: "older", label: "Before 1980", anchor: "…", min: 0,    max: 1979 },
+    ];
+    const result = [];
+    buckets.forEach((b) => {
+      const films = movies.filter((m) => {
+        const y = parseInt(m.year);
+        return !isNaN(y) && y >= b.min && y <= b.max;
+      });
+      if (films.length > 0) result.push({ ...b, movies: films });
+    });
+    return result;
+  }
+
+  function groupByRuntime(movies, rtCache) {
+    const buckets = [
+      { key: "marathon", anchor: "3h+",   label: "Marathon · 3h+",   min: 180, max: Infinity },
+      { key: "standard", anchor: "2h",    label: "Standard · 2h–3h", min: 120, max: 179 },
+      { key: "brisk",    anchor: "1.5h",  label: "Brisk · 1.5h–2h",  min: 90,  max: 119 },
+      { key: "tight",    anchor: "<1.5h", label: "Tight · <1.5h",    min: 0,   max: 89  },
+    ];
+    const result = [];
+    buckets.forEach((b) => {
+      const films = movies.filter((m) => {
+        const rt = rtCache?.[m.id];
+        if (!rt) return false;
+        return rt >= b.min && rt <= b.max;
+      });
+      if (films.length > 0) result.push({ ...b, movies: films });
+    });
+    const noRuntime = movies.filter((m) => !rtCache?.[m.id]);
+    if (noRuntime.length > 0) {
+      result.push({ key: "unknown", anchor: "?", label: "Runtime unknown", min: 0, max: 0, movies: noRuntime });
+    }
+    return result;
+  }
+
   return (
     <>
       <div className="content journal-content" ref={journalContentRef}>
@@ -4838,10 +4924,23 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                     <div className="je-eyebrow-block" />
                     <div className="je-eyebrow-text">YOUR JOURNAL · THE ARCHIVE</div>
                   </div>
-                  <h1 className="je-headline">
-                    {filteredJournalMovies.length} films logged — here&apos;s the{" "}
-                    <span className="journal-headline-accent">shape of you</span>.
-                  </h1>
+                  {(() => {
+                    const JOURNAL_HEADLINES = [
+                      { before: "films logged — here's the", accent: "shape of you",          after: "." },
+                      { before: "films watched.",            accent: "Every one left a mark.", after: ""  },
+                      { before: "A record of",               accent: "what moved you",         after: "." },
+                    ];
+                    const slotIndex = getTimeSlot();
+                    const activeJournalHeadline = JOURNAL_HEADLINES[slotIndex];
+                    const showCount = slotIndex !== 2;
+                    return (
+                      <h1 className="je-headline">
+                        {showCount && `${filteredJournalMovies.length} `}
+                        {activeJournalHeadline.before}{" "}
+                        <span className="journal-headline-accent">{activeJournalHeadline.accent}</span>{activeJournalHeadline.after}
+                      </h1>
+                    );
+                  })()}
                   <div className="je-stat-strip">
                     <div className="je-stat">
                       <div className="je-stat-num">{journalStats.count}</div>
@@ -4865,11 +4964,11 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                     </div>
                   </div>
                   <div className="je-controls-row">
-                    <div className="je-search">
+                    <div className="je-search-pill">
                       <span className="search-icon"><SearchIcon /></span>
                       <input
                         type="text"
-                        placeholder="Search movies..."
+                        placeholder="Search your archive…"
                         value={journalSearch}
                         onChange={(e) => setJournalSearch(e.target.value)}
                       />
@@ -4877,7 +4976,10 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                         <button className="search-clear" onClick={() => setJournalSearch("")}>✕</button>
                       )}
                     </div>
-                    <SortDropdown options={JOURNAL_SORT_OPTIONS} value={journalSort} onChange={setJournalSort} />
+                    <div className="je-sort-group">
+                      <span className="je-sort-mono-label">SORT</span>
+                      <SortDropdown options={JOURNAL_SORT_OPTIONS} value={journalSort} onChange={setJournalSort} />
+                    </div>
                     <div className="je-view-toggle">
                       <button
                         className={`je-view-toggle-btn ${view === "journal" ? "active" : ""}`}
@@ -4909,15 +5011,24 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                   )
                 ) : journalSort === "genre_group" ? (
                   (() => {
-                    const groups = {};
-                    filteredJournalMovies.forEach((m) => {
-                      const g = m.genre || "Other";
-                      if (!groups[g]) groups[g] = [];
-                      groups[g].push(m);
-                    });
-                    return Object.entries(groups).map(([genre, gMovies]) => (
-                      <div key={genre} className="journal-genre-group">
-                        <div className="journal-genre-header" style={{ color: GENRE_COLORS[genre] || "var(--text-secondary)" }}>{genre}</div>
+                    const genreGroups = Object.entries(
+                      filteredJournalMovies.reduce((acc, m) => {
+                        const g = m.genre || "Other";
+                        acc[g] = acc[g] || [];
+                        acc[g].push(m);
+                        return acc;
+                      }, {})
+                    ).sort((a, b) => b[1].length - a[1].length);
+                    return genreGroups.map(([genre, gMovies], i) => (
+                      <div key={genre}>
+                        <JournalGroupMasthead
+                          anchor={String(i + 1).padStart(2, "0")}
+                          anchorItalic={false}
+                          anchorHighlight={i === 0}
+                          label={genre}
+                          count={gMovies.length}
+                          isFirst={i === 0}
+                        />
                         <div className="jp-grid">
                           {gMovies.map((movie) => (
                             <JournalPosterCard
@@ -4931,17 +5042,22 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                       </div>
                     ));
                   })()
-                ) : (
-                  /* Default poster wall: month-grouped when sorted by date, otherwise flat */
-                  (journalSort === "date_desc" || journalSort === "date_asc") ? (
-                    groupByMonth(filteredJournalMovies, watchedDates).map((g) => (
-                      <div key={g.key} className="jp-month-group">
-                        <div className="browse-section-header browse-section-header-v2">
-                          <div className="browse-section-titles">
-                            <div className="browse-section-eyebrow">— {g.eyebrow} —</div>
-                            <div className="browse-section-title">{g.label}</div>
-                          </div>
-                        </div>
+                ) : (journalSort === "date_desc" || journalSort === "date_asc") ? (
+                  groupByMonth(filteredJournalMovies, watchedDates).map((g, i) => {
+                    const groupYear = g.key !== "—" ? g.key.slice(0, 4) : "—";
+                    const monthLabel = g.key !== "—"
+                      ? DateTime.fromFormat(g.key, "yyyy-MM").toFormat("MMMM").toUpperCase()
+                      : "OLDER";
+                    return (
+                      <div key={g.key}>
+                        <JournalGroupMasthead
+                          anchor={groupYear}
+                          anchorItalic={false}
+                          anchorHighlight={i === 0}
+                          label={monthLabel}
+                          count={g.movies.length}
+                          isFirst={i === 0}
+                        />
                         <div className="jp-grid">
                           {g.movies.map((movie) => (
                             <JournalPosterCard
@@ -4953,8 +5069,68 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                           ))}
                         </div>
                       </div>
-                    ))
-                  ) : (
+                    );
+                  })
+                ) : (journalSort === "year_desc" || journalSort === "year_asc") ? (
+                  (() => {
+                    const decades = groupByDecade(filteredJournalMovies);
+                    if (journalSort === "year_asc") decades.reverse();
+                    return decades.map((b, i) => (
+                      <div key={b.key}>
+                        <JournalGroupMasthead
+                          anchor={b.anchor}
+                          anchorItalic={true}
+                          anchorHighlight={i === 0}
+                          label={b.label}
+                          count={b.movies.length}
+                          isFirst={i === 0}
+                        />
+                        <div className="jp-grid">
+                          {b.movies.map((movie) => (
+                            <JournalPosterCard
+                              key={movie.id}
+                              movie={movie}
+                              rating={watchedRatings?.get(movie.id)}
+                              onClick={() => setSelectedMovie(movie)}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ));
+                  })()
+                ) : journalSort === "runtime_desc" ? (
+                  groupByRuntime(filteredJournalMovies, runtimeCache).map((b, i) => (
+                    <div key={b.key}>
+                      <JournalGroupMasthead
+                        anchor={b.anchor}
+                        anchorItalic={false}
+                        anchorHighlight={i === 0}
+                        label={b.label}
+                        count={b.movies.length}
+                        isFirst={i === 0}
+                      />
+                      <div className="jp-grid">
+                        {b.movies.map((movie) => (
+                          <JournalPosterCard
+                            key={movie.id}
+                            movie={movie}
+                            rating={watchedRatings?.get(movie.id)}
+                            onClick={() => setSelectedMovie(movie)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                ) : journalSort === "alpha_asc" ? (
+                  <>
+                    <JournalGroupMasthead
+                      anchor="A–Z"
+                      anchorItalic={true}
+                      anchorHighlight={true}
+                      label="All films, in order"
+                      count={filteredJournalMovies.length}
+                      isFirst={true}
+                    />
                     <div className="jp-grid">
                       {filteredJournalMovies.map((movie) => (
                         <JournalPosterCard
@@ -4965,7 +5141,19 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                         />
                       ))}
                     </div>
-                  )
+                  </>
+                ) : (
+                  /* Flat grid for tmdb_desc and any other ungrouped sort */
+                  <div className="jp-grid">
+                    {filteredJournalMovies.map((movie) => (
+                      <JournalPosterCard
+                        key={movie.id}
+                        movie={movie}
+                        rating={watchedRatings?.get(movie.id)}
+                        onClick={() => setSelectedMovie(movie)}
+                      />
+                    ))}
+                  </div>
                 )}
               </>
             )}
@@ -5575,8 +5763,13 @@ function SortDropdown({ options, value, onChange }) {
       if (wrapRef.current?.contains(e.target)) return;
       setOpen(false);
     };
+    const keyHandler = (e) => { if (e.key === "Escape") setOpen(false); };
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("keydown", keyHandler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", keyHandler);
+    };
   }, [open]);
 
   const activeLabel = options.find((o) => o.value === value)?.label || "";
@@ -5584,25 +5777,31 @@ function SortDropdown({ options, value, onChange }) {
   return (
     <div className="sort-dropdown" ref={wrapRef}>
       <button className="sort-dropdown-btn" onClick={() => setOpen(!open)}>
-        <span className="sort-dropdown-label">{activeLabel}</span>
+        <span className="sort-pill-value">{activeLabel}</span>
         <svg className={`sort-dropdown-chevron${open ? " open" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
       </button>
-      {open && (
-        <div className="sort-dropdown-menu">
-          {options.map((opt) => (
-            <button
-              key={opt.value}
-              className={`sort-dropdown-item${opt.value === value ? " active" : ""}`}
-              onClick={() => { onChange(opt.value); setOpen(false); }}
-            >
-              <span>{opt.label}</span>
-              {opt.value === value && (
-                <svg className="sort-dropdown-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+      <div
+        className="sort-dropdown-menu"
+        style={{
+          opacity: open ? 1 : 0,
+          pointerEvents: open ? "auto" : "none",
+          transform: open ? "translateY(0)" : "translateY(-4px)",
+          transition: "opacity 0.15s ease, transform 0.15s ease",
+        }}
+      >
+        {options.map((opt) => (
+          <button
+            key={opt.value}
+            className={`sort-dropdown-item${opt.value === value ? " active" : ""}`}
+            onClick={() => { onChange(opt.value); setOpen(false); }}
+          >
+            <span>{opt.label}</span>
+            {opt.value === value && (
+              <svg className="sort-dropdown-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+            )}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
