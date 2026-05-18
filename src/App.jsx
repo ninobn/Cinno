@@ -3813,7 +3813,7 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
                   <div className="wl-tonight-hero-left">
                     <div className="wl-tonight-hero-eyebrow">
                       <span className="wl-tonight-hero-dot" aria-hidden="true" />
-                      <span>TONIGHT&apos;S PICK · FOR TONIGHT</span>
+                      <span>TONIGHT&apos;S PICK</span>
                     </div>
                     <h2 className="wl-tonight-hero-title">{tonightPickMovie.title}</h2>
                     <div className="wl-tonight-hero-meta">
@@ -3946,7 +3946,6 @@ function SavedTab({ savedIds, toggleSave, savedMovies, watchedIds, toggleWatched
                       onClick={() => setSelectedMovie(movie)}
                     >
                       <div className="wl-tile-poster">
-                        <div className="wl-tile-bookmark" aria-hidden="true" />
                         {movie.rating && movie.rating !== "—" && (
                           <span className="wl-tile-rating">★ {movie.rating}</span>
                         )}

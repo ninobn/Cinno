@@ -11354,19 +11354,6 @@ body {
   display: block;
 }
 
-.wl-tile-bookmark {
-  position: absolute;
-  top: 0;
-  left: 10px;
-  width: 22px;
-  height: 28px;
-  background: #8a3a4a;
-  opacity: 0.92;
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 75%, 0 100%);
-  z-index: 2;
-  pointer-events: none;
-}
-
 .wl-tile-rating {
   position: absolute;
   top: 8px;
