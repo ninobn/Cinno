@@ -1,3 +1,4 @@
+/* v2-bust-7f3a2k9 */
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,500;1,600&display=swap');
 
 :root {
@@ -8366,6 +8367,13 @@ body {
   .hero-title { font-size: 36px; }
   .hero-content { padding: 28px 40px; }
 
+  /* Journal carousel — desktop full-bleed matches hero banner padding (-32px). */
+  .jch-root {
+    width: calc(100% + 64px);
+    margin-left: -32px;
+    margin-right: -32px;
+  }
+
   /* Browse sections — stacked full-width on desktop */
   .browse-sections {
     gap: 20px;
@@ -8472,6 +8480,13 @@ body {
   .hero-title { font-size: 40px; }
   .hero-content { padding: 28px 48px; }
   .taste-summary { font-size: 62px; }
+
+  /* Journal carousel — large-desktop full-bleed matches hero banner (-40px). */
+  .jch-root {
+    width: calc(100% + 80px);
+    margin-left: -40px;
+    margin-right: -40px;
+  }
 
   /* Browse sections — consistent gap */
   .browse-sections {
@@ -9925,90 +9940,9 @@ body {
 }
 
 /* ── Journal Editorial Header ────────────────────── */
-.journal-editorial-header {
-  padding-top: 32px;
-  margin-bottom: 28px;
-  position: relative;
-  z-index: 9999;
-}
-
-.je-eyebrow-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.je-eyebrow-block {
-  width: 24px;
-  height: 2px;
-  background: var(--accent);
-}
-
-.je-eyebrow-text {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  text-transform: uppercase;
-  color: var(--accent);
-  font-size: 10px;
-  letter-spacing: 0.2em;
-}
-
-.je-headline {
-  margin: 12px 0 0 0;
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 52px;
-  font-weight: 800;
-  line-height: 0.95;
-  letter-spacing: -0.03em;
-  color: var(--ink);
-  text-wrap: balance;
-  max-width: 720px;
-}
-
 .journal-headline-accent {
   color: var(--accent-orange);
   font-style: italic;
-}
-
-.je-stat-strip {
-  margin-top: 24px;
-  border-top: 1px solid rgba(245, 240, 235, 0.18);
-  border-bottom: 1px solid rgba(245, 240, 235, 0.18);
-  padding: 18px 0;
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
-}
-
-.je-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  min-width: 0;
-}
-
-.je-stat-num {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--ink);
-  line-height: 1;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.je-stat-num-accent {
-  color: var(--accent-orange);
-}
-
-.je-stat-label {
-  margin-top: 6px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  text-transform: uppercase;
-  font-size: 9px;
-  color: rgba(245, 240, 235, 0.6);
-  letter-spacing: 0.15em;
 }
 
 .je-controls-row {
@@ -10153,15 +10087,6 @@ body {
 }
 
 /* Light theme overrides — flip the alpha-on-cream borders/labels to alpha-on-ink. */
-[data-theme="light"] .je-stat-strip {
-  border-top-color: rgba(26, 20, 16, 0.18);
-  border-bottom-color: rgba(26, 20, 16, 0.18);
-}
-
-[data-theme="light"] .je-stat-label {
-  color: #6b5e52;
-}
-
 [data-theme="light"] .journal-headline-accent {
   color: var(--accent);
 }
@@ -10174,17 +10099,8 @@ body {
   color: #fff;
 }
 
-/* Mobile: shrink headline, drop to 3 columns, hide tail stats, wrap controls. */
+/* Mobile: wrap journal controls into a stacked layout. */
 @media (max-width: 600px) {
-  .je-headline {
-    font-size: 32px;
-  }
-  .je-stat-strip {
-    grid-template-columns: repeat(3, 1fr);
-  }
-  .je-stat-hide-mobile {
-    display: none;
-  }
   .je-controls-row {
     flex-wrap: wrap;
   }
@@ -10194,6 +10110,299 @@ body {
   }
   .je-view-toggle {
     margin-left: auto;
+  }
+}
+
+/* ── Journal Carousel Header ─────────────────────── */
+/* Magazine-style full-width header. Each slide gets its own background +
+   inline SVG pattern; light/dark theme and pattern variant are picked
+   deterministically per day. Text is absolutely positioned per slide so
+   layouts can break the "stacked" default for editorial variety. */
+
+/* Full-bleed: break out of .content's 16px padding (32px on desktop, 40px at
+   ≥1024px) using the same negative-margin pattern as .hero-banner.
+   box-shadow + isolation + border-radius mirror the hero's card chrome. */
+.jch-root {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 28px;
+  width: calc(100% + 32px);
+  margin-left: -16px;
+  margin-right: -16px;
+  border-radius: 20px;
+  background: transparent;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
+  isolation: isolate;
+}
+
+.jch-viewport {
+  overflow: hidden;
+  width: 100%;
+}
+
+.jch-track {
+  display: flex;
+  width: 100%;
+  will-change: transform;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.jch-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  min-height: 360px;
+  box-sizing: border-box;
+}
+
+/* ── Per-slide backgrounds (light + dark variants) ──────── */
+.jch-slide--0.jch-slide--light { background: #f0e8d8; }
+.jch-slide--0.jch-slide--dark  { background: #1a0e18; }
+.jch-slide--1.jch-slide--light { background: #ede8e0; }
+.jch-slide--1.jch-slide--dark  { background: linear-gradient(150deg, #1a0a14 0%, #2a0f1e 50%, #160810 100%); }
+.jch-slide--2.jch-slide--light { background: #ede3d0; }
+.jch-slide--2.jch-slide--dark  { background: linear-gradient(140deg, #12080e 0%, #1e0e18 60%, #100810 100%); }
+.jch-slide--3.jch-slide--light { background: #f0e4d4; }
+.jch-slide--3.jch-slide--dark  { background: linear-gradient(160deg, #0d0608 0%, #1a0a14 45%, #110810 100%); }
+.jch-slide--4.jch-slide--light { background: #e8dfd0; }
+.jch-slide--4.jch-slide--dark  { background: linear-gradient(125deg, #0f0a0d 0%, #180812 55%, #0c0a10 100%); }
+.jch-slide--5.jch-slide--light { background: #f4ede1; }
+.jch-slide--5.jch-slide--dark  { background: linear-gradient(140deg, #0e0a10 0%, #1a0e14 50%, #120810 100%); }
+
+/* SVG pattern container — sits behind text. */
+.jch-pattern {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.jch-pattern-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ── Text base styles (positioning is per-slide below) ──── */
+.jch-eyebrow {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  text-transform: uppercase;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+}
+
+.jch-slide--light .jch-eyebrow { color: #8a3a4a; }
+.jch-slide--dark .jch-eyebrow  { color: rgba(244, 237, 225, 0.5); }
+
+.jch-headline {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: clamp(26px, 2.8vw, 36px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  text-wrap: balance;
+  overflow: visible;
+  padding-bottom: 8px;
+}
+
+.jch-headline--italic {
+  font-style: italic;
+  font-weight: 600;
+  font-size: 26px;
+}
+
+.jch-headline--shimmer {
+  height: 64px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(244, 237, 225, 0.06) 0%, rgba(244, 237, 225, 0.18) 50%, rgba(244, 237, 225, 0.06) 100%);
+  background-size: 200% 100%;
+  animation: jch-shimmer 1.4s ease-in-out infinite;
+  max-width: 480px;
+}
+
+@keyframes jch-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.jch-slide--light .jch-headline { color: #1a1410; }
+.jch-slide--dark .jch-headline  { color: #f4ede1; }
+
+.jch-accent { font-style: italic; color: #8a3a4a; }
+.jch-accent--orange { color: #d65a2c; }
+
+/* Default-hide sub — only slides 2 and 5 enable it in their per-slide rule. */
+.jch-sub {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  line-height: 1.5;
+  display: none;
+}
+
+.jch-slide--light .jch-sub { color: #6b5e52; }
+.jch-slide--dark .jch-sub  { color: rgba(244, 237, 225, 0.55); }
+
+.jch-footer {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.jch-slide--light .jch-footer { color: rgba(26, 20, 16, 0.35); }
+.jch-slide--dark .jch-footer  { color: rgba(244, 237, 225, 0.3); }
+
+.jch-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: linear-gradient(135deg, #8a3a4a, #d65a2c);
+  border-radius: 999px;
+  padding: 3px 10px;
+  color: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+/* ── Eyebrow/badge + headline group ──────────────
+   Both elements live inside a single flex column so they move as one unit:
+   a long headline pushes the eyebrow up rather than colliding with it. The
+   four corner modifiers anchor the group; sub + footer remain independently
+   positioned (per their own rules below). */
+.jch-text-group {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 4;
+  max-width: 480px;
+}
+
+.jch-text-group--bottom-left {
+  bottom: 40px;
+  left: 48px;
+}
+
+.jch-text-group--bottom-right {
+  bottom: 40px;
+  right: 48px;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.jch-text-group--top-left {
+  top: 36px;
+  left: 48px;
+}
+
+.jch-text-group--top-right {
+  top: 36px;
+  right: 48px;
+  align-items: flex-end;
+  text-align: right;
+}
+
+/* Sub + footer stay absolutely positioned per-slide because they sit on the
+   opposite edge from the group and shouldn't move with it. */
+.jch-slide--2 .jch-sub    { position: absolute; bottom: 36px; right: 48px; text-align: right; max-width: 280px; z-index: 4; display: block; }
+.jch-slide--4 .jch-footer { position: absolute; bottom: 16px; left: 48px; z-index: 4; }
+.jch-slide--5 .jch-sub    { position: absolute; bottom: 36px; left: 48px; max-width: 300px; z-index: 4; display: block; }
+
+/* ── Dark mode overrides for light-themed slides ──────────
+   Any slide marked .jch-slide--light gets a neutral dark wash, regardless of
+   slide index. !important wins over the per-slide light backgrounds above. */
+[data-theme="dark"] .jch-slide--light { background: #1e1610 !important; }
+[data-theme="dark"] .jch-slide--light .jch-headline { color: #f4ede1; }
+[data-theme="dark"] .jch-slide--light .jch-eyebrow  { color: rgba(244, 237, 225, 0.5); }
+[data-theme="dark"] .jch-slide--light .jch-sub      { color: rgba(244, 237, 225, 0.6); }
+
+/* ── Overlay controls ─────────────────────────── */
+.jch-dots {
+  position: absolute;
+  bottom: 16px;
+  left: 56px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jch-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(26, 20, 16, 0.2);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.jch-dot--active {
+  width: 18px;
+  border-radius: 3px;
+  background: #8a3a4a;
+}
+
+.jch-arrows {
+  position: absolute;
+  bottom: 20px;
+  right: 48px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.jch-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: color 0.2s, transform 0.2s;
+}
+
+.jch-arrow:hover {
+  color: #ffffff;
+  transform: scale(1.1);
+}
+
+@media (max-width: 600px) {
+  .jch-slide {
+    min-height: 280px;
+  }
+  .jch-headline {
+    font-size: clamp(18px, 5vw, 22px);
+  }
+  .jch-headline--italic {
+    font-size: 18px;
+  }
+  /* Mobile: shrink group insets and reduce inter-element gap; sub hidden. */
+  .jch-text-group { max-width: calc(100% - 48px); gap: 6px; }
+  .jch-text-group--bottom-left  { bottom: 28px; left: 24px; }
+  .jch-text-group--bottom-right { bottom: 28px; right: 24px; }
+  .jch-text-group--top-left     { top: 28px; left: 24px; }
+  .jch-text-group--top-right    { top: 28px; right: 24px; }
+  .jch-slide--4 .jch-footer { bottom: 8px; left: 24px; }
+  /* Sub text hidden on mobile per spec — overrides slide 2/5 display:block. */
+  .jch-slide--2 .jch-sub,
+  .jch-slide--5 .jch-sub { display: none; }
+  /* Pattern opacity reduced (filter avoids touching the SVG's own opacity). */
+  .jch-pattern-svg { opacity: 0.7; }
+  .jch-dots {
+    left: 24px;
+    bottom: 12px;
+  }
+  .jch-arrows {
+    display: none;
   }
 }
 

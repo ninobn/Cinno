@@ -4580,8 +4580,547 @@ const INSIGHT_PROMPTS = {
 
 const AI_INSIGHTS_ENABLED = false;
 
+// ── Journal Carousel Header ──────────────────────────────
+// Rotating editorial slides (most-watched, comparison, outlier, guilty pleasure,
+// Cinno-generated, streak). Top-level so internal state survives JournalTab re-renders.
+
+// Daily seed used to deterministically pick light/dark theme + pattern variant
+// per slide. Same calendar day → identical layout; rolls over at midnight.
+const jchGetDailySeed = () => {
+  const d = new Date();
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+};
+
+const jchSeededRandom = (seed, index) => {
+  const x = Math.sin(seed * 9301 + index * 49297 + 233995) * 10000;
+  return x - Math.floor(x);
+};
+
+// Per-slide SVG background patterns. Index 0..5 = slide; key 'a'/'b' = variant.
+// All patterns share the wine + orange palette (#8a3a4a / #d65a2c) and a
+// 1000×360 viewBox sliced to cover the slide regardless of size.
+const SLIDE_PATTERNS = [
+  // ── 0 Most Watched ──
+  {
+    a: (
+      <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <radialGradient id="s0a-bg" cx="100%" cy="0%" r="60%">
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.12" />
+            <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="1000" height="360" fill="url(#s0a-bg)" />
+        <path d="M-20,40 Q200,10 500,40 T1020,40" stroke="#8a3a4a" strokeWidth="1.8" fill="none" opacity="0.18" />
+        <path d="M-20,70 Q200,40 500,70 T1020,70" stroke="#d65a2c" strokeWidth="1.6" fill="none" opacity="0.15" />
+        <path d="M-20,100 Q200,70 500,100 T1020,100" stroke="#8a3a4a" strokeWidth="1.4" fill="none" opacity="0.13" />
+        <path d="M-20,130 Q200,100 500,130 T1020,130" stroke="#d65a2c" strokeWidth="1.2" fill="none" opacity="0.11" />
+        <path d="M-20,160 Q200,130 500,160 T1020,160" stroke="#8a3a4a" strokeWidth="1.0" fill="none" opacity="0.09" />
+        <path d="M-20,190 Q200,160 500,190 T1020,190" stroke="#d65a2c" strokeWidth="0.7" fill="none" opacity="0.07" />
+        <circle cx="950" cy="40" r="90" stroke="#8a3a4a" strokeWidth="1" fill="none" opacity="0.12" />
+        <circle cx="950" cy="40" r="55" stroke="#d65a2c" strokeWidth="1" fill="none" opacity="0.09" />
+        <circle cx="950" cy="40" r="25" stroke="#8a3a4a" strokeWidth="1" fill="none" opacity="0.06" />
+      </svg>
+    ),
+    b: (
+      <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <radialGradient id="s0b-bg" cx="0%" cy="100%" r="60%">
+            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.1" />
+            <stop offset="100%" stopColor="#d65a2c" stopOpacity="0" />
+          </radialGradient>
+          <pattern id="s0b-grid" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <line x1="0" y1="0" x2="0" y2="28" stroke="#8a3a4a" strokeWidth="1" opacity="0.07" />
+          </pattern>
+        </defs>
+        <rect width="1000" height="360" fill="url(#s0b-bg)" />
+        <rect width="1000" height="360" fill="url(#s0b-grid)" />
+        <circle cx="640" cy="180" r="140" fill="#8a3a4a" opacity="0.06" />
+        <path d="M-50,-20 Q450,160 1050,330" stroke="#8a3a4a" strokeWidth="1.2" fill="none" opacity="0.15" />
+        <path d="M-50,40 Q450,220 1050,380" stroke="#8a3a4a" strokeWidth="0.9" fill="none" opacity="0.1" />
+      </svg>
+    ),
+  },
+  // ── 1 Comparison ──
+  {
+    a: (
+      <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <radialGradient id="s1a-bg" cx="100%" cy="0%" r="80%">
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="1000" height="360" fill="url(#s1a-bg)" />
+        <circle cx="900" cy="0" r="160" stroke="#8a3a4a" strokeWidth="1.2" fill="none" opacity="0.25" />
+        <circle cx="900" cy="0" r="220" stroke="#d65a2c" strokeWidth="1.1" fill="none" opacity="0.18" />
+        <circle cx="900" cy="0" r="280" stroke="#8a3a4a" strokeWidth="1" fill="none" opacity="0.13" />
+        <circle cx="900" cy="0" r="340" stroke="#d65a2c" strokeWidth="0.9" fill="none" opacity="0.1" />
+        <circle cx="900" cy="0" r="400" stroke="#8a3a4a" strokeWidth="0.7" fill="none" opacity="0.08" />
+        <circle cx="900" cy="0" r="460" stroke="#d65a2c" strokeWidth="0.6" fill="none" opacity="0.06" />
+        <path d="M-20,320 Q300,300 600,320 T1020,320" stroke="#f5f0eb" strokeWidth="1" fill="none" opacity="0.06" />
+        <path d="M-20,340 Q300,320 600,340 T1020,340" stroke="#8a3a4a" strokeWidth="0.8" fill="none" opacity="0.04" />
+      </svg>
+    ),
+    b: (
+      <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <radialGradient id="s1b-bg" cx="50%" cy="50%" r="60%">
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="1000" height="360" fill="url(#s1b-bg)" />
+        <path d="M-100,80 Q300,200 700,180 T1100,260" stroke="#8a3a4a" strokeWidth="80" fill="none" opacity="0.08" strokeLinecap="round" />
+        <path d="M-100,160 Q300,260 700,240 T1100,340" stroke="#d65a2c" strokeWidth="60" fill="none" opacity="0.07" strokeLinecap="round" />
+        <path d="M-100,40 Q400,140 800,120 T1200,200" stroke="#d65a2c" strokeWidth="50" fill="none" opacity="0.05" strokeLinecap="round" />
+        <path d="M-100,240 Q400,340 800,320 T1200,400" stroke="#8a3a4a" strokeWidth="40" fill="none" opacity="0.04" strokeLinecap="round" />
+        <path d="M-50,100 Q300,200 700,180 T1050,260" stroke="#8a3a4a" strokeWidth="0.7" fill="none" opacity="0.1" />
+        <path d="M-50,180 Q300,260 700,240 T1050,320" stroke="#d65a2c" strokeWidth="0.7" fill="none" opacity="0.1" />
+      </svg>
+    ),
+  },
+  // ── 2 Outlier ──
+  {
+    a: (
+      <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <radialGradient id="s2a-bg" cx="0%" cy="100%" r="60%">
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.1" />
+            <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="1000" height="360" fill="url(#s2a-bg)" />
+        <path d="M250,80 Q290,90 295,120 Q300,150 270,165 Q240,180 215,165 Q190,150 195,120 Q200,90 250,80 Z" stroke="#8a3a4a" strokeWidth="1.2" fill="none" opacity="0.2" />
+        <path d="M250,60 Q310,75 320,120 Q330,165 280,185 Q230,205 195,185 Q160,165 170,115 Q180,75 250,60 Z" stroke="#d65a2c" strokeWidth="1.1" fill="none" opacity="0.16" />
+        <path d="M250,40 Q330,60 350,120 Q370,180 295,205 Q220,230 175,205 Q130,175 145,110 Q160,55 250,40 Z" stroke="#8a3a4a" strokeWidth="1" fill="none" opacity="0.13" />
+        <path d="M250,20 Q350,45 380,120 Q410,195 310,225 Q210,255 155,225 Q100,190 120,105 Q140,40 250,20 Z" stroke="#d65a2c" strokeWidth="0.9" fill="none" opacity="0.1" />
+        <path d="M250,0 Q370,30 410,120 Q450,210 325,245 Q200,280 135,245 Q70,205 95,100 Q120,25 250,0 Z" stroke="#8a3a4a" strokeWidth="0.7" fill="none" opacity="0.08" />
+        <path d="M250,-20 Q390,15 440,120 Q490,225 340,265 Q190,305 115,265 Q40,220 70,95 Q100,10 250,-20 Z" stroke="#d65a2c" strokeWidth="0.6" fill="none" opacity="0.07" />
+        <line x1="-20" y1="280" x2="1020" y2="320" stroke="#8a3a4a" strokeWidth="0.8" opacity="0.06" />
+        <line x1="-20" y1="310" x2="1020" y2="340" stroke="#8a3a4a" strokeWidth="0.7" opacity="0.05" />
+      </svg>
+    ),
+    b: (
+      <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <radialGradient id="s2b-bg" cx="0%" cy="0%" r="60%">
+            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.08" />
+            <stop offset="100%" stopColor="#d65a2c" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="1000" height="360" fill="url(#s2b-bg)" />
+        {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((i) => (
+          <line key={`s2b-${i}`} x1={-200 + i * 110} y1={-50} x2={200 + i * 110} y2={420} stroke="#8a3a4a" strokeWidth="0.8" opacity="0.1" />
+        ))}
+        <line x1="-20" y1="100" x2="1020" y2="100" stroke="#d65a2c" strokeWidth="0.6" opacity="0.08" />
+        <line x1="-20" y1="200" x2="1020" y2="200" stroke="#d65a2c" strokeWidth="0.6" opacity="0.08" />
+        <line x1="-20" y1="300" x2="1020" y2="300" stroke="#d65a2c" strokeWidth="0.6" opacity="0.08" />
+        <circle cx="60" cy="290" r="8" fill="#8a3a4a" opacity="0.18" />
+        <circle cx="90" cy="310" r="5" fill="#d65a2c" opacity="0.14" />
+        <circle cx="115" cy="325" r="3" fill="#8a3a4a" opacity="0.1" />
+      </svg>
+    ),
+  },
+  // ── 3 Guilty Pleasure ──
+  {
+    a: (
+      <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <radialGradient id="s3a-bg1" cx="0%" cy="100%" r="70%">
+            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#d65a2c" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="s3a-bg2" cx="100%" cy="0%" r="60%">
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="1000" height="360" fill="url(#s3a-bg1)" />
+        <rect width="1000" height="360" fill="url(#s3a-bg2)" />
+        <path d="M-20,340 Q250,300 500,260 T1020,180" stroke="#8a3a4a" strokeWidth="2.5" fill="none" opacity="0.28" />
+        <path d="M-20,310 Q250,270 500,230 T1020,150" stroke="#d65a2c" strokeWidth="2.2" fill="none" opacity="0.24" />
+        <path d="M-20,280 Q250,240 500,200 T1020,120" stroke="#8a3a4a" strokeWidth="1.9" fill="none" opacity="0.2" />
+        <path d="M-20,250 Q250,210 500,170 T1020,90" stroke="#d65a2c" strokeWidth="1.6" fill="none" opacity="0.16" />
+        <path d="M-20,220 Q250,180 500,140 T1020,60" stroke="#8a3a4a" strokeWidth="1.3" fill="none" opacity="0.12" />
+        <path d="M-20,190 Q250,150 500,110 T1020,30" stroke="#d65a2c" strokeWidth="1.0" fill="none" opacity="0.09" />
+        <path d="M-20,160 Q250,120 500,80 T1020,0" stroke="#8a3a4a" strokeWidth="0.6" fill="none" opacity="0.07" />
+        <path d="M-20,360 Q250,330 500,350 T1020,330 L1020,360 Z" fill="#d65a2c" opacity="0.06" />
+      </svg>
+    ),
+    b: (
+      <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <radialGradient id="s3b-bg" cx="100%" cy="100%" r="60%">
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.15" />
+            <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="1000" height="360" fill="url(#s3b-bg)" />
+        <line x1="900" y1="220" x2="-100" y2="40" stroke="#8a3a4a" strokeWidth="1.0" opacity="0.15" />
+        <line x1="900" y1="220" x2="-100" y2="100" stroke="#d65a2c" strokeWidth="0.9" opacity="0.13" />
+        <line x1="900" y1="220" x2="-100" y2="160" stroke="#8a3a4a" strokeWidth="0.8" opacity="0.11" />
+        <line x1="900" y1="220" x2="-100" y2="220" stroke="#d65a2c" strokeWidth="0.7" opacity="0.1" />
+        <line x1="900" y1="220" x2="-100" y2="280" stroke="#8a3a4a" strokeWidth="0.6" opacity="0.08" />
+        <line x1="900" y1="220" x2="-100" y2="340" stroke="#d65a2c" strokeWidth="0.5" opacity="0.07" />
+        <line x1="900" y1="220" x2="200" y2="-50" stroke="#8a3a4a" strokeWidth="0.5" opacity="0.06" />
+        <line x1="900" y1="220" x2="500" y2="-50" stroke="#d65a2c" strokeWidth="0.4" opacity="0.05" />
+        <path d="M-20,300 Q400,260 1020,280" stroke="#8a3a4a" strokeWidth="0.8" fill="none" opacity="0.1" />
+        <path d="M-20,330 Q400,300 1020,320" stroke="#8a3a4a" strokeWidth="0.7" fill="none" opacity="0.08" />
+        <path d="M-20,355 Q400,330 1020,355" stroke="#8a3a4a" strokeWidth="0.6" fill="none" opacity="0.06" />
+      </svg>
+    ),
+  },
+  // ── 4 Cinno ──
+  {
+    a: (
+      <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <radialGradient id="s4a-bg1" cx="80%" cy="50%" r="60%">
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="s4a-bg2" cx="0%" cy="100%" r="60%">
+            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.12" />
+            <stop offset="100%" stopColor="#d65a2c" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="1000" height="360" fill="url(#s4a-bg1)" />
+        <rect width="1000" height="360" fill="url(#s4a-bg2)" />
+        {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+          <line key={`s4a-a-${i}`} x1={-100 + i * 150} y1={-50} x2={300 + i * 150} y2={420} stroke="#8a3a4a" strokeWidth="0.8" opacity="0.09" />
+        ))}
+        {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+          <line key={`s4a-b-${i}`} x1={300 + i * 150} y1={-50} x2={-100 + i * 150} y2={420} stroke="#d65a2c" strokeWidth="0.8" opacity="0.09" />
+        ))}
+      </svg>
+    ),
+    b: (
+      <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <radialGradient id="s4b-bg" cx="50%" cy="50%" r="60%">
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="1000" height="360" fill="url(#s4b-bg)" />
+        <ellipse cx="500" cy="110" rx="80" ry="40" stroke="#8a3a4a" strokeWidth="1.2" fill="none" opacity="0.18" />
+        <ellipse cx="500" cy="110" rx="160" ry="75" stroke="#d65a2c" strokeWidth="1.1" fill="none" opacity="0.14" />
+        <ellipse cx="500" cy="110" rx="240" ry="110" stroke="#8a3a4a" strokeWidth="1" fill="none" opacity="0.1" />
+        <ellipse cx="500" cy="110" rx="320" ry="145" stroke="#d65a2c" strokeWidth="0.9" fill="none" opacity="0.07" />
+        <ellipse cx="500" cy="110" rx="400" ry="180" stroke="#8a3a4a" strokeWidth="0.7" fill="none" opacity="0.05" />
+        {Array.from({ length: 18 }, (_, i) => (
+          <line key={`s4b-h-${i}`} x1="-20" y1={20 + i * 20} x2="1020" y2={20 + i * 20} stroke="#8a3a4a" strokeWidth="0.4" opacity="0.05" />
+        ))}
+      </svg>
+    ),
+  },
+  // ── 5 Streak ──
+  {
+    a: (
+      <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <radialGradient id="s5a-bg" cx="100%" cy="100%" r="60%">
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.1" />
+            <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="1000" height="360" fill="url(#s5a-bg)" />
+        <path d="M1000,380 Q700,100 -50,-50" stroke="#8a3a4a" strokeWidth="110" fill="none" opacity="0.055" strokeLinecap="round" />
+        <path d="M1020,360 Q650,200 -20,50" stroke="#8a3a4a" strokeWidth="2.2" fill="none" opacity="0.22" />
+        <path d="M1020,340 Q650,180 -20,30" stroke="#d65a2c" strokeWidth="1.9" fill="none" opacity="0.19" />
+        <path d="M1020,320 Q650,160 -20,10" stroke="#8a3a4a" strokeWidth="1.6" fill="none" opacity="0.16" />
+        <path d="M1020,300 Q650,140 -20,-10" stroke="#d65a2c" strokeWidth="1.3" fill="none" opacity="0.13" />
+        <path d="M1020,280 Q650,120 -20,-30" stroke="#8a3a4a" strokeWidth="1.0" fill="none" opacity="0.11" />
+        <path d="M1020,260 Q650,100 -20,-50" stroke="#d65a2c" strokeWidth="0.7" fill="none" opacity="0.09" />
+        <path d="M1020,240 Q650,80 -20,-70" stroke="#8a3a4a" strokeWidth="0.5" fill="none" opacity="0.07" />
+        <circle cx="930" cy="330" r="12" fill="#8a3a4a" opacity="0.2" />
+        <circle cx="960" cy="305" r="6" fill="#d65a2c" opacity="0.16" />
+        <circle cx="975" cy="285" r="4" fill="#8a3a4a" opacity="0.13" />
+        <circle cx="985" cy="270" r="3" fill="#d65a2c" opacity="0.12" />
+      </svg>
+    ),
+    b: (
+      <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <radialGradient id="s5b-bg" cx="0%" cy="0%" r="60%">
+            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.08" />
+            <stop offset="100%" stopColor="#d65a2c" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <rect width="1000" height="360" fill="url(#s5b-bg)" />
+        <path d="M-20,80 Q150,40 350,80 T700,80 T1020,80" stroke="#8a3a4a" strokeWidth="1.5" fill="none" opacity="0.2" />
+        <path d="M-20,140 Q200,80 400,140 T800,140 T1020,140" stroke="#d65a2c" strokeWidth="1.3" fill="none" opacity="0.17" />
+        <path d="M-20,200 Q150,140 350,200 T700,200 T1020,200" stroke="#8a3a4a" strokeWidth="1.0" fill="none" opacity="0.13" />
+        <path d="M-20,260 Q250,200 450,260 T850,260 T1020,260" stroke="#d65a2c" strokeWidth="0.8" fill="none" opacity="0.1" />
+        <path d="M-20,320 Q150,260 350,320 T700,320 T1020,320" stroke="#8a3a4a" strokeWidth="0.6" fill="none" opacity="0.07" />
+        <line x1="80" y1="72" x2="80" y2="288" stroke="#8a3a4a" strokeWidth="2" opacity="0.15" />
+      </svg>
+    ),
+  },
+];
+
+function JournalCarouselHeader({ mostWatchedGenre, genreComparison, outlier, guiltyPleasure, ratingStreak, genreStreak, streakGenre, cinnoSlide, cinnoSlideLoading, slideOrder, totalFilms }) {
+  // Daily seed-driven theme + variant for each of the 6 slides. Same calendar
+  // day produces the same layout; rolls over at local midnight.
+  const dailySeed = useMemo(() => jchGetDailySeed(), []);
+  const slideThemes = useMemo(
+    () => Array.from({ length: 6 }, (_, i) => (jchSeededRandom(dailySeed, i + 10) > 0.5 ? "dark" : "light")),
+    [dailySeed]
+  );
+  const slideVariants = useMemo(
+    () => Array.from({ length: 6 }, (_, i) => (jchSeededRandom(dailySeed, i + 20) > 0.5 ? "a" : "b")),
+    [dailySeed]
+  );
+
+  const slides = useMemo(() => {
+    const out = new Array(6);
+
+    // 0 — Most Watched Genre
+    if (mostWatchedGenre) {
+      out[0] = {
+        slideIndex: 0,
+        eyebrow: "MOST WATCHED · GENRE",
+        headline: (<>You can't get enough of <em className="jch-accent">{mostWatchedGenre.genre}</em>.</>),
+        sub: `${mostWatchedGenre.count} out of ${totalFilms} films. More than any other genre.`,
+      };
+    } else {
+      out[0] = {
+        slideIndex: 0,
+        eyebrow: "MOST WATCHED · GENRE",
+        headline: "Your top genre hasn't surfaced yet.",
+        sub: "Log a few more films and a clear favourite will appear here.",
+      };
+    }
+
+    // 1 — Comparison
+    if (genreComparison) {
+      const isPositive = genreComparison.diff > 0.5;
+      const pct = Math.round(Math.min(99, Math.max(51, 50 + Math.abs(genreComparison.diff) * 10)));
+      out[1] = {
+        slideIndex: 1,
+        eyebrow: `COMPARISON · ${genreComparison.genre}`,
+        headline: isPositive
+          ? (<>You rate <em className="jch-accent jch-accent--orange">{genreComparison.genre}</em> higher than <em className="jch-accent jch-accent--orange">{pct}%</em> of Cinno users.</>)
+          : (<>You're a tougher critic than most on <em className="jch-accent jch-accent--orange">{genreComparison.genre}</em>.</>),
+        sub: `Your average: ${genreComparison.userAvg.toFixed(1)}. Cinno average: ${genreComparison.cinnoAvg.toFixed(1)}.`,
+      };
+    } else {
+      out[1] = {
+        slideIndex: 1,
+        eyebrow: "COMPARISON",
+        headline: "Not enough rated films to compare yet.",
+        sub: "Rate at least three films in a genre to see how you stack up.",
+      };
+    }
+
+    // 2 — The Outlier
+    if (outlier && outlier.diff > 1.5) {
+      out[2] = {
+        slideIndex: 2,
+        eyebrow: "THE OUTLIER",
+        headline: (<>You gave {outlier.movie.title} a <em className="jch-accent">{outlier.personal}</em>.</>),
+        sub: outlier.higher
+          ? `Everyone else gave it ${(outlier.tmdb * 10).toFixed(0)}. You saw something they didn't.`
+          : `You weren't convinced. Everyone else gave it ${(outlier.tmdb * 10).toFixed(0)}.`,
+      };
+    } else {
+      out[2] = {
+        slideIndex: 2,
+        eyebrow: "THE OUTLIER",
+        headline: "Your ratings don't follow the crowd.",
+        sub: "",
+      };
+    }
+
+    // 3 — Guilty Pleasure
+    if (guiltyPleasure) {
+      out[3] = {
+        slideIndex: 3,
+        eyebrow: "GUILTY PLEASURE",
+        headline: (<>You almost never watch <em className="jch-accent jch-accent--orange">{guiltyPleasure.genre}</em>. But when you do —</>),
+        sub: `Your average ${guiltyPleasure.genre} rating is ${guiltyPleasure.avgRating.toFixed(0)}. Higher than any other genre. Something to think about.`,
+      };
+    } else {
+      out[3] = {
+        slideIndex: 3,
+        eyebrow: "GUILTY PLEASURE",
+        headline: "You watch everything. No guilty pleasures here.",
+        sub: "Your taste doesn't discriminate.",
+      };
+    }
+
+    // 4 — Cinno Generated
+    out[4] = {
+      slideIndex: 4,
+      badge: true,
+      headline: cinnoSlideLoading ? null : (cinnoSlide?.text || "A slow-burn thriller with unexpected heart. Rated highly by those who stayed."),
+      italic: true,
+      footer: "AI-generated · refreshes monthly",
+      cinnoLoading: cinnoSlideLoading,
+    };
+
+    // 5 — Streak
+    if (ratingStreak >= 3) {
+      out[5] = {
+        slideIndex: 5,
+        eyebrow: "RATING STREAK",
+        headline: (<><em className="jch-accent">{ratingStreak}</em> films in a row rated above 80.</>),
+        sub: "You're on a roll. Either your taste is sharpening, or you've been choosing well.",
+      };
+    } else if (genreStreak >= 3 && streakGenre) {
+      out[5] = {
+        slideIndex: 5,
+        eyebrow: "GENRE STREAK",
+        headline: (<><em className="jch-accent">{genreStreak}</em> {streakGenre} films in a row.</>),
+        sub: "Committed. Once you find a genre, you go deep.",
+      };
+    } else {
+      out[5] = {
+        slideIndex: 5,
+        eyebrow: "YOUR ARCHIVE",
+        headline: (<><em className="jch-accent">{totalFilms}</em> films. Every one left a mark.</>),
+        sub: "",
+      };
+    }
+
+    return out;
+  }, [mostWatchedGenre, genreComparison, outlier, guiltyPleasure, ratingStreak, genreStreak, streakGenre, cinnoSlide, cinnoSlideLoading, totalFilms]);
+
+  const orderedSlides = useMemo(
+    () => slideOrder.map((i) => slides[i]),
+    [slideOrder, slides]
+  );
+
+  const total = orderedSlides.length;
+
+  // Clone the last slide before the first and the first after the last so the
+  // track can scroll past either edge before snapping back to the real slide
+  // without a visible flip. extendedSlides indices:
+  //   0           clone of last real slide
+  //   1..total    real slides
+  //   total + 1   clone of first real slide
+  const extendedSlides = useMemo(() => {
+    if (total <= 1) return orderedSlides;
+    return [orderedSlides[total - 1], ...orderedSlides, orderedSlides[0]];
+  }, [orderedSlides, total]);
+
+  // activeSlide indexes into extendedSlides. Real first slide lives at index 1.
+  const [activeSlide, setActiveSlide] = useState(total > 1 ? 1 : 0);
+  // isJumping disables the CSS transition for the single frame where we snap
+  // from a clone back to its real counterpart.
+  const [isJumping, setIsJumping] = useState(false);
+  // Bumped on manual nav to reset the auto-rotate interval.
+  const [interactionTick, setInteractionTick] = useState(0);
+
+  useEffect(() => {
+    if (total <= 1) return;
+    const id = setInterval(() => {
+      setActiveSlide((s) => s + 1);
+    }, 8000);
+    return () => clearInterval(id);
+  }, [total, interactionTick]);
+
+  // When activeSlide lands on a clone (index 0 or total+1), wait for the
+  // transition to play, then snap-without-transition to the matching real slide.
+  useEffect(() => {
+    if (total <= 1) return;
+    if (activeSlide !== 0 && activeSlide !== total + 1) return;
+    const targetIndex = activeSlide === 0 ? total : 1;
+    const timer = setTimeout(() => {
+      setIsJumping(true);
+      setActiveSlide(targetIndex);
+      // Two rAFs: first lets the no-transition render flush, second turns
+      // transitions back on for subsequent navigation.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setIsJumping(false));
+      });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [activeSlide, total]);
+
+  if (total === 0) return null;
+
+  // displayIndex is the real-slide index used by dots and counter (always in
+  // [0, total)) regardless of whether activeSlide is parked on a clone.
+  const displayIndex = total > 1
+    ? ((activeSlide - 1) % total + total) % total
+    : 0;
+
+  const bumpInteraction = () => setInteractionTick((t) => t + 1);
+  const goPrev = () => { bumpInteraction(); setActiveSlide((s) => s - 1); };
+  const goNext = () => { bumpInteraction(); setActiveSlide((s) => s + 1); };
+  const goTo = (i) => { bumpInteraction(); setActiveSlide(total > 1 ? i + 1 : i); };
+
+  return (
+    <div className="jch-root" data-aos="fade-right" data-aos-duration="300">
+      <div className="jch-viewport">
+        <div
+          className="jch-track"
+          style={{
+            transform: `translateX(-${activeSlide * 100}%)`,
+            transition: isJumping ? "none" : undefined,
+          }}
+        >
+          {extendedSlides.map((slide, idx) => {
+            const si = slide.slideIndex;
+            const theme = slideThemes[si];
+            const variant = slideVariants[si];
+            const pattern = SLIDE_PATTERNS[si][variant];
+            // Per-slide group anchor — eyebrow/badge + headline travel together
+            // as one flex column so a long headline can't crash into the eyebrow.
+            const groupPos = ["bottom-left", "bottom-left", "top-right", "bottom-right", "bottom-left", "top-left"][si];
+            return (
+              <div key={idx} className={`jch-slide jch-slide--${si} jch-slide--${theme}`}>
+                <div className="jch-pattern" aria-hidden="true">{pattern}</div>
+                <div className={`jch-text-group jch-text-group--${groupPos}`}>
+                  {slide.badge ? (
+                    <div className="jch-badge">✦ Cinno says</div>
+                  ) : (
+                    slide.eyebrow && <div className="jch-eyebrow">{slide.eyebrow}</div>
+                  )}
+                  {slide.cinnoLoading ? (
+                    <div className="jch-headline jch-headline--shimmer" aria-hidden="true" />
+                  ) : (
+                    <div className={`jch-headline${slide.italic ? " jch-headline--italic" : ""}`}>{slide.headline}</div>
+                  )}
+                </div>
+                {slide.sub && <div className="jch-sub">{slide.sub}</div>}
+                {slide.footer && <div className="jch-footer">{slide.footer}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="jch-dots">
+        {orderedSlides.map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            className={`jch-dot${i === displayIndex ? " jch-dot--active" : ""}`}
+            onClick={() => goTo(i)}
+            aria-label={`Go to slide ${i + 1}`}
+          />
+        ))}
+      </div>
+      <div className="jch-arrows">
+        <button type="button" className="jch-arrow" onClick={goPrev} aria-label="Previous slide">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="15 18 9 12 15 6" />
+          </svg>
+        </button>
+        <button type="button" className="jch-arrow" onClick={goNext} aria-label="Next slide">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, toggleWatched, savedIds, toggleSave, watchedRatings, setWatchedRating, watchedDates, tasteProfile, onSetTasteProfile, startDebrief, unlockedBadges, collections, scrollPositions, chats }) {
-  const { user, getAccessToken } = useAuth();
+  const { user, getAccessToken, isGuest } = useAuth();
   const [selectedMovie, setSelectedMovie] = useMovieModal();
   const [view, _setView] = useState("journal");
   const prevViewRef = useRef("journal");
@@ -4615,6 +5154,11 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   const [insight, setInsight] = useState(() =>
     AI_INSIGHTS_ENABLED ? null : { type: "movie_twin", text: "You watch like Christopher Nolan — big ideas wrapped in blockbuster packaging." }
   );
+  const [cinnoSlide, setCinnoSlide] = useState(() => {
+    const m = new Date().toISOString().slice(0, 7);
+    return loadFromStorage(`cc_cinno_slide_${user?.id ?? "guest"}_${m}`, null);
+  });
+  const [cinnoSlideLoading, setCinnoSlideLoading] = useState(false);
   const [emptyJournal] = useState(() => pickRandom(EMPTY_JOURNAL));
   const [emptyRankings] = useState(() => pickRandom(EMPTY_RANKINGS));
   const [emptyStats] = useState(() => pickRandom(EMPTY_STATS));
@@ -4715,6 +5259,63 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   useEffect(() => {
     if (movies.length < 3) return;
     fetchInsight();
+  }, [movies.length >= 3 ? "ready" : "waiting"]);
+
+  // Cinno-generated carousel slide — same pattern as fetchInsight, monthly cache key.
+  const CINNO_SLIDE_FALLBACK = "A slow-burn thriller with unexpected heart. Rated highly by those who stayed.";
+  const fetchCinnoSlide = useCallback(async () => {
+    if (!user || isGuest || movies.length < 3) {
+      setCinnoSlide({ text: CINNO_SLIDE_FALLBACK, ts: Date.now() });
+      return;
+    }
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const cacheKey = `cc_cinno_slide_${user.id}_${currentMonth}`;
+    const cached = loadFromStorage(cacheKey, null);
+    if (cached?.text) {
+      setCinnoSlide(cached);
+      return;
+    }
+    setCinnoSlideLoading(true);
+    try {
+      const recent = movies.slice(-20);
+      const lines = recent.map((m) => {
+        const score = watchedRatings?.get(m.id);
+        return `${m.title} (${m.genre}, ${m.year})${score ? ` — rated ${score}/100` : ""}`;
+      });
+      const systemPrompt = `You are a witty, concise movie personality analyst. The user has watched these movies: ${lines.join("; ")}. Respond with ONLY a single sentence (max 20 words) describing what their journal would be as a film. No preamble, no quotes, just the sentence.`;
+      const userPrompt = "What film would my journal be?";
+      const token = getAccessToken();
+      if (!token) {
+        setCinnoSlide({ text: CINNO_SLIDE_FALLBACK, ts: Date.now() });
+        return;
+      }
+      const resp = await fetch(`${API_URL}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 60, system: systemPrompt, messages: [{ role: "user", content: userPrompt }] }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error.message || "API error");
+      const text = data.content?.[0]?.text?.trim();
+      if (text) {
+        const result = { text, ts: Date.now() };
+        saveToStorage(cacheKey, result);
+        setCinnoSlide(result);
+      } else {
+        throw new Error("Empty response");
+      }
+    } catch {
+      setCinnoSlide({ text: CINNO_SLIDE_FALLBACK, ts: Date.now() });
+    } finally {
+      setCinnoSlideLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, isGuest, movies, watchedRatings, getAccessToken]);
+
+  useEffect(() => {
+    if (movies.length < 3) return;
+    fetchCinnoSlide();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [movies.length >= 3 ? "ready" : "waiting"]);
 
   // Persist sort preferences
@@ -4826,6 +5427,99 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
     return { count: filteredJournalMovies.length, hours, avg, topGenre, highest };
   }, [filteredJournalMovies, runtimeCache, watchedRatings]);
 
+  // ── Carousel header data ─────────────────────────────────────
+  // Per-genre averages used to compare the user against the wider "Cinno" baseline.
+  const CINNO_AVG_RATINGS = {
+    "Drama": 7.4, "Action": 7.8, "Sci-Fi": 7.4, "Thriller": 7.2,
+    "Comedy": 7.0, "Horror": 6.8, "Romance": 7.1, "Animation": 7.6,
+    "Crime": 7.5, "Adventure": 7.6,
+  };
+
+  const carouselData = useMemo(() => {
+    // 1. Most-watched genre
+    const genreCount = {};
+    filteredJournalMovies.forEach((m) => {
+      const g = m.genre && m.genre !== "Film" ? m.genre : null;
+      if (g) genreCount[g] = (genreCount[g] || 0) + 1;
+    });
+    const topEntry = Object.entries(genreCount).sort((a, b) => b[1] - a[1])[0] || null;
+    const mostWatchedGenre = topEntry ? { genre: topEntry[0], count: topEntry[1] } : null;
+
+    // 2. Genre comparison vs Cinno baseline (rated films only)
+    const genreRatings = {};
+    const genreCounts2 = {};
+    filteredJournalMovies.forEach((m) => {
+      const r = watchedRatings?.get(m.id);
+      const g = m.genre && m.genre !== "Film" ? m.genre : null;
+      if (g && r) {
+        genreRatings[g] = (genreRatings[g] || 0) + r;
+        genreCounts2[g] = (genreCounts2[g] || 0) + 1;
+      }
+    });
+    const genreComparison = Object.entries(genreRatings)
+      .map(([g, total]) => {
+        const userAvg10 = (total / genreCounts2[g]) / 10; // normalize 0-100 → 0-10
+        const cinnoAvg = CINNO_AVG_RATINGS[g] || 7.5;
+        return { genre: g, userAvg: userAvg10, cinnoAvg, diff: userAvg10 - cinnoAvg, count: genreCounts2[g] };
+      })
+      .filter((x) => x.count >= 3)
+      .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff))[0] || null;
+
+    // 3. The outlier — biggest divergence between personal and TMDB rating
+    const outlier = filteredJournalMovies.reduce((best, m) => {
+      const personal = watchedRatings?.get(m.id);
+      const tmdb = parseFloat(m.rating);
+      if (!personal || !tmdb) return best;
+      const personalNorm = personal / 10;
+      const diff = Math.abs(personalNorm - tmdb);
+      return (!best || diff > best.diff) ? { movie: m, personal, tmdb, diff, higher: personalNorm > tmdb } : best;
+    }, null);
+
+    // 4. Guilty pleasure — rarely watched genre rated very highly
+    const guiltyPleasure = Object.entries(genreRatings)
+      .map(([g, total]) => ({ genre: g, avgRating: total / genreCounts2[g], count: genreCounts2[g] }))
+      .filter((x) => x.count <= 3 && x.avgRating >= 80)
+      .sort((a, b) => b.avgRating - a.avgRating)[0] || null;
+
+    // Sort journal entries by watch date (newest first) for streak calculations.
+    const sortedByDate = [...filteredJournalMovies]
+      .filter((m) => watchedDates?.get(m.id) && watchedRatings?.get(m.id))
+      .sort((a, b) => new Date(watchedDates.get(b.id)) - new Date(watchedDates.get(a.id)));
+
+    // 5. Rating streak — consecutive recent films rated 80+
+    let ratingStreak = 0;
+    for (const m of sortedByDate) {
+      if ((watchedRatings.get(m.id) || 0) >= 80) ratingStreak++;
+      else break;
+    }
+
+    // 6. Genre streak — consecutive recent films of the same genre
+    let genreStreak = 0;
+    let streakGenre = null;
+    for (const m of sortedByDate) {
+      const g = m.genre && m.genre !== "Film" ? m.genre : null;
+      if (!g) break;
+      if (!streakGenre) streakGenre = g;
+      if (m.genre === streakGenre) genreStreak++;
+      else break;
+    }
+
+    return { mostWatchedGenre, genreComparison, outlier, guiltyPleasure, ratingStreak, genreStreak, streakGenre };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredJournalMovies, watchedRatings, watchedDates]);
+
+  // Daily-shuffled slide order — Fisher-Yates seeded by day-of-month so order is
+  // stable within a day but changes daily.
+  const SLIDE_ORDER = useMemo(() => {
+    const base = [0, 1, 2, 3, 4, 5];
+    const seed = parseInt(new Date().toISOString().slice(8, 10), 10) || 1;
+    for (let i = base.length - 1; i > 0; i--) {
+      const j = (seed * (i + 1)) % (i + 1);
+      [base[i], base[j]] = [base[j], base[i]];
+    }
+    return base;
+  }, []);
+
   const TOGGLE_VIEWS = ["journal", "stats"];
   const toggleIndex = TOGGLE_VIEWS.indexOf(view);
 
@@ -4917,80 +5611,48 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
           <>
             {view === "journal" && (
               <>
-                {/* Editorial header: eyebrow → headline → stat strip → controls row */}
-                <div className="journal-editorial-header" data-aos="fade-right" data-aos-duration="300">
-                  <div className="je-eyebrow-row">
-                    <div className="je-eyebrow-block" />
-                    <div className="je-eyebrow-text">YOUR JOURNAL · THE ARCHIVE</div>
+                {/* Editorial header: rotating carousel of journal insights */}
+                <JournalCarouselHeader
+                  mostWatchedGenre={carouselData.mostWatchedGenre}
+                  genreComparison={carouselData.genreComparison}
+                  outlier={carouselData.outlier}
+                  guiltyPleasure={carouselData.guiltyPleasure}
+                  ratingStreak={carouselData.ratingStreak}
+                  genreStreak={carouselData.genreStreak}
+                  streakGenre={carouselData.streakGenre}
+                  cinnoSlide={cinnoSlide}
+                  cinnoSlideLoading={cinnoSlideLoading}
+                  slideOrder={SLIDE_ORDER}
+                  totalFilms={filteredJournalMovies.length}
+                />
+                <div className="je-controls-row">
+                  <div className="je-search-pill">
+                    <span className="search-icon"><SearchIcon /></span>
+                    <input
+                      type="text"
+                      placeholder="Search your archive…"
+                      value={journalSearch}
+                      onChange={(e) => setJournalSearch(e.target.value)}
+                    />
+                    {journalSearch && (
+                      <button className="search-clear" onClick={() => setJournalSearch("")}>✕</button>
+                    )}
                   </div>
-                  {(() => {
-                    const JOURNAL_HEADLINES = [
-                      { before: "films logged — here's the", accent: "shape of you",          after: "." },
-                      { before: "films watched.",            accent: "Every one left a mark.", after: ""  },
-                      { before: "A record of",               accent: "what moved you",         after: "." },
-                    ];
-                    const slotIndex = getTimeSlot();
-                    const activeJournalHeadline = JOURNAL_HEADLINES[slotIndex];
-                    const showCount = slotIndex !== 2;
-                    return (
-                      <h1 className="je-headline">
-                        {showCount && `${filteredJournalMovies.length} `}
-                        {activeJournalHeadline.before}{" "}
-                        <span className="journal-headline-accent">{activeJournalHeadline.accent}</span>{activeJournalHeadline.after}
-                      </h1>
-                    );
-                  })()}
-                  <div className="je-stat-strip">
-                    <div className="je-stat">
-                      <div className="je-stat-num">{journalStats.count}</div>
-                      <div className="je-stat-label">FILMS LOGGED</div>
-                    </div>
-                    <div className="je-stat">
-                      <div className="je-stat-num">{journalStats.hours ?? "—"}</div>
-                      <div className="je-stat-label">HOURS</div>
-                    </div>
-                    <div className="je-stat">
-                      <div className="je-stat-num">{journalStats.avg ?? "—"}</div>
-                      <div className="je-stat-label">AVG</div>
-                    </div>
-                    <div className="je-stat je-stat-hide-mobile">
-                      <div className="je-stat-num">{journalStats.topGenre ?? "—"}</div>
-                      <div className="je-stat-label">TOP GENRE</div>
-                    </div>
-                    <div className="je-stat je-stat-hide-mobile">
-                      <div className="je-stat-num je-stat-num-accent">{journalStats.highest ?? "—"}</div>
-                      <div className="je-stat-label">HIGHEST</div>
-                    </div>
+                  <div className="je-sort-group">
+                    <span className="je-sort-mono-label">SORT</span>
+                    <SortDropdown options={JOURNAL_SORT_OPTIONS} value={journalSort} onChange={setJournalSort} />
                   </div>
-                  <div className="je-controls-row">
-                    <div className="je-search-pill">
-                      <span className="search-icon"><SearchIcon /></span>
-                      <input
-                        type="text"
-                        placeholder="Search your archive…"
-                        value={journalSearch}
-                        onChange={(e) => setJournalSearch(e.target.value)}
-                      />
-                      {journalSearch && (
-                        <button className="search-clear" onClick={() => setJournalSearch("")}>✕</button>
-                      )}
-                    </div>
-                    <div className="je-sort-group">
-                      <span className="je-sort-mono-label">SORT</span>
-                      <SortDropdown options={JOURNAL_SORT_OPTIONS} value={journalSort} onChange={setJournalSort} />
-                    </div>
-                    <div className="je-view-toggle">
-                      <button
-                        className={`je-view-toggle-btn ${view === "journal" ? "active" : ""}`}
-                        onClick={() => setView("journal")}
-                        type="button"
-                      >Journal</button>
-                      <button
-                        className={`je-view-toggle-btn ${view === "stats" ? "active" : ""}`}
-                        onClick={() => setView("stats")}
-                        type="button"
-                      >Stats</button>
-                    </div>
+                  <div className="je-view-toggle">
+                    <button
+                      className={`je-view-toggle-btn ${view === "journal" ? "active" : ""}`}
+                      onClick={() => setView("journal")}
+                      type="button"
+                    >Journal</button>
+                    <button
+                      className={`je-view-toggle-btn ${view === "stats" ? "active" : ""}`}
+                      onClick={() => setView("stats")}
+                      type="button"
+                    >Stats</button>
                   </div>
                 </div>
 
