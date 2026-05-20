@@ -15,7 +15,8 @@
       "PowerShell(Get-Process *)",
       "PowerShell(Get-Content *)",
       "PowerShell(cd \"C:\\\\Users\\\\Nino Buranasetkul\\\\Downloads\\\\cinecompanion\\\\movie-companion\"; \\(Get-Content src/styles.css\\).Length)",
-      "PowerShell(npx --yes vite build --logLevel=warn 2>&1 | Select-Object -First 40)"
+      "PowerShell(npx --yes vite build --logLevel=warn 2>&1 | Select-Object -First 40)",
+      "PowerShell(\\(Get-Content src/styles.css | Measure-Object -Line\\).Lines)"
     ]
   }
 }
