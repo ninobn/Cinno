@@ -1,5 +1,12 @@
 import { supabase } from "../supabase.js";
 import { upsertMovieCache } from "./watchlistService.js";
+import { GENRE_MAP } from "../tmdb.js";
+
+const resolveGenre = (genreIds) => {
+  if (!Array.isArray(genreIds) || genreIds.length === 0) return null;
+  const name = GENRE_MAP[genreIds[0]];
+  return name || null;
+};
 
 // ─── Supabase table ─────────────────────────────────────────────────────────
 //
@@ -152,7 +159,7 @@ export async function loadFullJournalState(userId) {
       year: c?.year != null ? String(c.year) : "\u2014",
       rating: c?.rating != null ? c.rating.toFixed(1) : "\u2014",
       synopsis: c?.synopsis || "",
-      genre: "Film",
+      genre: resolveGenre(c?.genre_ids) || "Film",
     }]);
 
     if (entry.personal_rating != null) {
@@ -310,7 +317,7 @@ function mergeEntryWithCache(entry, cacheMap) {
     year: c?.year != null ? String(c.year) : "\u2014",
     rating: c?.rating != null ? c.rating.toFixed(1) : "\u2014",
     synopsis: c?.synopsis || "",
-    genre: "Film",
+    genre: resolveGenre(c?.genre_ids) || "Film",
     rank_position: entry.rank_position,
     personal_rating: entry.personal_rating != null ? Number(entry.personal_rating) : null,
     watch_date: entry.watch_date,

@@ -5683,7 +5683,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                     return genreGroups.map(([genre, gMovies], i) => (
                       <div key={genre}>
                         <JournalGroupMasthead
-                          anchor={String(i + 1).padStart(2, "0")}
+                          anchor=""
                           anchorItalic={false}
                           anchorHighlight={i === 0}
                           label={genre}

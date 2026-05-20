@@ -1,4 +1,11 @@
 import { supabase } from "../supabase.js";
+import { GENRE_MAP } from "../tmdb.js";
+
+const resolveGenre = (genreIds) => {
+  if (!Array.isArray(genreIds) || genreIds.length === 0) return null;
+  const name = GENRE_MAP[genreIds[0]];
+  return name || null;
+};
 
 // ─── Supabase tables ─────────────────────────────────────────────────────────
 //
@@ -274,7 +281,7 @@ export async function loadFullWatchlistState(userId) {
       year: c?.year != null ? String(c.year) : "—",
       rating: c?.rating != null ? c.rating.toFixed(1) : "—",
       synopsis: c?.synopsis || "",
-      genre: "Film", // genre not stored in cache — filled on next TMDB fetch
+      genre: resolveGenre(c?.genre_ids) || "Film",
     };
   };
 

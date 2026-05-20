@@ -10449,7 +10449,7 @@ body {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 28px;
   font-weight: 700;
-  color: #1a1410;
+  color: #8a3a4a;
   letter-spacing: -0.025em;
   line-height: 1.1;
 }
@@ -10470,7 +10470,7 @@ body {
 /* Dark mode: label flips to cream; count + masthead borders flip too. The anchor
    color uses var(--subtle) which is already cream-tinted in dark, so no override
    is needed there — keeping it muted matches its supporting role. */
-[data-theme="dark"] .jg-label { color: #F5F0EB; }
+[data-theme="dark"] .jg-label { color: #8a3a4a; }
 [data-theme="dark"] .jg-count {
   color: rgba(245, 240, 235, 0.6);
   border-left-color: rgba(245, 240, 235, 0.3);
