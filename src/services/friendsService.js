@@ -301,3 +301,28 @@ export async function getReactionCount(activityId) {
   if (error) throw error;
   return count || 0;
 }
+
+export async function getReactionCounts(activityIds) {
+  if (!activityIds || activityIds.length === 0) return {};
+  const { data, error } = await supabase
+    .from('reactions')
+    .select('activity_id')
+    .in('activity_id', activityIds);
+  if (error) throw error;
+  const counts = {};
+  (data || []).forEach((row) => {
+    counts[row.activity_id] = (counts[row.activity_id] || 0) + 1;
+  });
+  return counts;
+}
+
+export async function getUserReactions(userId, activityIds) {
+  if (!activityIds || activityIds.length === 0) return new Set();
+  const { data, error } = await supabase
+    .from('reactions')
+    .select('activity_id')
+    .eq('user_id', userId)
+    .in('activity_id', activityIds);
+  if (error) throw error;
+  return new Set((data || []).map((r) => r.activity_id));
+}

@@ -1673,243 +1673,82 @@ function useAnimatedCount(target, duration = 600, decimals = 0) {
   return decimals > 0 ? value.toFixed(decimals) : String(Math.round(value));
 }
 
-function ProgressRing({ value, goal, size = 64, stroke = 5 }) {
-  const radius = (size - stroke) / 2;
-  const c = size / 2;
-  const circ = 2 * Math.PI * radius;
-  const pct = goal > 0 ? Math.min(1, value / goal) : 0;
-  const offset = circ * (1 - pct);
-  return (
-    <svg className="reel-ring-svg" width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle
-        cx={c} cy={c} r={radius}
-        fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke}
-      />
-      <circle
-        cx={c} cy={c} r={radius}
-        fill="none" stroke="var(--accent-burgundy)" strokeWidth={stroke}
-        strokeLinecap="round"
-        strokeDasharray={circ}
-        strokeDashoffset={offset}
-        transform={`rotate(-90 ${c} ${c})`}
-        style={{ transition: "stroke-dashoffset 800ms cubic-bezier(0.22, 0.61, 0.36, 1)" }}
-      />
-    </svg>
-  );
-}
+function FriendActivityWidget({ user, isGuest, savedMovies, toggleSave, goToFriends }) {
+  void savedMovies; void toggleSave; // accepted for future use
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-const REEL_TIMEFRAMES = [
-  { id: "week", label: "Week", goal: 5 },
-  { id: "month", label: "Month", goal: 20 },
-  { id: "all", label: "All Time", goal: null },
-];
+  useEffect(() => {
+    if (!user || isGuest) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    friendsService.getActivityFeed(user.id, 3)
+      .then((data) => {
+        if (cancelled) return;
+        setItems(data || []);
+        setLoading(false);
+      })
+      .catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [user?.id, isGuest]);
 
-function computeReelStats(timeframe, watchedDates, watchedRatings, watchedMovies) {
-  const now = DateTime.now();
-  const watched = []; // [{id, dateStr, dt}]
-  if (watchedDates) {
-    watchedDates.forEach((dateStr, id) => {
-      if (!dateStr) return;
-      const dKey = dateStr.slice(0, 10);
-      const dt = DateTime.fromISO(dKey);
-      if (!dt.isValid) return;
-      watched.push({ id, dateStr: dKey, dt });
-    });
-  }
-
-  let cutoff = null;
-  let buckets = [];
-  let todayKey = now.toFormat("yyyy-MM-dd");
-
-  if (timeframe === "week") {
-    cutoff = now.minus({ days: 6 }).startOf("day");
-    buckets = Array.from({ length: 7 }, (_, i) => {
-      const d = cutoff.plus({ days: i });
-      return {
-        key: d.toFormat("yyyy-MM-dd"),
-        label: DAY_LABELS[(d.weekday + 6) % 7],
-        count: 0,
-        match: (entry) => entry.dateStr === d.toFormat("yyyy-MM-dd"),
-      };
-    });
-  } else if (timeframe === "month") {
-    cutoff = now.minus({ days: 29 }).startOf("day");
-    buckets = Array.from({ length: 4 }, (_, i) => {
-      const start = cutoff.plus({ days: i * 7 });
-      const end = i === 3 ? now.endOf("day") : cutoff.plus({ days: (i + 1) * 7 - 1 }).endOf("day");
-      return {
-        key: `wk${i}`,
-        label: `W${i + 1}`,
-        count: 0,
-        match: (entry) => entry.dt >= start && entry.dt <= end,
-      };
-    });
-  } else {
-    // All time → 6-month buckets ending this month
-    const start6 = now.minus({ months: 5 }).startOf("month");
-    cutoff = null; // no filter on stats — but the bars only count last 6 months
-    buckets = Array.from({ length: 6 }, (_, i) => {
-      const d = start6.plus({ months: i });
-      return {
-        key: d.toFormat("yyyy-MM"),
-        label: MONTH_LABELS[d.month - 1],
-        count: 0,
-        match: (entry) => entry.dt.toFormat("yyyy-MM") === d.toFormat("yyyy-MM"),
-      };
-    });
-  }
-
-  const filteredIds = [];
-  watched.forEach((entry) => {
-    const inWindow = cutoff ? entry.dt >= cutoff : true;
-    if (inWindow) filteredIds.push(entry.id);
-    buckets.forEach((b) => { if (b.match(entry)) b.count += 1; });
-  });
-
-  // Hours from runtime cache
-  const runtimeCache = loadFromStorage("cc_runtimeCache", {});
-  let totalMinutes = 0;
-  let missing = false;
-  filteredIds.forEach((id) => {
-    const r = runtimeCache[id];
-    if (typeof r === "number" && r > 0) totalMinutes += r;
-    else missing = true;
-  });
-  const films = filteredIds.length;
-  const hours = films === 0 ? null : missing ? null : totalMinutes / 60;
-
-  // Avg rating
-  const ratings = filteredIds.map((id) => watchedRatings?.get(id)).filter((r) => typeof r === "number");
-  const avgRating = ratings.length > 0
-    ? (ratings.reduce((a, b) => a + b, 0) / ratings.length / 10)
-    : null;
-
-  const maxBar = Math.max(1, ...buckets.map((b) => b.count));
-  return { films, hours, avgRating, buckets, maxBar, todayKey };
-}
-
-function computeBadges(watchedDates, watchedRatings, watchedMovies) {
-  const totalWatched = watchedDates?.size || 0;
-  const totalRated = watchedRatings ? Array.from(watchedRatings.values()).filter((r) => typeof r === "number").length : 0;
-
-  // Build a Set of ISO date strings for streak + weekly checks
-  const watchedDays = new Set();
-  if (watchedDates) {
-    watchedDates.forEach((dateStr) => {
-      if (dateStr) watchedDays.add(dateStr.slice(0, 10));
-    });
-  }
-
-  // Streak: count consecutive days backwards from today
-  let streak = 0;
-  let cursor = DateTime.now().startOf("day");
-  while (watchedDays.has(cursor.toFormat("yyyy-MM-dd"))) {
-    streak += 1;
-    cursor = cursor.minus({ days: 1 });
-  }
-
-  // Consistent: at least 1 movie in each of the last 4 weeks
-  const now = DateTime.now();
-  let consistent = true;
-  for (let w = 0; w < 4; w++) {
-    const weekStart = now.minus({ days: (w + 1) * 7 - 1 }).startOf("day");
-    const weekEnd = now.minus({ days: w * 7 }).endOf("day");
-    const hit = Array.from(watchedDays).some((ds) => {
-      const dt = DateTime.fromISO(ds);
-      return dt.isValid && dt >= weekStart && dt <= weekEnd;
-    });
-    if (!hit) { consistent = false; break; }
-  }
-  if (totalWatched < 4) consistent = false;
-
-  // Top genre
-  const genreCounts = {};
-  watchedMovies?.forEach((m) => {
-    const g = m?.genre;
-    if (!g || g === "Film") return;
-    genreCounts[g] = (genreCounts[g] || 0) + 1;
-  });
-  let topGenre = null, topCount = 0;
-  Object.entries(genreCounts).forEach(([g, c]) => { if (c > topCount) { topGenre = g; topCount = c; } });
-
-  const badges = [];
-  if (streak >= 2) badges.push({ id: "streak", icon: "🔥", label: `${streak}-day streak` });
-  if (totalWatched >= 100) badges.push({ id: "century", icon: "🏆", label: "Century club" });
-  else if (totalWatched >= 10) badges.push({ id: "power", icon: "🎬", label: "Power viewer" });
-  if (totalRated >= 20) badges.push({ id: "critic", icon: "⭐", label: "Critic" });
-  if (consistent) badges.push({ id: "consistent", icon: "🎯", label: "Consistent" });
-  if (topGenre && topCount >= 3) badges.push({ id: "genre", icon: "❤️", label: `${topGenre} fan` });
-
-  return badges;
-}
-
-function YourReelCard({ watchedDates, watchedRatings, watchedMovies }) {
-  const [timeframe, setTimeframe] = useState("week");
-
-  const stats = useMemo(
-    () => computeReelStats(timeframe, watchedDates, watchedRatings, watchedMovies),
-    [timeframe, watchedDates, watchedRatings, watchedMovies]
-  );
-
-  const badges = useMemo(
-    () => computeBadges(watchedDates, watchedRatings, watchedMovies),
-    [watchedDates, watchedRatings, watchedMovies]
-  );
-
-  const filmsDisplay = useAnimatedCount(stats.films, 600, 0);
-
-  const tfMeta = REEL_TIMEFRAMES.find((t) => t.id === timeframe);
-  const showRing = tfMeta?.goal != null;
-
-  const cycleTimeframe = () => {
-    const idx = REEL_TIMEFRAMES.findIndex((t) => t.id === timeframe);
-    setTimeframe(REEL_TIMEFRAMES[(idx + 1) % REEL_TIMEFRAMES.length].id);
+  const labelFor = (actionType) => {
+    if (actionType === "logged") return "watched";
+    if (actionType === "rated") return "rated";
+    if (actionType === "watchlisted") return "saved";
+    return actionType;
   };
 
   return (
-    <div className="dash-card reel-card">
-      <div className="reel-card-header">
-        <div className="dash-card-label">YOUR REEL</div>
-        <button
-          type="button"
-          className="reel-tf-cycle"
-          onClick={cycleTimeframe}
-          aria-label={`Timeframe: ${tfMeta?.label || ""} (click to change)`}
-        >
-          {(tfMeta?.label || "").toUpperCase()} <span className="reel-tf-caret" aria-hidden="true">▾</span>
-        </button>
-      </div>
-
-      <div className="reel-focal">
-        <span className="reel-focal-num">{filmsDisplay}</span>
-        {showRing && (
-          <span className="reel-focal-goal"> / {tfMeta.goal}</span>
+    <div className="dash-card faw-card">
+      <div className="faw-header">
+        <div className="faw-label">FRIENDS</div>
+        {goToFriends && (
+          <button type="button" className="faw-see-all" onClick={goToFriends}>See all →</button>
         )}
       </div>
-      <div className="reel-focal-label">{showRing ? "FILMS TOWARD GOAL" : "FILMS WATCHED"}</div>
 
-      <div className="reel-bars">
-        {stats.buckets.map((b) => {
-          const isFilled = b.count > 0;
-          return (
-            <div
-              key={b.key}
-              className={`reel-bar-block${isFilled ? " filled" : ""}`}
-              aria-label={`${b.label}: ${b.count} film${b.count === 1 ? "" : "s"}`}
-            />
-          );
-        })}
-      </div>
-      <div className="reel-bar-labels">
-        {stats.buckets.map((b) => (
-          <div key={b.key} className="reel-bar-label">
-            {timeframe === "week" ? b.label.charAt(0) : b.label}
-          </div>
-        ))}
-      </div>
+      {loading && (
+        <div className="faw-skeletons">
+          <div className="faw-skel" />
+          <div className="faw-skel" />
+          <div className="faw-skel" />
+        </div>
+      )}
 
-      {stats.films === 0 && (
-        <div className="reel-empty-msg">Watch a movie to start tracking</div>
+      {!loading && items.length === 0 && (
+        <div className="faw-empty">
+          <p className="faw-empty-text">Follow friends to see their activity here.</p>
+          {goToFriends && (
+            <button type="button" className="faw-find-link" onClick={goToFriends}>Find friends →</button>
+          )}
+        </div>
+      )}
+
+      {!loading && items.length > 0 && (
+        <div className="faw-list">
+          {items.slice(0, 3).map((item) => {
+            const name = item.user?.display_name || item.user?.username || "Someone";
+            return (
+              <div key={item.id} className="faw-row">
+                <FriendsAvatar profile={item.user} size={28} />
+                <div className="faw-row-text">
+                  <div className="faw-row-line">
+                    <span className="faw-row-name">{name}</span> {labelFor(item.action_type)}
+                  </div>
+                  <div className="faw-row-title">{item.movie?.title || "—"}</div>
+                </div>
+                {item.movie?.poster_path ? (
+                  <img className="faw-row-poster" src={`${IMG_BASE}/w92${item.movie.poster_path}`} alt="" />
+                ) : (
+                  <div className="faw-row-poster faw-row-poster--empty" aria-hidden="true" />
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -2463,7 +2302,7 @@ const _personalizedRailsCache = {
 
 // ─── Search Tab ────────────────────────────────────────────────────────────────
 
-function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, scrollPositions, watchedRatings, setWatchedRating, query, setQuery, watchedMovies, watchedDates, watchedNotes, setWatchedNote, savedMovies, listsLoading, goToCompanion, startCinnoChat, goToJournal }) {
+function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebrief, collections, toggleMovieInCollection, scrollPositions, watchedRatings, setWatchedRating, query, setQuery, watchedMovies, watchedDates, watchedNotes, setWatchedNote, savedMovies, listsLoading, goToCompanion, startCinnoChat, goToJournal, goToFriends }) {
   const [searchResults, setSearchResults] = useState([]);
   const [searchRetry, setSearchRetry] = useState(0);
   const [movies, setMovies] = useState([]);
@@ -3005,10 +2844,12 @@ function SearchTab({ savedIds, toggleSave, watchedIds, toggleWatched, startDebri
               )}
               <div className="home-dashboard-right">
                 <div className="home-dashboard-right-top">
-                  <YourReelCard
-                    watchedDates={watchedDates}
-                    watchedRatings={watchedRatings}
-                    watchedMovies={watchedMovies}
+                  <FriendActivityWidget
+                    user={user}
+                    isGuest={isGuest}
+                    savedMovies={savedMovies}
+                    toggleSave={toggleSave}
+                    goToFriends={goToFriends}
                   />
                   <CinnoCompanionCard
                     goToCompanion={goToCompanion}
@@ -7652,17 +7493,15 @@ function formatRelativeTime(iso) {
   const hr = Math.floor(min / 60);
   if (hr < 24) return `${hr}H AGO`;
   const day = Math.floor(hr / 24);
-  if (day === 1) return "YESTERDAY";
-  if (day < 7) return `${day} DAYS AGO`;
-  return DateTime.fromISO(iso).toFormat("d LLL").toUpperCase();
+  if (day < 7) return `${day}D AGO`;
+  return DateTime.fromISO(iso).toFormat("LLL d").toUpperCase();
 }
 
 function profileInitials(profile) {
   if (!profile) return "?";
-  const src = profile.display_name || profile.username || "?";
-  const parts = src.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return src.slice(0, 2).toUpperCase();
+  const src = (profile.display_name || profile.username || "").trim();
+  if (!src) return "?";
+  return src[0].toUpperCase();
 }
 
 function FriendsAvatar({ profile, size = 32 }) {
@@ -7683,24 +7522,9 @@ function actionLabel(actionType) {
   }
 }
 
-function ActivityCard({ item, hideUser = false, currentUserId, onReact, onToggleSave, isSaved }) {
-  const [reacted, setReacted] = useState(false);
-  const [reacting, setReacting] = useState(false);
+function ActivityCard({ item, hideUser = false, onReact, onToggleSave, isSaved, reactionCount = 0, isReacted = false }) {
   const movie = item.movie;
   const genre = movie?.genre_ids?.length ? (GENRE_MAP[movie.genre_ids[0]] || "Film") : "Film";
-
-  const handleReact = async () => {
-    if (!currentUserId || reacting) return;
-    setReacting(true);
-    try {
-      const next = await onReact(item.id);
-      setReacted(next);
-    } catch (e) {
-      console.error("toggle reaction failed", e);
-    } finally {
-      setReacting(false);
-    }
-  };
 
   return (
     <div className="activity-card">
@@ -7730,15 +7554,15 @@ function ActivityCard({ item, hideUser = false, currentUserId, onReact, onToggle
       <div className="activity-card-footer">
         <button
           type="button"
-          className={`activity-react-btn${reacted ? " activity-react-btn--on" : ""}`}
-          onClick={handleReact}
-          disabled={reacting}
+          className={`activity-react-btn${isReacted ? " activity-react-btn--on" : ""}`}
+          onClick={onReact}
+          disabled={!onReact}
           aria-label="React"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill={reacted ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill={isReacted ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
           </svg>
-          <span>{reacted ? 1 : 0}</span>
+          <span>{reactionCount}</span>
         </button>
         {movie && (
           <button
@@ -7892,6 +7716,10 @@ function FriendsTab({ toggleSave, savedIds }) {
   // Own activity
   const [ownActivity, setOwnActivity] = useState([]);
 
+  // Reactions (batched)
+  const [reactionCounts, setReactionCounts] = useState({});
+  const [userReactions, setUserReactions] = useState(() => new Set());
+
   const userId = user?.id;
   const savedIdSet = useMemo(() => new Set(savedIds || []), [savedIds]);
   const followingIdSet = useMemo(() => new Set(following.map((p) => p.id)), [following]);
@@ -7927,6 +7755,22 @@ function FriendsTab({ toggleSave, savedIds }) {
           setFollowers(flw);
           setPendingRequests(pend);
           setOwnActivity(ownAct);
+
+          // Batch-load reactions for all visible activity items
+          const ids = [...new Set([...feed, ...ownAct].map((i) => i.id).filter(Boolean))];
+          if (ids.length > 0) {
+            try {
+              const [counts, reacted] = await Promise.all([
+                friendsService.getReactionCounts(ids).catch(() => ({})),
+                friendsService.getUserReactions(userId, ids).catch(() => new Set()),
+              ]);
+              if (cancelled) return;
+              setReactionCounts(counts);
+              setUserReactions(reacted);
+            } catch (e) {
+              console.error("reaction batch load failed", e);
+            }
+          }
         }
       } catch (e) {
         console.error("FriendsTab load failed", e);
@@ -8017,31 +7861,62 @@ function FriendsTab({ toggleSave, savedIds }) {
       await refreshFollowLists();
     } catch (e) { console.error(e); }
   };
-  const handleReact = async (activityId) => {
-    if (!userId) return false;
-    return await friendsService.toggleReaction(userId, activityId);
-  };
+  const handleReaction = useCallback((activityId) => {
+    if (!userId) return;
+    const wasReacted = userReactions.has(activityId);
+    // Optimistic update
+    setUserReactions((prev) => {
+      const next = new Set(prev);
+      if (wasReacted) next.delete(activityId); else next.add(activityId);
+      return next;
+    });
+    setReactionCounts((prev) => ({
+      ...prev,
+      [activityId]: Math.max(0, (prev[activityId] || 0) + (wasReacted ? -1 : 1)),
+    }));
+    // Persist
+    friendsService.toggleReaction(userId, activityId).catch(() => {
+      // Revert on failure
+      setUserReactions((prev) => {
+        const next = new Set(prev);
+        if (wasReacted) next.add(activityId); else next.delete(activityId);
+        return next;
+      });
+      setReactionCounts((prev) => ({
+        ...prev,
+        [activityId]: Math.max(0, (prev[activityId] || 0) + (wasReacted ? 1 : -1)),
+      }));
+    });
+  }, [userId, userReactions]);
+
+  const usernameNormalized = setupUsername.trim().toLowerCase();
+  const usernameValid = /^[a-z0-9_]{3,20}$/.test(usernameNormalized);
+  const usernameLiveError = setupUsername.length > 0 && !usernameValid
+    ? "Username must be 3-20 characters, lowercase letters, numbers and underscores only."
+    : "";
 
   const submitSetup = async (e) => {
     e?.preventDefault();
     setSetupError("");
-    const username = setupUsername.trim().toLowerCase();
-    if (!/^[a-z0-9_]{3,20}$/.test(username)) {
-      setSetupError("Username must be 3–20 chars (lowercase letters, numbers, underscore).");
+    if (!usernameValid) {
+      setSetupError("Username must be 3-20 characters, lowercase letters, numbers and underscores only.");
       return;
     }
     setSetupBusy(true);
     try {
       const profile = await friendsService.upsertProfile(userId, {
-        username,
+        username: usernameNormalized,
         display_name: setupDisplayName.trim() || null,
         is_private: setupPrivate,
       });
       setOwnProfile(profile);
       setEditDisplayName(profile.display_name || "");
-    } catch (e) {
-      console.error(e);
-      setSetupError(e?.message || "Could not save profile. Username may be taken.");
+      setActiveSubTab("feed");
+    } catch (err) {
+      console.error(err);
+      const msg = String(err?.message || "");
+      const isDuplicate = err?.code === "23505" || /duplicate|already|unique/i.test(msg);
+      setSetupError(isDuplicate ? "Username already taken" : (msg || "Could not save profile."));
     } finally {
       setSetupBusy(false);
     }
@@ -8107,37 +7982,66 @@ function FriendsTab({ toggleSave, savedIds }) {
   if (!profileLoading && !ownProfile) {
     return (
       <div className="content friends-tab">
-        <div className="friends-setup">
-          <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />ONE STEP LEFT</div>
-          <h2 className="friends-setup-headline">Pick a username to join.</h2>
-          <form onSubmit={submitSetup} className="friends-setup-form">
-            <label className="friends-setup-label">
-              Username
+        <div className="ft-setup-card">
+          <div className="ft-setup-eyebrow">SET UP YOUR PROFILE</div>
+          <h2 className="ft-setup-headline">Choose your username.</h2>
+          <p className="ft-setup-sub">This is how friends will find and recognize you on Cinno.</p>
+
+          <form onSubmit={submitSetup} className="ft-setup-form">
+            <div className="ft-setup-field">
+              <label className="ft-setup-label" htmlFor="ft-username">USERNAME</label>
               <input
+                id="ft-username"
                 type="text"
-                placeholder="e.g. ninoplayer"
+                className="ft-setup-input"
+                placeholder="e.g. filmfanatic"
                 value={setupUsername}
                 onChange={(e) => setSetupUsername(e.target.value)}
                 maxLength={20}
+                autoComplete="off"
                 required
               />
-            </label>
-            <label className="friends-setup-label">
-              Display name (optional)
+              {usernameLiveError && <div className="ft-setup-error">{usernameLiveError}</div>}
+            </div>
+
+            <div className="ft-setup-field">
+              <label className="ft-setup-label" htmlFor="ft-displayname">DISPLAY NAME (OPTIONAL)</label>
               <input
+                id="ft-displayname"
                 type="text"
-                placeholder="Nino"
+                className="ft-setup-input"
+                placeholder="Your name as shown to friends"
                 value={setupDisplayName}
                 onChange={(e) => setSetupDisplayName(e.target.value)}
                 maxLength={40}
+                autoComplete="off"
               />
-            </label>
-            <label className="friends-setup-toggle">
-              <input type="checkbox" checked={setupPrivate} onChange={(e) => setSetupPrivate(e.target.checked)} />
-              Private account (others must request to follow)
-            </label>
-            {setupError && <div className="friends-setup-error">{setupError}</div>}
-            <button type="submit" className="pill pill--wine pill--lg" disabled={setupBusy}>
+            </div>
+
+            <div className="ft-setup-privacy">
+              <div className="ft-setup-privacy-text">
+                <div className="ft-setup-privacy-label">Private account</div>
+                <div className="ft-setup-privacy-sub">Only approved followers can see your activity</div>
+              </div>
+              <label className="ft-toggle">
+                <input
+                  type="checkbox"
+                  checked={setupPrivate}
+                  onChange={(e) => setSetupPrivate(e.target.checked)}
+                />
+                <span className="ft-toggle-track">
+                  <span className="ft-toggle-knob" />
+                </span>
+              </label>
+            </div>
+
+            {setupError && <div className="ft-setup-error ft-setup-error--submit">{setupError}</div>}
+
+            <button
+              type="submit"
+              className="ft-setup-submit"
+              disabled={setupBusy || !usernameValid}
+            >
               {setupBusy ? "Creating…" : "Create profile"}
             </button>
           </form>
@@ -8198,10 +8102,11 @@ function FriendsTab({ toggleSave, savedIds }) {
                 <ActivityCard
                   key={item.id}
                   item={item}
-                  currentUserId={userId}
-                  onReact={handleReact}
+                  onReact={() => handleReaction(item.id)}
                   onToggleSave={toggleSave}
                   isSaved={item.movie ? savedIdSet.has(item.movie.tmdb_id) : false}
+                  reactionCount={reactionCounts[item.id] || 0}
+                  isReacted={userReactions.has(item.id)}
                 />
               ))}
             </>
@@ -8379,10 +8284,11 @@ function FriendsTab({ toggleSave, savedIds }) {
                   key={item.id}
                   item={item}
                   hideUser
-                  currentUserId={userId}
-                  onReact={handleReact}
+                  onReact={() => handleReaction(item.id)}
                   onToggleSave={toggleSave}
                   isSaved={item.movie ? savedIdSet.has(item.movie.tmdb_id) : false}
+                  reactionCount={reactionCounts[item.id] || 0}
+                  isReacted={userReactions.has(item.id)}
                 />
               ))
             )}
@@ -9089,6 +8995,10 @@ function MainApp() {
     setActiveTab("journal");
   }, [setActiveTab]);
 
+  const goToFriends = useCallback(() => {
+    setActiveTab("friends");
+  }, [setActiveTab]);
+
   const startMoviePicker = async () => {
     // Build context from user's watchlist and journal
     const watchedList = Array.from(watchedMovies.values()).slice(-30);
@@ -9374,7 +9284,7 @@ function MainApp() {
             watchedNotes={watchedNotes} setWatchedNote={setWatchedNote}
             savedMovies={savedMovies} listsLoading={listsLoading}
             goToCompanion={goToCompanion} startCinnoChat={startCinnoChat}
-            goToJournal={goToJournal}
+            goToJournal={goToJournal} goToFriends={goToFriends}
           />
         )}
         {activeTab === "saved" && (
