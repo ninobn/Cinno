@@ -5924,7 +5924,7 @@ body {
 
 /* ── Light Theme ─────────────────────────────────── */
 [data-theme="light"] {
-  --bg-primary: #F4F1ED;
+  --bg-primary: #ebe1d0;
   --bg-secondary: #EAE6E1;
   --bg-card: #FFFFFF;
   --bg-card-alt: #F8F6F3;
@@ -5939,7 +5939,7 @@ body {
   --accent-burgundy: #8B3A4A;
 
   /* Home v2 design tokens (light mode override) */
-  --bg: #f4ede1;
+  --bg: #ebe1d0;
   --ink: #1a1410;
   --subtle: #6b5e52;
   --card: #ebe1d0;
@@ -5950,7 +5950,7 @@ body {
 }
 
 [data-theme="light"] body {
-  background: #F4F1ED;
+  background: #ebe1d0;
 }
 
 [data-theme="light"] .logo-mark {

@@ -4606,38 +4606,38 @@ const SLIDE_PATTERNS = [
       <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <radialGradient id="s0a-bg" cx="100%" cy="0%" r="60%">
-            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.12" />
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.3" />
             <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
           </radialGradient>
         </defs>
         <rect width="1000" height="360" fill="url(#s0a-bg)" />
-        <path d="M-20,40 Q200,10 500,40 T1020,40" stroke="#8a3a4a" strokeWidth="1.8" fill="none" opacity="0.18" />
-        <path d="M-20,70 Q200,40 500,70 T1020,70" stroke="#d65a2c" strokeWidth="1.6" fill="none" opacity="0.15" />
-        <path d="M-20,100 Q200,70 500,100 T1020,100" stroke="#8a3a4a" strokeWidth="1.4" fill="none" opacity="0.13" />
-        <path d="M-20,130 Q200,100 500,130 T1020,130" stroke="#d65a2c" strokeWidth="1.2" fill="none" opacity="0.11" />
-        <path d="M-20,160 Q200,130 500,160 T1020,160" stroke="#8a3a4a" strokeWidth="1.0" fill="none" opacity="0.09" />
-        <path d="M-20,190 Q200,160 500,190 T1020,190" stroke="#d65a2c" strokeWidth="0.7" fill="none" opacity="0.07" />
-        <circle cx="950" cy="40" r="90" stroke="#8a3a4a" strokeWidth="1" fill="none" opacity="0.12" />
-        <circle cx="950" cy="40" r="55" stroke="#d65a2c" strokeWidth="1" fill="none" opacity="0.09" />
-        <circle cx="950" cy="40" r="25" stroke="#8a3a4a" strokeWidth="1" fill="none" opacity="0.06" />
+        <path d="M-20,40 Q200,10 500,40 T1020,40" stroke="#8a3a4a" strokeWidth="3.6" fill="none" opacity="0.54" />
+        <path d="M-20,70 Q200,40 500,70 T1020,70" stroke="#d65a2c" strokeWidth="3.2" fill="none" opacity="0.45" />
+        <path d="M-20,100 Q200,70 500,100 T1020,100" stroke="#8a3a4a" strokeWidth="2.8" fill="none" opacity="0.39" />
+        <path d="M-20,130 Q200,100 500,130 T1020,130" stroke="#d65a2c" strokeWidth="2.4" fill="none" opacity="0.33" />
+        <path d="M-20,160 Q200,130 500,160 T1020,160" stroke="#8a3a4a" strokeWidth="2" fill="none" opacity="0.27" />
+        <path d="M-20,190 Q200,160 500,190 T1020,190" stroke="#d65a2c" strokeWidth="1.4" fill="none" opacity="0.21" />
+        <circle cx="950" cy="40" r="90" stroke="#8a3a4a" strokeWidth="2" fill="none" opacity="0.36" />
+        <circle cx="950" cy="40" r="55" stroke="#d65a2c" strokeWidth="2" fill="none" opacity="0.27" />
+        <circle cx="950" cy="40" r="25" stroke="#8a3a4a" strokeWidth="2" fill="none" opacity="0.18" />
       </svg>
     ),
     b: (
       <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <radialGradient id="s0b-bg" cx="0%" cy="100%" r="60%">
-            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.1" />
+            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.25" />
             <stop offset="100%" stopColor="#d65a2c" stopOpacity="0" />
           </radialGradient>
           <pattern id="s0b-grid" x="0" y="0" width="28" height="28" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <line x1="0" y1="0" x2="0" y2="28" stroke="#8a3a4a" strokeWidth="1" opacity="0.07" />
+            <line x1="0" y1="0" x2="0" y2="28" stroke="#8a3a4a" strokeWidth="2" opacity="0.21" />
           </pattern>
         </defs>
         <rect width="1000" height="360" fill="url(#s0b-bg)" />
         <rect width="1000" height="360" fill="url(#s0b-grid)" />
         <circle cx="640" cy="180" r="140" fill="#8a3a4a" opacity="0.06" />
-        <path d="M-50,-20 Q450,160 1050,330" stroke="#8a3a4a" strokeWidth="1.2" fill="none" opacity="0.15" />
-        <path d="M-50,40 Q450,220 1050,380" stroke="#8a3a4a" strokeWidth="0.9" fill="none" opacity="0.1" />
+        <path d="M-50,-20 Q450,160 1050,330" stroke="#8a3a4a" strokeWidth="2.4" fill="none" opacity="0.45" />
+        <path d="M-50,40 Q450,220 1050,380" stroke="#8a3a4a" strokeWidth="1.8" fill="none" opacity="0.3" />
       </svg>
     ),
   },
@@ -4647,36 +4647,36 @@ const SLIDE_PATTERNS = [
       <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <radialGradient id="s1a-bg" cx="100%" cy="0%" r="80%">
-            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.35" />
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.7" />
             <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
           </radialGradient>
         </defs>
         <rect width="1000" height="360" fill="url(#s1a-bg)" />
-        <circle cx="900" cy="0" r="160" stroke="#8a3a4a" strokeWidth="1.2" fill="none" opacity="0.25" />
-        <circle cx="900" cy="0" r="220" stroke="#d65a2c" strokeWidth="1.1" fill="none" opacity="0.18" />
-        <circle cx="900" cy="0" r="280" stroke="#8a3a4a" strokeWidth="1" fill="none" opacity="0.13" />
-        <circle cx="900" cy="0" r="340" stroke="#d65a2c" strokeWidth="0.9" fill="none" opacity="0.1" />
-        <circle cx="900" cy="0" r="400" stroke="#8a3a4a" strokeWidth="0.7" fill="none" opacity="0.08" />
-        <circle cx="900" cy="0" r="460" stroke="#d65a2c" strokeWidth="0.6" fill="none" opacity="0.06" />
-        <path d="M-20,320 Q300,300 600,320 T1020,320" stroke="#f5f0eb" strokeWidth="1" fill="none" opacity="0.06" />
-        <path d="M-20,340 Q300,320 600,340 T1020,340" stroke="#8a3a4a" strokeWidth="0.8" fill="none" opacity="0.04" />
+        <circle cx="900" cy="0" r="160" stroke="#8a3a4a" strokeWidth="3.6" fill="none" opacity="0.6" />
+        <circle cx="900" cy="0" r="220" stroke="#d65a2c" strokeWidth="3.4" fill="none" opacity="0.6" />
+        <circle cx="900" cy="0" r="280" stroke="#8a3a4a" strokeWidth="3" fill="none" opacity="0.6" />
+        <circle cx="900" cy="0" r="340" stroke="#d65a2c" strokeWidth="2.8" fill="none" opacity="0.6" />
+        <circle cx="900" cy="0" r="400" stroke="#8a3a4a" strokeWidth="2.2" fill="none" opacity="0.6" />
+        <circle cx="900" cy="0" r="460" stroke="#d65a2c" strokeWidth="1.8" fill="none" opacity="0.45" />
+        <path d="M-20,320 Q300,300 600,320 T1020,320" stroke="#f5f0eb" strokeWidth="3" fill="none" opacity="0.45" />
+        <path d="M-20,340 Q300,320 600,340 T1020,340" stroke="#8a3a4a" strokeWidth="2.4" fill="none" opacity="0.3" />
       </svg>
     ),
     b: (
       <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <radialGradient id="s1b-bg" cx="50%" cy="50%" r="60%">
-            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.2" />
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.7" />
             <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
           </radialGradient>
         </defs>
         <rect width="1000" height="360" fill="url(#s1b-bg)" />
-        <path d="M-100,80 Q300,200 700,180 T1100,260" stroke="#8a3a4a" strokeWidth="80" fill="none" opacity="0.08" strokeLinecap="round" />
-        <path d="M-100,160 Q300,260 700,240 T1100,340" stroke="#d65a2c" strokeWidth="60" fill="none" opacity="0.07" strokeLinecap="round" />
-        <path d="M-100,40 Q400,140 800,120 T1200,200" stroke="#d65a2c" strokeWidth="50" fill="none" opacity="0.05" strokeLinecap="round" />
-        <path d="M-100,240 Q400,340 800,320 T1200,400" stroke="#8a3a4a" strokeWidth="40" fill="none" opacity="0.04" strokeLinecap="round" />
-        <path d="M-50,100 Q300,200 700,180 T1050,260" stroke="#8a3a4a" strokeWidth="0.7" fill="none" opacity="0.1" />
-        <path d="M-50,180 Q300,260 700,240 T1050,320" stroke="#d65a2c" strokeWidth="0.7" fill="none" opacity="0.1" />
+        <path d="M-100,80 Q300,200 700,180 T1100,260" stroke="#8a3a4a" strokeWidth="4" fill="none" opacity="0.6" strokeLinecap="round" />
+        <path d="M-100,160 Q300,260 700,240 T1100,340" stroke="#d65a2c" strokeWidth="4" fill="none" opacity="0.54" strokeLinecap="round" />
+        <path d="M-100,40 Q400,140 800,120 T1200,200" stroke="#d65a2c" strokeWidth="4" fill="none" opacity="0.39" strokeLinecap="round" />
+        <path d="M-100,240 Q400,340 800,320 T1200,400" stroke="#8a3a4a" strokeWidth="4" fill="none" opacity="0.3" strokeLinecap="round" />
+        <path d="M-50,100 Q300,200 700,180 T1050,260" stroke="#8a3a4a" strokeWidth="2.2" fill="none" opacity="0.6" />
+        <path d="M-50,180 Q300,260 700,240 T1050,320" stroke="#d65a2c" strokeWidth="2.2" fill="none" opacity="0.6" />
       </svg>
     ),
   },
@@ -4686,36 +4686,36 @@ const SLIDE_PATTERNS = [
       <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <radialGradient id="s2a-bg" cx="0%" cy="100%" r="60%">
-            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.1" />
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.25" />
             <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
           </radialGradient>
         </defs>
         <rect width="1000" height="360" fill="url(#s2a-bg)" />
-        <path d="M250,80 Q290,90 295,120 Q300,150 270,165 Q240,180 215,165 Q190,150 195,120 Q200,90 250,80 Z" stroke="#8a3a4a" strokeWidth="1.2" fill="none" opacity="0.2" />
-        <path d="M250,60 Q310,75 320,120 Q330,165 280,185 Q230,205 195,185 Q160,165 170,115 Q180,75 250,60 Z" stroke="#d65a2c" strokeWidth="1.1" fill="none" opacity="0.16" />
-        <path d="M250,40 Q330,60 350,120 Q370,180 295,205 Q220,230 175,205 Q130,175 145,110 Q160,55 250,40 Z" stroke="#8a3a4a" strokeWidth="1" fill="none" opacity="0.13" />
-        <path d="M250,20 Q350,45 380,120 Q410,195 310,225 Q210,255 155,225 Q100,190 120,105 Q140,40 250,20 Z" stroke="#d65a2c" strokeWidth="0.9" fill="none" opacity="0.1" />
-        <path d="M250,0 Q370,30 410,120 Q450,210 325,245 Q200,280 135,245 Q70,205 95,100 Q120,25 250,0 Z" stroke="#8a3a4a" strokeWidth="0.7" fill="none" opacity="0.08" />
-        <path d="M250,-20 Q390,15 440,120 Q490,225 340,265 Q190,305 115,265 Q40,220 70,95 Q100,10 250,-20 Z" stroke="#d65a2c" strokeWidth="0.6" fill="none" opacity="0.07" />
-        <line x1="-20" y1="280" x2="1020" y2="320" stroke="#8a3a4a" strokeWidth="0.8" opacity="0.06" />
-        <line x1="-20" y1="310" x2="1020" y2="340" stroke="#8a3a4a" strokeWidth="0.7" opacity="0.05" />
+        <path d="M250,80 Q290,90 295,120 Q300,150 270,165 Q240,180 215,165 Q190,150 195,120 Q200,90 250,80 Z" stroke="#8a3a4a" strokeWidth="2.4" fill="none" opacity="0.6" />
+        <path d="M250,60 Q310,75 320,120 Q330,165 280,185 Q230,205 195,185 Q160,165 170,115 Q180,75 250,60 Z" stroke="#d65a2c" strokeWidth="2.2" fill="none" opacity="0.48" />
+        <path d="M250,40 Q330,60 350,120 Q370,180 295,205 Q220,230 175,205 Q130,175 145,110 Q160,55 250,40 Z" stroke="#8a3a4a" strokeWidth="2" fill="none" opacity="0.39" />
+        <path d="M250,20 Q350,45 380,120 Q410,195 310,225 Q210,255 155,225 Q100,190 120,105 Q140,40 250,20 Z" stroke="#d65a2c" strokeWidth="1.8" fill="none" opacity="0.3" />
+        <path d="M250,0 Q370,30 410,120 Q450,210 325,245 Q200,280 135,245 Q70,205 95,100 Q120,25 250,0 Z" stroke="#8a3a4a" strokeWidth="1.4" fill="none" opacity="0.24" />
+        <path d="M250,-20 Q390,15 440,120 Q490,225 340,265 Q190,305 115,265 Q40,220 70,95 Q100,10 250,-20 Z" stroke="#d65a2c" strokeWidth="1.2" fill="none" opacity="0.21" />
+        <line x1="-20" y1="280" x2="1020" y2="320" stroke="#8a3a4a" strokeWidth="1.6" opacity="0.18" />
+        <line x1="-20" y1="310" x2="1020" y2="340" stroke="#8a3a4a" strokeWidth="1.4" opacity="0.15" />
       </svg>
     ),
     b: (
       <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <radialGradient id="s2b-bg" cx="0%" cy="0%" r="60%">
-            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.08" />
+            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.2" />
             <stop offset="100%" stopColor="#d65a2c" stopOpacity="0" />
           </radialGradient>
         </defs>
         <rect width="1000" height="360" fill="url(#s2b-bg)" />
         {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((i) => (
-          <line key={`s2b-${i}`} x1={-200 + i * 110} y1={-50} x2={200 + i * 110} y2={420} stroke="#8a3a4a" strokeWidth="0.8" opacity="0.1" />
+          <line key={`s2b-${i}`} x1={-200 + i * 110} y1={-50} x2={200 + i * 110} y2={420} stroke="#8a3a4a" strokeWidth="1.6" opacity="0.3" />
         ))}
-        <line x1="-20" y1="100" x2="1020" y2="100" stroke="#d65a2c" strokeWidth="0.6" opacity="0.08" />
-        <line x1="-20" y1="200" x2="1020" y2="200" stroke="#d65a2c" strokeWidth="0.6" opacity="0.08" />
-        <line x1="-20" y1="300" x2="1020" y2="300" stroke="#d65a2c" strokeWidth="0.6" opacity="0.08" />
+        <line x1="-20" y1="100" x2="1020" y2="100" stroke="#d65a2c" strokeWidth="1.2" opacity="0.24" />
+        <line x1="-20" y1="200" x2="1020" y2="200" stroke="#d65a2c" strokeWidth="1.2" opacity="0.24" />
+        <line x1="-20" y1="300" x2="1020" y2="300" stroke="#d65a2c" strokeWidth="1.2" opacity="0.24" />
         <circle cx="60" cy="290" r="8" fill="#8a3a4a" opacity="0.18" />
         <circle cx="90" cy="310" r="5" fill="#d65a2c" opacity="0.14" />
         <circle cx="115" cy="325" r="3" fill="#8a3a4a" opacity="0.1" />
@@ -4728,46 +4728,46 @@ const SLIDE_PATTERNS = [
       <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <radialGradient id="s3a-bg1" cx="0%" cy="100%" r="70%">
-            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.22" />
+            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.7" />
             <stop offset="100%" stopColor="#d65a2c" stopOpacity="0" />
           </radialGradient>
           <radialGradient id="s3a-bg2" cx="100%" cy="0%" r="60%">
-            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.2" />
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.7" />
             <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
           </radialGradient>
         </defs>
         <rect width="1000" height="360" fill="url(#s3a-bg1)" />
         <rect width="1000" height="360" fill="url(#s3a-bg2)" />
-        <path d="M-20,340 Q250,300 500,260 T1020,180" stroke="#8a3a4a" strokeWidth="2.5" fill="none" opacity="0.28" />
-        <path d="M-20,310 Q250,270 500,230 T1020,150" stroke="#d65a2c" strokeWidth="2.2" fill="none" opacity="0.24" />
-        <path d="M-20,280 Q250,240 500,200 T1020,120" stroke="#8a3a4a" strokeWidth="1.9" fill="none" opacity="0.2" />
-        <path d="M-20,250 Q250,210 500,170 T1020,90" stroke="#d65a2c" strokeWidth="1.6" fill="none" opacity="0.16" />
-        <path d="M-20,220 Q250,180 500,140 T1020,60" stroke="#8a3a4a" strokeWidth="1.3" fill="none" opacity="0.12" />
-        <path d="M-20,190 Q250,150 500,110 T1020,30" stroke="#d65a2c" strokeWidth="1.0" fill="none" opacity="0.09" />
-        <path d="M-20,160 Q250,120 500,80 T1020,0" stroke="#8a3a4a" strokeWidth="0.6" fill="none" opacity="0.07" />
-        <path d="M-20,360 Q250,330 500,350 T1020,330 L1020,360 Z" fill="#d65a2c" opacity="0.06" />
+        <path d="M-20,340 Q250,300 500,260 T1020,180" stroke="#8a3a4a" strokeWidth="4" fill="none" opacity="0.6" />
+        <path d="M-20,310 Q250,270 500,230 T1020,150" stroke="#d65a2c" strokeWidth="4" fill="none" opacity="0.6" />
+        <path d="M-20,280 Q250,240 500,200 T1020,120" stroke="#8a3a4a" strokeWidth="4" fill="none" opacity="0.6" />
+        <path d="M-20,250 Q250,210 500,170 T1020,90" stroke="#d65a2c" strokeWidth="4" fill="none" opacity="0.6" />
+        <path d="M-20,220 Q250,180 500,140 T1020,60" stroke="#8a3a4a" strokeWidth="4" fill="none" opacity="0.6" />
+        <path d="M-20,190 Q250,150 500,110 T1020,30" stroke="#d65a2c" strokeWidth="3" fill="none" opacity="0.6" />
+        <path d="M-20,160 Q250,120 500,80 T1020,0" stroke="#8a3a4a" strokeWidth="1.8" fill="none" opacity="0.54" />
+        <path d="M-20,360 Q250,330 500,350 T1020,330 L1020,360 Z" fill="#d65a2c" opacity="0.11" />
       </svg>
     ),
     b: (
       <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <radialGradient id="s3b-bg" cx="100%" cy="100%" r="60%">
-            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.15" />
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.68" />
             <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
           </radialGradient>
         </defs>
         <rect width="1000" height="360" fill="url(#s3b-bg)" />
-        <line x1="900" y1="220" x2="-100" y2="40" stroke="#8a3a4a" strokeWidth="1.0" opacity="0.15" />
-        <line x1="900" y1="220" x2="-100" y2="100" stroke="#d65a2c" strokeWidth="0.9" opacity="0.13" />
-        <line x1="900" y1="220" x2="-100" y2="160" stroke="#8a3a4a" strokeWidth="0.8" opacity="0.11" />
-        <line x1="900" y1="220" x2="-100" y2="220" stroke="#d65a2c" strokeWidth="0.7" opacity="0.1" />
-        <line x1="900" y1="220" x2="-100" y2="280" stroke="#8a3a4a" strokeWidth="0.6" opacity="0.08" />
-        <line x1="900" y1="220" x2="-100" y2="340" stroke="#d65a2c" strokeWidth="0.5" opacity="0.07" />
-        <line x1="900" y1="220" x2="200" y2="-50" stroke="#8a3a4a" strokeWidth="0.5" opacity="0.06" />
-        <line x1="900" y1="220" x2="500" y2="-50" stroke="#d65a2c" strokeWidth="0.4" opacity="0.05" />
-        <path d="M-20,300 Q400,260 1020,280" stroke="#8a3a4a" strokeWidth="0.8" fill="none" opacity="0.1" />
-        <path d="M-20,330 Q400,300 1020,320" stroke="#8a3a4a" strokeWidth="0.7" fill="none" opacity="0.08" />
-        <path d="M-20,355 Q400,330 1020,355" stroke="#8a3a4a" strokeWidth="0.6" fill="none" opacity="0.06" />
+        <line x1="900" y1="220" x2="-100" y2="40" stroke="#8a3a4a" strokeWidth="3" opacity="0.6" />
+        <line x1="900" y1="220" x2="-100" y2="100" stroke="#d65a2c" strokeWidth="2.8" opacity="0.6" />
+        <line x1="900" y1="220" x2="-100" y2="160" stroke="#8a3a4a" strokeWidth="2.4" opacity="0.6" />
+        <line x1="900" y1="220" x2="-100" y2="220" stroke="#d65a2c" strokeWidth="2.2" opacity="0.6" />
+        <line x1="900" y1="220" x2="-100" y2="280" stroke="#8a3a4a" strokeWidth="1.8" opacity="0.6" />
+        <line x1="900" y1="220" x2="-100" y2="340" stroke="#d65a2c" strokeWidth="1.6" opacity="0.54" />
+        <line x1="900" y1="220" x2="200" y2="-50" stroke="#8a3a4a" strokeWidth="1.6" opacity="0.45" />
+        <line x1="900" y1="220" x2="500" y2="-50" stroke="#d65a2c" strokeWidth="1.2" opacity="0.39" />
+        <path d="M-20,300 Q400,260 1020,280" stroke="#8a3a4a" strokeWidth="2.4" fill="none" opacity="0.6" />
+        <path d="M-20,330 Q400,300 1020,320" stroke="#8a3a4a" strokeWidth="2.2" fill="none" opacity="0.6" />
+        <path d="M-20,355 Q400,330 1020,355" stroke="#8a3a4a" strokeWidth="1.8" fill="none" opacity="0.45" />
       </svg>
     ),
   },
@@ -4777,21 +4777,21 @@ const SLIDE_PATTERNS = [
       <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <radialGradient id="s4a-bg1" cx="80%" cy="50%" r="60%">
-            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.28" />
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.7" />
             <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
           </radialGradient>
           <radialGradient id="s4a-bg2" cx="0%" cy="100%" r="60%">
-            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.12" />
+            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.55" />
             <stop offset="100%" stopColor="#d65a2c" stopOpacity="0" />
           </radialGradient>
         </defs>
         <rect width="1000" height="360" fill="url(#s4a-bg1)" />
         <rect width="1000" height="360" fill="url(#s4a-bg2)" />
         {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
-          <line key={`s4a-a-${i}`} x1={-100 + i * 150} y1={-50} x2={300 + i * 150} y2={420} stroke="#8a3a4a" strokeWidth="0.8" opacity="0.09" />
+          <line key={`s4a-a-${i}`} x1={-100 + i * 150} y1={-50} x2={300 + i * 150} y2={420} stroke="#8a3a4a" strokeWidth="2.4" opacity="0.6" />
         ))}
         {[0, 1, 2, 3, 4, 5, 6].map((i) => (
-          <line key={`s4a-b-${i}`} x1={300 + i * 150} y1={-50} x2={-100 + i * 150} y2={420} stroke="#d65a2c" strokeWidth="0.8" opacity="0.09" />
+          <line key={`s4a-b-${i}`} x1={300 + i * 150} y1={-50} x2={-100 + i * 150} y2={420} stroke="#d65a2c" strokeWidth="2.4" opacity="0.6" />
         ))}
       </svg>
     ),
@@ -4799,18 +4799,18 @@ const SLIDE_PATTERNS = [
       <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <radialGradient id="s4b-bg" cx="50%" cy="50%" r="60%">
-            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.2" />
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.7" />
             <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
           </radialGradient>
         </defs>
         <rect width="1000" height="360" fill="url(#s4b-bg)" />
-        <ellipse cx="500" cy="110" rx="80" ry="40" stroke="#8a3a4a" strokeWidth="1.2" fill="none" opacity="0.18" />
-        <ellipse cx="500" cy="110" rx="160" ry="75" stroke="#d65a2c" strokeWidth="1.1" fill="none" opacity="0.14" />
-        <ellipse cx="500" cy="110" rx="240" ry="110" stroke="#8a3a4a" strokeWidth="1" fill="none" opacity="0.1" />
-        <ellipse cx="500" cy="110" rx="320" ry="145" stroke="#d65a2c" strokeWidth="0.9" fill="none" opacity="0.07" />
-        <ellipse cx="500" cy="110" rx="400" ry="180" stroke="#8a3a4a" strokeWidth="0.7" fill="none" opacity="0.05" />
+        <ellipse cx="500" cy="110" rx="80" ry="40" stroke="#8a3a4a" strokeWidth="3.6" fill="none" opacity="0.6" />
+        <ellipse cx="500" cy="110" rx="160" ry="75" stroke="#d65a2c" strokeWidth="3.4" fill="none" opacity="0.6" />
+        <ellipse cx="500" cy="110" rx="240" ry="110" stroke="#8a3a4a" strokeWidth="3" fill="none" opacity="0.6" />
+        <ellipse cx="500" cy="110" rx="320" ry="145" stroke="#d65a2c" strokeWidth="2.8" fill="none" opacity="0.54" />
+        <ellipse cx="500" cy="110" rx="400" ry="180" stroke="#8a3a4a" strokeWidth="2.2" fill="none" opacity="0.39" />
         {Array.from({ length: 18 }, (_, i) => (
-          <line key={`s4b-h-${i}`} x1="-20" y1={20 + i * 20} x2="1020" y2={20 + i * 20} stroke="#8a3a4a" strokeWidth="0.4" opacity="0.05" />
+          <line key={`s4b-h-${i}`} x1="-20" y1={20 + i * 20} x2="1020" y2={20 + i * 20} stroke="#8a3a4a" strokeWidth="1.2" opacity="0.39" />
         ))}
       </svg>
     ),
@@ -4821,19 +4821,19 @@ const SLIDE_PATTERNS = [
       <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <radialGradient id="s5a-bg" cx="100%" cy="100%" r="60%">
-            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.1" />
+            <stop offset="0%" stopColor="#8a3a4a" stopOpacity="0.25" />
             <stop offset="100%" stopColor="#8a3a4a" stopOpacity="0" />
           </radialGradient>
         </defs>
         <rect width="1000" height="360" fill="url(#s5a-bg)" />
-        <path d="M1000,380 Q700,100 -50,-50" stroke="#8a3a4a" strokeWidth="110" fill="none" opacity="0.055" strokeLinecap="round" />
-        <path d="M1020,360 Q650,200 -20,50" stroke="#8a3a4a" strokeWidth="2.2" fill="none" opacity="0.22" />
-        <path d="M1020,340 Q650,180 -20,30" stroke="#d65a2c" strokeWidth="1.9" fill="none" opacity="0.19" />
-        <path d="M1020,320 Q650,160 -20,10" stroke="#8a3a4a" strokeWidth="1.6" fill="none" opacity="0.16" />
-        <path d="M1020,300 Q650,140 -20,-10" stroke="#d65a2c" strokeWidth="1.3" fill="none" opacity="0.13" />
-        <path d="M1020,280 Q650,120 -20,-30" stroke="#8a3a4a" strokeWidth="1.0" fill="none" opacity="0.11" />
-        <path d="M1020,260 Q650,100 -20,-50" stroke="#d65a2c" strokeWidth="0.7" fill="none" opacity="0.09" />
-        <path d="M1020,240 Q650,80 -20,-70" stroke="#8a3a4a" strokeWidth="0.5" fill="none" opacity="0.07" />
+        <path d="M1000,380 Q700,100 -50,-50" stroke="#8a3a4a" strokeWidth="4" fill="none" opacity="0.17" strokeLinecap="round" />
+        <path d="M1020,360 Q650,200 -20,50" stroke="#8a3a4a" strokeWidth="4" fill="none" opacity="0.6" />
+        <path d="M1020,340 Q650,180 -20,30" stroke="#d65a2c" strokeWidth="3.8" fill="none" opacity="0.57" />
+        <path d="M1020,320 Q650,160 -20,10" stroke="#8a3a4a" strokeWidth="3.2" fill="none" opacity="0.48" />
+        <path d="M1020,300 Q650,140 -20,-10" stroke="#d65a2c" strokeWidth="2.6" fill="none" opacity="0.39" />
+        <path d="M1020,280 Q650,120 -20,-30" stroke="#8a3a4a" strokeWidth="2" fill="none" opacity="0.33" />
+        <path d="M1020,260 Q650,100 -20,-50" stroke="#d65a2c" strokeWidth="1.4" fill="none" opacity="0.27" />
+        <path d="M1020,240 Q650,80 -20,-70" stroke="#8a3a4a" strokeWidth="1" fill="none" opacity="0.21" />
         <circle cx="930" cy="330" r="12" fill="#8a3a4a" opacity="0.2" />
         <circle cx="960" cy="305" r="6" fill="#d65a2c" opacity="0.16" />
         <circle cx="975" cy="285" r="4" fill="#8a3a4a" opacity="0.13" />
@@ -4844,17 +4844,17 @@ const SLIDE_PATTERNS = [
       <svg className="jch-pattern-svg" viewBox="0 0 1000 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
         <defs>
           <radialGradient id="s5b-bg" cx="0%" cy="0%" r="60%">
-            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.08" />
+            <stop offset="0%" stopColor="#d65a2c" stopOpacity="0.2" />
             <stop offset="100%" stopColor="#d65a2c" stopOpacity="0" />
           </radialGradient>
         </defs>
         <rect width="1000" height="360" fill="url(#s5b-bg)" />
-        <path d="M-20,80 Q150,40 350,80 T700,80 T1020,80" stroke="#8a3a4a" strokeWidth="1.5" fill="none" opacity="0.2" />
-        <path d="M-20,140 Q200,80 400,140 T800,140 T1020,140" stroke="#d65a2c" strokeWidth="1.3" fill="none" opacity="0.17" />
-        <path d="M-20,200 Q150,140 350,200 T700,200 T1020,200" stroke="#8a3a4a" strokeWidth="1.0" fill="none" opacity="0.13" />
-        <path d="M-20,260 Q250,200 450,260 T850,260 T1020,260" stroke="#d65a2c" strokeWidth="0.8" fill="none" opacity="0.1" />
-        <path d="M-20,320 Q150,260 350,320 T700,320 T1020,320" stroke="#8a3a4a" strokeWidth="0.6" fill="none" opacity="0.07" />
-        <line x1="80" y1="72" x2="80" y2="288" stroke="#8a3a4a" strokeWidth="2" opacity="0.15" />
+        <path d="M-20,80 Q150,40 350,80 T700,80 T1020,80" stroke="#8a3a4a" strokeWidth="3" fill="none" opacity="0.6" />
+        <path d="M-20,140 Q200,80 400,140 T800,140 T1020,140" stroke="#d65a2c" strokeWidth="2.6" fill="none" opacity="0.51" />
+        <path d="M-20,200 Q150,140 350,200 T700,200 T1020,200" stroke="#8a3a4a" strokeWidth="2" fill="none" opacity="0.39" />
+        <path d="M-20,260 Q250,200 450,260 T850,260 T1020,260" stroke="#d65a2c" strokeWidth="1.6" fill="none" opacity="0.3" />
+        <path d="M-20,320 Q150,260 350,320 T700,320 T1020,320" stroke="#8a3a4a" strokeWidth="1.2" fill="none" opacity="0.21" />
+        <line x1="80" y1="72" x2="80" y2="288" stroke="#8a3a4a" strokeWidth="4" opacity="0.45" />
       </svg>
     ),
   },
