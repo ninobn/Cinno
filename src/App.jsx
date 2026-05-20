@@ -12,6 +12,8 @@ import * as preferencesService from "./services/preferencesService.js";
 import * as watchlistService from "./services/watchlistService.js";
 import * as journalService from "./services/journalService.js";
 import * as discoverService from "./services/discoverService.js";
+import * as friendsService from "./services/friendsService.js";
+import { supabase } from "./supabase.js";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -549,6 +551,15 @@ const BookmarkIcon = () => (
 const ChatIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
     <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+  </svg>
+);
+
+const UsersIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
   </svg>
 );
 
@@ -7629,6 +7640,759 @@ function AuthGate() {
   return <ErrorBoundary><MainApp /></ErrorBoundary>;
 }
 
+// ─── Friends tab ─────────────────────────────────────────────────────────────
+
+function formatRelativeTime(iso) {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  const diffMs = Date.now() - then;
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return "JUST NOW";
+  if (min < 60) return `${min} MIN AGO`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}H AGO`;
+  const day = Math.floor(hr / 24);
+  if (day === 1) return "YESTERDAY";
+  if (day < 7) return `${day} DAYS AGO`;
+  return DateTime.fromISO(iso).toFormat("d LLL").toUpperCase();
+}
+
+function profileInitials(profile) {
+  if (!profile) return "?";
+  const src = profile.display_name || profile.username || "?";
+  const parts = src.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return src.slice(0, 2).toUpperCase();
+}
+
+function FriendsAvatar({ profile, size = 32 }) {
+  const dim = { width: size, height: size, fontSize: Math.round(size * 0.42) };
+  if (profile?.avatar_url) {
+    return <img className="friends-avatar" src={profile.avatar_url} alt="" style={dim} referrerPolicy="no-referrer" />;
+  }
+  return <div className="friends-avatar friends-avatar--fallback" style={dim}>{profileInitials(profile)}</div>;
+}
+
+function actionLabel(actionType) {
+  switch (actionType) {
+    case "rated": return "rated";
+    case "logged": return "logged";
+    case "watchlisted": return "added to watchlist";
+    case "noted": return "wrote about";
+    default: return actionType;
+  }
+}
+
+function ActivityCard({ item, hideUser = false, currentUserId, onReact, onToggleSave, isSaved }) {
+  const [reacted, setReacted] = useState(false);
+  const [reacting, setReacting] = useState(false);
+  const movie = item.movie;
+  const genre = movie?.genre_ids?.length ? (GENRE_MAP[movie.genre_ids[0]] || "Film") : "Film";
+
+  const handleReact = async () => {
+    if (!currentUserId || reacting) return;
+    setReacting(true);
+    try {
+      const next = await onReact(item.id);
+      setReacted(next);
+    } catch (e) {
+      console.error("toggle reaction failed", e);
+    } finally {
+      setReacting(false);
+    }
+  };
+
+  return (
+    <div className="activity-card">
+      {!hideUser && (
+        <div className="activity-card-header">
+          <FriendsAvatar profile={item.user} size={32} />
+          <span className="activity-card-username">{item.user?.display_name || item.user?.username || "Someone"}</span>
+          <span className="activity-card-action">{actionLabel(item.action_type)}</span>
+          <span className="activity-card-time">{formatRelativeTime(item.created_at)}</span>
+        </div>
+      )}
+      <div className="activity-card-film">
+        {movie?.poster_path ? (
+          <img className="activity-card-poster" src={`${IMG_BASE}/w185${movie.poster_path}`} alt={movie.title || ""} />
+        ) : (
+          <div className="activity-card-poster activity-card-poster--empty" aria-hidden="true" />
+        )}
+        <div className="activity-card-film-info">
+          <div className="activity-card-title">{movie?.title || "Unknown film"}</div>
+          <div className="activity-card-meta">{movie?.year || "—"} · {genre}</div>
+          {item.action_type === "rated" && item.rating != null && (
+            <div className="activity-card-rating">{Math.round(item.rating)}/100</div>
+          )}
+          {item.note && <div className="activity-card-note">"{item.note}"</div>}
+        </div>
+      </div>
+      <div className="activity-card-footer">
+        <button
+          type="button"
+          className={`activity-react-btn${reacted ? " activity-react-btn--on" : ""}`}
+          onClick={handleReact}
+          disabled={reacting}
+          aria-label="React"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill={reacted ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+          </svg>
+          <span>{reacted ? 1 : 0}</span>
+        </button>
+        {movie && (
+          <button
+            type="button"
+            className="activity-watchlist-btn"
+            onClick={() => onToggleSave(movie)}
+          >
+            {isSaved ? "On watchlist" : "+ Watchlist"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UserCard({ profile, status, currentUserId, onFollow, onUnfollow, onAccept, onDecline, mode }) {
+  const [busy, setBusy] = useState(false);
+  const wrap = async (fn) => {
+    if (busy) return;
+    setBusy(true);
+    try { await fn(); } finally { setBusy(false); }
+  };
+
+  if (profile.id === currentUserId) {
+    return (
+      <div className="user-card">
+        <FriendsAvatar profile={profile} size={40} />
+        <div className="user-card-info">
+          <div className="user-card-username">{profile.username || "you"}</div>
+          <div className="user-card-display">{profile.display_name || ""}</div>
+        </div>
+        <span className="user-card-self">You</span>
+      </div>
+    );
+  }
+
+  let action = null;
+  if (mode === "pending") {
+    action = (
+      <div className="user-card-actions">
+        <button className="pill pill--wine" disabled={busy} onClick={() => wrap(() => onAccept(profile.id))}>Accept</button>
+        <button className="pill pill--ghost" disabled={busy} onClick={() => wrap(() => onDecline(profile.id))}>Decline</button>
+      </div>
+    );
+  } else if (status === "accepted") {
+    action = <button className="pill pill--ghost" disabled={busy} onClick={() => wrap(() => onUnfollow(profile.id))}>✓ Following</button>;
+  } else if (status === "pending") {
+    action = <button className="pill pill--ghost pill--muted" disabled>Requested</button>;
+  } else {
+    action = <button className="pill pill--wine" disabled={busy} onClick={() => wrap(() => onFollow(profile.id))}>Follow</button>;
+  }
+
+  return (
+    <div className="user-card">
+      <FriendsAvatar profile={profile} size={40} />
+      <div className="user-card-info">
+        <div className="user-card-username">{profile.username || "user"}</div>
+        <div className="user-card-display">{profile.display_name || ""}</div>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function PinSearchPopover({ onPick, onClose, currentUserId }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!q.trim()) { setResults([]); return; }
+    const t = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const movies = await searchMovies(q);
+        setResults((movies || []).slice(0, 6));
+      } catch (e) {
+        console.error("pin search failed", e);
+      } finally {
+        setLoading(false);
+      }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  return (
+    <div className="pin-popover" onClick={(e) => e.stopPropagation()}>
+      <div className="pin-popover-head">
+        <input
+          autoFocus
+          className="pin-popover-input"
+          placeholder="Search a film to pin..."
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <button className="pin-popover-close" onClick={onClose} aria-label="Close">✕</button>
+      </div>
+      <div className="pin-popover-results">
+        {loading && <div className="pin-popover-empty">Searching…</div>}
+        {!loading && q.trim() && results.length === 0 && <div className="pin-popover-empty">No matches</div>}
+        {!loading && results.map((m) => (
+          <button key={m.id} type="button" className="pin-popover-result" onClick={() => onPick(m)}>
+            {m.poster_path ? (
+              <img src={`${IMG_BASE}/w92${m.poster_path}`} alt="" />
+            ) : (
+              <div className="pin-popover-result-empty" />
+            )}
+            <div className="pin-popover-result-info">
+              <div className="pin-popover-result-title">{m.title}</div>
+              <div className="pin-popover-result-year">{m.year || ""}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FriendsTab({ toggleSave, savedIds }) {
+  const { user, isGuest, signInWithGoogle } = useAuth();
+  const [, setSelectedMovie] = useMovieModal();
+
+  const [activeSubTab, setActiveSubTab] = useState("feed");
+  const [feedItems, setFeedItems] = useState([]);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [trendingInCircle, setTrendingInCircle] = useState([]);
+  const [following, setFollowing] = useState([]);
+  const [followers, setFollowers] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [ownProfile, setOwnProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+
+  // Profile setup form state
+  const [setupUsername, setSetupUsername] = useState("");
+  const [setupDisplayName, setSetupDisplayName] = useState("");
+  const [setupPrivate, setSetupPrivate] = useState(false);
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupError, setSetupError] = useState("");
+
+  // Profile edit form
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState("");
+
+  // Pinned films
+  const [pinnedMovies, setPinnedMovies] = useState([]);
+  const [pinPickerSlot, setPinPickerSlot] = useState(null); // index of slot being filled
+
+  // Own activity
+  const [ownActivity, setOwnActivity] = useState([]);
+
+  const userId = user?.id;
+  const savedIdSet = useMemo(() => new Set(savedIds || []), [savedIds]);
+  const followingIdSet = useMemo(() => new Set(following.map((p) => p.id)), [following]);
+
+  // Initial load
+  useEffect(() => {
+    if (!userId || isGuest) {
+      setFeedLoading(false);
+      setProfileLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const profile = await friendsService.getProfile(userId);
+        if (cancelled) return;
+        setOwnProfile(profile);
+        setProfileLoading(false);
+        if (profile) {
+          setEditDisplayName(profile.display_name || "");
+          const [feed, trending, fol, flw, pend, ownAct] = await Promise.all([
+            friendsService.getActivityFeed(userId).catch(() => []),
+            friendsService.getTrendingInCircle(userId).catch(() => []),
+            friendsService.getFollowing(userId).catch(() => []),
+            friendsService.getFollowers(userId).catch(() => []),
+            friendsService.getPendingRequests(userId).catch(() => []),
+            friendsService.getOwnActivity(userId).catch(() => []),
+          ]);
+          if (cancelled) return;
+          setFeedItems(feed);
+          setTrendingInCircle(trending);
+          setFollowing(fol);
+          setFollowers(flw);
+          setPendingRequests(pend);
+          setOwnActivity(ownAct);
+        }
+      } catch (e) {
+        console.error("FriendsTab load failed", e);
+      } finally {
+        if (!cancelled) setFeedLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, isGuest]);
+
+  // Hydrate pinned films from movies_cache
+  useEffect(() => {
+    const ids = ownProfile?.pinned_film_ids;
+    if (!ids?.length) { setPinnedMovies([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from("movies_cache")
+          .select("tmdb_id, title, poster_path, year")
+          .in("tmdb_id", ids);
+        if (cancelled) return;
+        const map = {};
+        (data || []).forEach((m) => { map[m.tmdb_id] = m; });
+        setPinnedMovies(ids.map((id) => map[id]).filter(Boolean));
+      } catch (e) {
+        console.error("pinned films load failed", e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [ownProfile?.pinned_film_ids]);
+
+  // Debounced user search
+  useEffect(() => {
+    if (!userId || !searchQuery.trim()) { setSearchResults([]); return; }
+    setSearchLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await friendsService.searchUsers(searchQuery.trim(), userId);
+        setSearchResults(res);
+      } catch (e) {
+        console.error("user search failed", e);
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchQuery, userId]);
+
+  const refreshFollowLists = useCallback(async () => {
+    if (!userId) return;
+    const [fol, flw, pend] = await Promise.all([
+      friendsService.getFollowing(userId).catch(() => []),
+      friendsService.getFollowers(userId).catch(() => []),
+      friendsService.getPendingRequests(userId).catch(() => []),
+    ]);
+    setFollowing(fol);
+    setFollowers(flw);
+    setPendingRequests(pend);
+  }, [userId]);
+
+  const handleFollow = async (targetId) => {
+    if (!userId) return;
+    try {
+      await friendsService.followUser(userId, targetId);
+      await refreshFollowLists();
+    } catch (e) { console.error(e); }
+  };
+  const handleUnfollow = async (targetId) => {
+    if (!userId) return;
+    try {
+      await friendsService.unfollowUser(userId, targetId);
+      await refreshFollowLists();
+    } catch (e) { console.error(e); }
+  };
+  const handleAccept = async (followerId) => {
+    if (!userId) return;
+    try {
+      await friendsService.acceptFollowRequest(followerId, userId);
+      await refreshFollowLists();
+    } catch (e) { console.error(e); }
+  };
+  const handleDecline = async (followerId) => {
+    if (!userId) return;
+    try {
+      await friendsService.unfollowUser(followerId, userId);
+      await refreshFollowLists();
+    } catch (e) { console.error(e); }
+  };
+  const handleReact = async (activityId) => {
+    if (!userId) return false;
+    return await friendsService.toggleReaction(userId, activityId);
+  };
+
+  const submitSetup = async (e) => {
+    e?.preventDefault();
+    setSetupError("");
+    const username = setupUsername.trim().toLowerCase();
+    if (!/^[a-z0-9_]{3,20}$/.test(username)) {
+      setSetupError("Username must be 3–20 chars (lowercase letters, numbers, underscore).");
+      return;
+    }
+    setSetupBusy(true);
+    try {
+      const profile = await friendsService.upsertProfile(userId, {
+        username,
+        display_name: setupDisplayName.trim() || null,
+        is_private: setupPrivate,
+      });
+      setOwnProfile(profile);
+      setEditDisplayName(profile.display_name || "");
+    } catch (e) {
+      console.error(e);
+      setSetupError(e?.message || "Could not save profile. Username may be taken.");
+    } finally {
+      setSetupBusy(false);
+    }
+  };
+
+  const saveProfileEdit = async () => {
+    if (!userId || !ownProfile) return;
+    try {
+      const updated = await friendsService.upsertProfile(userId, {
+        username: ownProfile.username,
+        display_name: editDisplayName.trim() || null,
+      });
+      setOwnProfile(updated);
+      setEditingProfile(false);
+    } catch (e) { console.error(e); }
+  };
+
+  const togglePrivacy = async () => {
+    if (!userId || !ownProfile) return;
+    try {
+      const updated = await friendsService.upsertProfile(userId, {
+        username: ownProfile.username,
+        is_private: !ownProfile.is_private,
+      });
+      setOwnProfile(updated);
+    } catch (e) { console.error(e); }
+  };
+
+  const pinFilm = async (movie) => {
+    if (!userId || !ownProfile) return;
+    const current = ownProfile.pinned_film_ids || [];
+    if (current.includes(movie.id)) { setPinPickerSlot(null); return; }
+    const next = [...current.slice(0, 4), movie.id].slice(0, 4);
+    try {
+      await friendsService.updatePinnedFilms(userId, next);
+      setOwnProfile({ ...ownProfile, pinned_film_ids: next });
+      setPinPickerSlot(null);
+    } catch (e) { console.error(e); }
+  };
+  const unpinFilm = async (tmdbId) => {
+    if (!userId || !ownProfile) return;
+    const next = (ownProfile.pinned_film_ids || []).filter((id) => id !== tmdbId);
+    try {
+      await friendsService.updatePinnedFilms(userId, next);
+      setOwnProfile({ ...ownProfile, pinned_film_ids: next });
+    } catch (e) { console.error(e); }
+  };
+
+  // ── Render: guest ──
+  if (!user || isGuest) {
+    return (
+      <div className="content friends-tab">
+        <div className="friends-guest">
+          <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />FRIENDS</div>
+          <h2 className="friends-guest-headline">Sign in to connect with friends.</h2>
+          <button className="pill pill--wine pill--lg" onClick={signInWithGoogle}>Sign in</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Render: profile setup (no username yet) ──
+  if (!profileLoading && !ownProfile) {
+    return (
+      <div className="content friends-tab">
+        <div className="friends-setup">
+          <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />ONE STEP LEFT</div>
+          <h2 className="friends-setup-headline">Pick a username to join.</h2>
+          <form onSubmit={submitSetup} className="friends-setup-form">
+            <label className="friends-setup-label">
+              Username
+              <input
+                type="text"
+                placeholder="e.g. ninoplayer"
+                value={setupUsername}
+                onChange={(e) => setSetupUsername(e.target.value)}
+                maxLength={20}
+                required
+              />
+            </label>
+            <label className="friends-setup-label">
+              Display name (optional)
+              <input
+                type="text"
+                placeholder="Nino"
+                value={setupDisplayName}
+                onChange={(e) => setSetupDisplayName(e.target.value)}
+                maxLength={40}
+              />
+            </label>
+            <label className="friends-setup-toggle">
+              <input type="checkbox" checked={setupPrivate} onChange={(e) => setSetupPrivate(e.target.checked)} />
+              Private account (others must request to follow)
+            </label>
+            {setupError && <div className="friends-setup-error">{setupError}</div>}
+            <button type="submit" className="pill pill--wine pill--lg" disabled={setupBusy}>
+              {setupBusy ? "Creating…" : "Create profile"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Render: main tab ──
+  return (
+    <div className="content friends-tab">
+      <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR CIRCLE · FRIENDS</div>
+
+      <div className="friends-subtabs">
+        <button className={`friends-subtab${activeSubTab === "feed" ? " active" : ""}`} onClick={() => setActiveSubTab("feed")}>Feed</button>
+        <button className={`friends-subtab${activeSubTab === "friends" ? " active" : ""}`} onClick={() => setActiveSubTab("friends")}>Friends</button>
+        <button className={`friends-subtab${activeSubTab === "profile" ? " active" : ""}`} onClick={() => setActiveSubTab("profile")}>Profile</button>
+      </div>
+
+      {activeSubTab === "feed" && (
+        <div className="friends-feed">
+          {feedLoading ? (
+            <>
+              <div className="activity-card-skel" />
+              <div className="activity-card-skel" />
+              <div className="activity-card-skel" />
+            </>
+          ) : feedItems.length === 0 ? (
+            <div className="friends-empty">
+              <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR FEED</div>
+              <h3 className="friends-empty-headline">Follow some friends to see their activity.</h3>
+              <button className="pill pill--wine pill--lg" onClick={() => setActiveSubTab("friends")}>Find friends →</button>
+            </div>
+          ) : (
+            <>
+              {trendingInCircle.length > 0 && (
+                <div className="trending-circle">
+                  <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />TRENDING IN YOUR CIRCLE</div>
+                  <div className="trending-circle-list">
+                    {trendingInCircle.map((row, i) => (
+                      <div key={row.movie.tmdb_id} className="trending-circle-row">
+                        <span className="trending-circle-rank">{i + 1}</span>
+                        {row.movie.poster_path ? (
+                          <img className="trending-circle-poster" src={`${IMG_BASE}/w92${row.movie.poster_path}`} alt="" />
+                        ) : (
+                          <div className="trending-circle-poster trending-circle-poster--empty" />
+                        )}
+                        <div className="trending-circle-info">
+                          <div className="trending-circle-title">{row.movie.title}</div>
+                          <div className="trending-circle-sub">{row.friendCount} friend{row.friendCount === 1 ? "" : "s"} watching</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {feedItems.map((item) => (
+                <ActivityCard
+                  key={item.id}
+                  item={item}
+                  currentUserId={userId}
+                  onReact={handleReact}
+                  onToggleSave={toggleSave}
+                  isSaved={item.movie ? savedIdSet.has(item.movie.tmdb_id) : false}
+                />
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {activeSubTab === "friends" && (
+        <div className="friends-list-view">
+          <div className="friends-search-row">
+            <input
+              type="text"
+              className="friends-search-input"
+              placeholder="Search by username…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+
+          {searchQuery.trim() && (
+            <div className="friends-section">
+              <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />SEARCH RESULTS</div>
+              {searchLoading && <div className="friends-empty-line">Searching…</div>}
+              {!searchLoading && searchResults.length === 0 && <div className="friends-empty-line">No users found.</div>}
+              <div className="user-card-grid">
+                {searchResults.map((p) => (
+                  <UserCard
+                    key={p.id}
+                    profile={p}
+                    status={followingIdSet.has(p.id) ? "accepted" : null}
+                    currentUserId={userId}
+                    onFollow={handleFollow}
+                    onUnfollow={handleUnfollow}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {pendingRequests.length > 0 && (
+            <div className="friends-section">
+              <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />FOLLOW REQUESTS · {pendingRequests.length}</div>
+              <div className="user-card-grid">
+                {pendingRequests.map((p) => (
+                  <UserCard
+                    key={p.id}
+                    profile={p}
+                    mode="pending"
+                    currentUserId={userId}
+                    onAccept={handleAccept}
+                    onDecline={handleDecline}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="friends-section">
+            <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />FOLLOWING · {following.length}</div>
+            {following.length === 0 ? (
+              <div className="friends-empty-line">You're not following anyone yet.</div>
+            ) : (
+              <div className="user-card-grid">
+                {following.map((p) => (
+                  <UserCard
+                    key={p.id}
+                    profile={p}
+                    status="accepted"
+                    currentUserId={userId}
+                    onFollow={handleFollow}
+                    onUnfollow={handleUnfollow}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="friends-section">
+            <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />FOLLOWERS · {followers.length}</div>
+            {followers.length === 0 ? (
+              <div className="friends-empty-line">No followers yet.</div>
+            ) : (
+              <div className="user-card-grid">
+                {followers.map((p) => (
+                  <UserCard
+                    key={p.id}
+                    profile={p}
+                    status={followingIdSet.has(p.id) ? "accepted" : null}
+                    currentUserId={userId}
+                    onFollow={handleFollow}
+                    onUnfollow={handleUnfollow}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeSubTab === "profile" && ownProfile && (
+        <div className="friends-profile">
+          <div className="profile-header">
+            <FriendsAvatar profile={ownProfile} size={64} />
+            <div className="profile-header-info">
+              {editingProfile ? (
+                <input
+                  className="profile-display-edit"
+                  value={editDisplayName}
+                  onChange={(e) => setEditDisplayName(e.target.value)}
+                  maxLength={40}
+                />
+              ) : (
+                <div className="profile-display">{ownProfile.display_name || ownProfile.username}</div>
+              )}
+              <div className="profile-username">@{ownProfile.username}</div>
+              <div className="profile-stats">{following.length} FOLLOWING · {followers.length} FOLLOWERS</div>
+            </div>
+            <div className="profile-actions">
+              {editingProfile ? (
+                <>
+                  <button className="pill pill--wine" onClick={saveProfileEdit}>Save</button>
+                  <button className="pill pill--ghost" onClick={() => { setEditingProfile(false); setEditDisplayName(ownProfile.display_name || ""); }}>Cancel</button>
+                </>
+              ) : (
+                <button className="pill pill--ghost" onClick={() => setEditingProfile(true)}>Edit</button>
+              )}
+              <button
+                className={`pill ${ownProfile.is_private ? "pill--wine" : "pill--ghost"}`}
+                onClick={togglePrivacy}
+                title="Toggle account privacy"
+              >
+                {ownProfile.is_private ? "Private" : "Public"}
+              </button>
+            </div>
+          </div>
+
+          <div className="friends-section">
+            <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />PINNED FILMS · UP TO 4</div>
+            <div className="pinned-grid">
+              {[0, 1, 2, 3].map((i) => {
+                const m = pinnedMovies[i];
+                if (m) {
+                  return (
+                    <div key={i} className="pinned-slot pinned-slot--filled">
+                      {m.poster_path ? (
+                        <img src={`${IMG_BASE}/w342${m.poster_path}`} alt={m.title} />
+                      ) : (
+                        <div className="pinned-slot-empty-art" />
+                      )}
+                      <button className="pinned-slot-remove" onClick={() => unpinFilm(m.tmdb_id)} aria-label="Remove pin">✕</button>
+                    </div>
+                  );
+                }
+                return (
+                  <button key={i} className="pinned-slot pinned-slot--empty" onClick={() => setPinPickerSlot(i)} aria-label="Pin a film">
+                    <span>+</span>
+                  </button>
+                );
+              })}
+            </div>
+            {pinPickerSlot != null && (
+              <div className="pin-popover-backdrop" onClick={() => setPinPickerSlot(null)}>
+                <PinSearchPopover onPick={pinFilm} onClose={() => setPinPickerSlot(null)} currentUserId={userId} />
+              </div>
+            )}
+          </div>
+
+          <div className="friends-section">
+            <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR ACTIVITY</div>
+            {ownActivity.length === 0 ? (
+              <div className="friends-empty-line">Activity will appear here as you log films.</div>
+            ) : (
+              ownActivity.map((item) => (
+                <ActivityCard
+                  key={item.id}
+                  item={item}
+                  hideUser
+                  currentUserId={userId}
+                  onReact={handleReact}
+                  onToggleSave={toggleSave}
+                  isSaved={item.movie ? savedIdSet.has(item.movie.tmdb_id) : false}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   return <AppRouter />;
 }
@@ -8090,6 +8854,9 @@ function MainApp() {
       if (user && watchlistIdRef.current) {
         watchlistService.addMovieToCollection(watchlistIdRef.current, movie).catch(syncFailToast);
       }
+      if (user) {
+        friendsService.recordActivity(user.id, "watchlisted", movie.id).catch(() => {});
+      }
       showToast("Added to watchlist");
     }
   };
@@ -8167,6 +8934,10 @@ function MainApp() {
       journalService.addJournalEntry(user.id, movie, { watchDate }).then((entry) => {
         if (entry) journalEntryIds.current.set(id, entry.id);
       }).catch(syncFailToast);
+      friendsService.recordActivity(user.id, "logged", movie.id, {
+        rating: watchedRatings.get(id),
+        note: watchedNotes.get(id),
+      }).catch(() => {});
     }
     showToast("Moved to journal");
   };
@@ -8194,6 +8965,9 @@ function MainApp() {
       const entryId = journalEntryIds.current.get(id);
       if (entryId) {
         journalService.updateJournalEntry(entryId, { personalRating: rating }).catch(syncFailToast);
+      }
+      if (rating !== null) {
+        friendsService.recordActivity(user.id, "rated", id, { rating }).catch(() => {});
       }
     }
   };
@@ -8444,6 +9218,7 @@ function MainApp() {
     { id: "journal",  label: "Journal",    icon: FilmStripIcon },
     { id: "saved",    label: "Watchlist",  icon: BookmarkIcon  },
     { id: "chat",     label: "Companion",  icon: ChatIcon      },
+    { id: "friends",  label: "Friends",    icon: UsersIcon     },
   ];
 
   const handleTopSearch = useCallback((q) => {
@@ -8514,10 +9289,6 @@ function MainApp() {
               {tab.label}
             </button>
           ))}
-          <span className="topbar-nav-soon" aria-disabled="true">
-            Friends
-            <span className="topbar-soon-badge">SOON</span>
-          </span>
         </nav>
 
         <div className="topbar-actions">
@@ -8585,10 +9356,6 @@ function MainApp() {
                 <span>{tab.label}</span>
               </button>
             ))}
-            <div className="mobile-menu-item mobile-menu-soon" aria-disabled="true">
-              <span>Friends</span>
-              <span className="topbar-soon-badge">SOON</span>
-            </div>
           </div>
         </div>
       )}
@@ -8664,6 +9431,12 @@ function MainApp() {
             onRenameChat={handleRenameChat} onSaveMessage={handleSaveMessage}
             tasteProfile={tasteProfile}
             debriefPayload={debriefPayload} onDebriefHandled={() => setDebriefPayload(null)}
+          />
+        )}
+        {activeTab === "friends" && (
+          <FriendsTab
+            toggleSave={guardedToggleSave}
+            savedIds={savedIds}
           />
         )}
       </div>
