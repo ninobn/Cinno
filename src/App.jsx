@@ -7628,7 +7628,7 @@ function UserCard({ profile, status, currentUserId, onFollow, onUnfollow, onAcce
   );
 }
 
-function FriendsTab({ toggleSave, savedIds, watchedMovies, goToJournal }) {
+function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJournal }) {
   const { user, isGuest, signInWithGoogle } = useAuth();
   const [, setSelectedMovie] = useMovieModal();
 
@@ -7670,22 +7670,12 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, goToJournal }) {
   const [listDetail, setListDetail] = useState(null);
   const [listLoading, setListLoading] = useState(false);
 
-  // Create list modal
-  const [createListOpen, setCreateListOpen] = useState(false);
-  const [createListName, setCreateListName] = useState("");
-  const [createListDescription, setCreateListDescription] = useState("");
-  const [createListPrivate, setCreateListPrivate] = useState(false);
-  const [createListBusy, setCreateListBusy] = useState(false);
+  // ListCard "..." dropdown menu — one open at a time
+  const [openMenuListId, setOpenMenuListId] = useState(null);
+  const menuRef = useRef(null);
 
-  // Edit list modal
-  const [editListOpen, setEditListOpen] = useState(false);
-  const [editListName, setEditListName] = useState("");
-  const [editListDescription, setEditListDescription] = useState("");
-  const [editListPrivate, setEditListPrivate] = useState(false);
-
-  // Following/Followers modals
-  const [followingModalOpen, setFollowingModalOpen] = useState(false);
-  const [followersModalOpen, setFollowersModalOpen] = useState(false);
+  // Following/Followers full-page view filter
+  const [followsFilter, setFollowsFilter] = useState("");
 
   // Suggested users (feed empty state)
   const [suggestedUsers, setSuggestedUsers] = useState([]);
@@ -7789,14 +7779,23 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, goToJournal }) {
       .then((detail) => {
         if (cancelled) return;
         setListDetail(detail);
-        setEditListName(detail.name || "");
-        setEditListDescription(detail.description || "");
-        setEditListPrivate(!detail.is_public);
       })
       .catch((e) => { console.error("list load failed", e); })
       .finally(() => { if (!cancelled) setListLoading(false); });
     return () => { cancelled = true; };
   }, [activeList]);
+
+  // Close ListCard "..." menu on outside click
+  useEffect(() => {
+    if (openMenuListId == null) return;
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setOpenMenuListId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [openMenuListId]);
 
   // Debounced film search inside list detail
   useEffect(() => {
@@ -7962,48 +7961,50 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, goToJournal }) {
   };
 
   // ── Lists handlers ──
-  const handleCreateList = async (e) => {
-    e?.preventDefault();
-    if (!userId || !createListName.trim() || createListBusy) return;
-    setCreateListBusy(true);
+  // Spotify-style instant create: no modal, default name, jump straight into detail
+  const handleNewListInstant = async () => {
+    if (!userId) return;
     try {
       const newList = await listsService.createList(userId, {
-        name: createListName.trim(),
-        description: createListDescription.trim() || null,
-        is_public: !createListPrivate,
+        name: "My List",
+        is_public: true,
       });
-      setOwnLists((prev) => [{ ...newList, list_films: [{ count: 0 }] }, ...prev]);
-      setCreateListOpen(false);
-      setCreateListName("");
-      setCreateListDescription("");
-      setCreateListPrivate(false);
+      setOwnLists((prev) => [{ ...newList, list_films: [{ count: 0 }], previewPosters: [] }, ...prev]);
       setActiveList(newList);
     } catch (e) { console.error("create list failed", e); }
-    finally { setCreateListBusy(false); }
   };
 
-  const handleDeleteList = async () => {
-    if (!activeList) return;
+  const handleDeleteList = async (listId) => {
+    const id = listId ?? activeList?.id;
+    if (!id) return;
     if (!window.confirm("Delete this list? This can't be undone.")) return;
     try {
-      await listsService.deleteList(activeList.id);
-      setOwnLists((prev) => prev.filter((l) => l.id !== activeList.id));
-      setActiveList(null);
+      await listsService.deleteList(id);
+      setOwnLists((prev) => prev.filter((l) => l.id !== id));
+      if (activeList?.id === id) setActiveList(null);
+      setOpenMenuListId(null);
     } catch (e) { console.error("delete list failed", e); }
   };
 
-  const handleSaveListEdit = async () => {
-    if (!activeList) return;
+  // Inline title/description save (called on blur)
+  const handleInlineUpdateList = async (listId, updates) => {
+    if (!listId) return;
     try {
-      const updated = await listsService.updateList(activeList.id, {
-        name: editListName.trim(),
-        description: editListDescription.trim() || null,
-        is_public: !editListPrivate,
-      });
-      setListDetail((prev) => prev ? { ...prev, ...updated } : prev);
-      setOwnLists((prev) => prev.map((l) => l.id === updated.id ? { ...l, ...updated } : l));
-      setEditListOpen(false);
+      const updated = await listsService.updateList(listId, updates);
+      setListDetail((prev) => prev && prev.id === listId ? { ...prev, ...updated } : prev);
+      setOwnLists((prev) => prev.map((l) => l.id === listId ? { ...l, ...updated } : l));
     } catch (e) { console.error("update list failed", e); }
+  };
+
+  // Toggle public/private from the "..." menu
+  const handleToggleListPrivacy = async (list) => {
+    if (!list) return;
+    try {
+      const updated = await listsService.updateList(list.id, { is_public: !list.is_public });
+      setOwnLists((prev) => prev.map((l) => l.id === list.id ? { ...l, ...updated } : l));
+      setListDetail((prev) => prev && prev.id === list.id ? { ...prev, ...updated } : prev);
+      setOpenMenuListId(null);
+    } catch (e) { console.error("toggle privacy failed", e); }
   };
 
   const handleAddFilmToList = async (movie) => {
@@ -8179,7 +8180,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, goToJournal }) {
   // ── Render: main tab ──
   return (
     <div className="content friends-tab">
-      {!activeList && (
+      {!activeList && activeSubTab !== "following" && activeSubTab !== "followers" && (
         <>
           <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR CIRCLE · FRIENDS</div>
 
@@ -8346,11 +8347,11 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, goToJournal }) {
                   <div className="profile-stat-num">{watchedMovies ? watchedMovies.size : 0}</div>
                   <div className="profile-stat-label">FILMS</div>
                 </button>
-                <button type="button" className="profile-stat" onClick={() => setFollowingModalOpen(true)}>
+                <button type="button" className="profile-stat" onClick={() => { setFollowsFilter(""); setActiveSubTab("following"); }}>
                   <div className="profile-stat-num">{following.length}</div>
                   <div className="profile-stat-label">FOLLOWING</div>
                 </button>
-                <button type="button" className="profile-stat" onClick={() => setFollowersModalOpen(true)}>
+                <button type="button" className="profile-stat" onClick={() => { setFollowsFilter(""); setActiveSubTab("followers"); }}>
                   <div className="profile-stat-num">{followers.length}</div>
                   <div className="profile-stat-label">FOLLOWERS</div>
                 </button>
@@ -8392,46 +8393,72 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, goToJournal }) {
           <div className="friends-section">
             <div className="profile-lists-header">
               <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR LISTS</div>
-              <button className="pill pill--wine" onClick={() => setCreateListOpen(true)}>+ New list</button>
+              <button className="pill pill--wine" onClick={handleNewListInstant}>+ New list</button>
             </div>
             {listsLoading ? (
               <div className="friends-empty-line">Loading…</div>
-            ) : ownLists.length === 0 ? (
-              <div className="profile-lists-empty">
-                <p>Create your first list</p>
-                <button className="pill pill--wine pill--lg" onClick={() => setCreateListOpen(true)}>+ New list</button>
-              </div>
-            ) : (
+            ) : ownLists.length > 0 && (
               <div className="profile-lists-grid">
                 {ownLists.map((list) => {
                   const filmCount = list.list_films?.[0]?.count || 0;
                   const previews = list.previewPosters || [];
+                  const menuOpen = openMenuListId === list.id;
                   return (
-                    <button key={list.id} type="button" className="list-card" onClick={() => setActiveList(list)}>
-                      <div className="list-card-cover">
-                        {list.cover_image_url ? (
-                          <img src={list.cover_image_url} alt="" className="list-card-cover-img" />
-                        ) : previews.length > 0 ? (
-                          <div className="list-card-cover-grid">
-                            {[0, 1, 2, 3].map((i) => previews[i] ? (
-                              <img key={i} src={`${IMG_BASE}/w185${previews[i]}`} alt="" />
+                    <div key={list.id} className="list-card-wrap">
+                      <button type="button" className="list-card" onClick={() => setActiveList(list)}>
+                        <div className="list-card-cover">
+                          {list.cover_image_url ? (
+                            <img src={list.cover_image_url} alt="" className="list-card-cover-img" />
+                          ) : previews.length > 0 ? (
+                            <div className="list-card-cover-grid">
+                              {[0, 1, 2, 3].map((i) => previews[i] ? (
+                                <img key={i} src={`${IMG_BASE}/w185${previews[i]}`} alt="" />
+                              ) : (
+                                <div key={i} className="list-card-cover-quadrant-empty" />
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="list-card-cover-fallback" />
+                          )}
+                          <span className={`list-card-badge${list.is_public ? " list-card-badge--public" : " list-card-badge--private"}`}>
+                            {list.is_public ? "PUBLIC" : "PRIVATE"}
+                          </span>
+                        </div>
+                        <div className="list-card-body">
+                          <div className="list-card-name">{list.name}</div>
+                          <div className="list-card-count">{filmCount} {filmCount === 1 ? "FILM" : "FILMS"}</div>
+                          {list.description && <div className="list-card-desc">{list.description}</div>}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        className="list-card-menu-btn"
+                        onClick={(e) => { e.stopPropagation(); setOpenMenuListId(menuOpen ? null : list.id); }}
+                        aria-label="List options"
+                      >
+                        ⋯
+                      </button>
+                      {menuOpen && (
+                        <div ref={menuRef} className="list-card-menu">
+                          <button type="button" className="list-card-menu-item" onClick={() => { setOpenMenuListId(null); setActiveList(list); }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                            Edit
+                          </button>
+                          <button type="button" className="list-card-menu-item" onClick={() => handleToggleListPrivacy(list)}>
+                            {list.is_public ? (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
                             ) : (
-                              <div key={i} className="list-card-cover-quadrant-empty" />
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="list-card-cover-fallback" />
-                        )}
-                        <span className={`list-card-badge${list.is_public ? " list-card-badge--public" : " list-card-badge--private"}`}>
-                          {list.is_public ? "PUBLIC" : "PRIVATE"}
-                        </span>
-                      </div>
-                      <div className="list-card-body">
-                        <div className="list-card-name">{list.name}</div>
-                        <div className="list-card-count">{filmCount} {filmCount === 1 ? "FILM" : "FILMS"}</div>
-                        {list.description && <div className="list-card-desc">{list.description}</div>}
-                      </div>
-                    </button>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
+                            )}
+                            Make {list.is_public ? "private" : "public"}
+                          </button>
+                          <button type="button" className="list-card-menu-item list-card-menu-item--danger" onClick={() => handleDeleteList(list.id)}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /></svg>
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -8439,22 +8466,27 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, goToJournal }) {
           </div>
 
           <div className="friends-section">
-            <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR ACTIVITY</div>
+            <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />RECENTLY WATCHED</div>
             {ownActivity.length === 0 ? (
-              <div className="friends-empty-line">Activity will appear here as you log films.</div>
+              <div className="friends-empty-line">Films you log will appear here.</div>
             ) : (
-              ownActivity.map((item) => (
-                <ActivityCard
-                  key={item.id}
-                  item={item}
-                  hideUser
-                  onReact={() => handleReaction(item.id)}
-                  onToggleSave={toggleSave}
-                  isSaved={item.movie ? savedIdSet.has(item.movie.tmdb_id) : false}
-                  reactionCount={reactionCounts[item.id] || 0}
-                  isReacted={userReactions.has(item.id)}
-                />
-              ))
+              <div className="profile-activity-row">
+                {ownActivity.slice(0, 5).map((item) => {
+                  const movie = item.movie;
+                  const rating = watchedRatings?.get(item.tmdb_id);
+                  return (
+                    <div key={item.id} className="profile-activity-card">
+                      {movie?.poster_path ? (
+                        <img src={`${IMG_BASE}/w185${movie.poster_path}`} alt={movie.title || ""} className="profile-activity-poster" />
+                      ) : (
+                        <div className="profile-activity-poster profile-activity-poster--empty" aria-hidden="true" />
+                      )}
+                      <div className="profile-activity-title">{movie?.title || "—"}</div>
+                      {rating != null && <div className="profile-activity-rating">{rating}/100</div>}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
@@ -8470,15 +8502,30 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, goToJournal }) {
             <>
               <div className="ld-header">
                 <div className="ld-header-text">
-                  <h2 className="ld-title">{listDetail.name}</h2>
-                  {listDetail.description && <p className="ld-description">{listDetail.description}</p>}
+                  <input
+                    className="ld-title-edit"
+                    defaultValue={listDetail.name || ""}
+                    placeholder="List name"
+                    maxLength={80}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v && v !== listDetail.name) handleInlineUpdateList(listDetail.id, { name: v });
+                    }}
+                    onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                  />
+                  <textarea
+                    className="ld-description-edit"
+                    defaultValue={listDetail.description || ""}
+                    placeholder="Add a description..."
+                    maxLength={300}
+                    rows={2}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v !== (listDetail.description || "")) handleInlineUpdateList(listDetail.id, { description: v || null });
+                    }}
+                  />
                   <div className="ld-meta">
                     {listDetail.films?.length || 0} films · by @{ownProfile?.username} · {listDetail.is_public ? "PUBLIC" : "PRIVATE"}
-                  </div>
-                  <div className="ld-actions">
-                    <button className="pill pill--wine" onClick={() => document.getElementById("ld-film-search")?.focus()}>+ Add films</button>
-                    <button className="pill pill--ghost" onClick={() => setEditListOpen(true)}>Edit</button>
-                    <button className="pill pill--ghost pill--danger" onClick={handleDeleteList}>Delete</button>
                   </div>
                 </div>
                 <label className="ld-cover-wrap">
@@ -8505,233 +8552,160 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, goToJournal }) {
                 </label>
               </div>
 
-              <div className="ld-search-row">
-                <input
-                  id="ld-film-search"
-                  className="ld-search-input"
-                  type="text"
-                  placeholder="Search any film…"
-                  value={listFilmQuery}
-                  onChange={(e) => setListFilmQuery(e.target.value)}
-                />
-                {listFilmQuery.trim().length >= 2 && (
-                  <div className="ld-search-results">
-                    {listFilmSearching && <div className="ld-search-empty">Searching…</div>}
-                    {!listFilmSearching && listFilmResults.length === 0 && <div className="ld-search-empty">No results</div>}
-                    {!listFilmSearching && listFilmResults.map((m) => {
-                      const inList = listDetail.films.some((f) => f.tmdb_id === m.id);
-                      return (
-                        <button key={m.id} type="button" className="ld-search-result" onClick={() => handleAddFilmToList(m)}>
-                          {m.poster_path ? (
-                            <img src={`${IMG_BASE}/w92${m.poster_path}`} alt="" />
-                          ) : (
-                            <div className="ld-search-result-empty" />
-                          )}
-                          <div className="ld-search-result-info">
-                            <div className="ld-search-result-title">{m.title}</div>
-                            <div className="ld-search-result-year">{m.year}</div>
-                          </div>
-                          <div className={`ld-search-result-badge${inList ? " ld-search-result-badge--on" : ""}`}>
-                            {inList ? "✓" : "+"}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+              <div className="ld-films-section-head">
+                <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />FILMS · {listDetail.films?.length || 0}</div>
+                <span className={`list-card-badge${listDetail.is_public ? " list-card-badge--public" : " list-card-badge--private"} ld-section-badge`}>
+                  {listDetail.is_public ? "PUBLIC" : "PRIVATE"}
+                </span>
               </div>
 
-              <div className="ld-films-grid">
-                {listDetail.films.length === 0 ? (
-                  <div className="ld-empty">No films yet. Search above to add some.</div>
-                ) : listDetail.films.map((f, i) => (
-                  <div
-                    key={f.tmdb_id}
-                    className="ld-film"
-                    draggable={true}
-                    onDragStart={() => { draggedFilmIndex.current = i; }}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const from = draggedFilmIndex.current;
-                      if (from != null && from !== i) handleReorderFilms(from, i);
-                      draggedFilmIndex.current = null;
-                    }}
-                  >
-                    <div className="ld-film-poster-wrap">
-                      {f.poster_path ? (
-                        <img className="ld-film-poster" src={`${IMG_BASE}/w342${f.poster_path}`} alt={f.title} />
-                      ) : (
-                        <div className="ld-film-poster ld-film-poster--empty" />
-                      )}
-                      <button type="button" className="ld-film-remove" onClick={() => handleRemoveFilmFromList(f.tmdb_id)} aria-label="Remove">×</button>
+              <input
+                className="ld-always-search"
+                type="text"
+                placeholder="Search to add films..."
+                value={listFilmQuery}
+                onChange={(e) => setListFilmQuery(e.target.value)}
+              />
+
+              {listFilmQuery.trim().length >= 2 && (
+                <div className="ld-search-row-inline">
+                  {listFilmSearching && <div className="ld-search-empty">Searching…</div>}
+                  {!listFilmSearching && listFilmResults.length === 0 && <div className="ld-search-empty">No results</div>}
+                  {!listFilmSearching && listFilmResults.length > 0 && (
+                    <div className="ld-search-scroller">
+                      {listFilmResults.map((m) => {
+                        const inList = listDetail.films.some((f) => f.tmdb_id === m.id);
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            className={`ld-search-card${inList ? " ld-search-card--in-list" : ""}`}
+                            onClick={() => handleAddFilmToList(m)}
+                            title={inList ? "Click to remove" : "Click to add"}
+                          >
+                            {m.poster_path ? (
+                              <img src={`${IMG_BASE}/w185${m.poster_path}`} alt="" className="ld-search-card-poster" />
+                            ) : (
+                              <div className="ld-search-card-poster ld-search-card-poster--empty" />
+                            )}
+                            {inList && <div className="ld-search-card-check">✓</div>}
+                            <div className="ld-search-card-title">{m.title}</div>
+                          </button>
+                        );
+                      })}
                     </div>
-                    <div className="ld-film-title">{f.title}</div>
-                    <div className="ld-film-year">{f.year || "—"}</div>
-                  </div>
-                ))}
+                  )}
+                </div>
+              )}
+
+              <div className="ld-films-grid">
+                {listDetail.films.length === 0 && !listFilmQuery.trim() ? (
+                  <div className="ld-empty">Search above to add your first film.</div>
+                ) : listDetail.films.map((f, i) => {
+                  const personalRating = watchedRatings?.get(f.tmdb_id);
+                  return (
+                    <div
+                      key={f.tmdb_id}
+                      className="ld-film"
+                      draggable={true}
+                      onDragStart={() => { draggedFilmIndex.current = i; }}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const from = draggedFilmIndex.current;
+                        if (from != null && from !== i) handleReorderFilms(from, i);
+                        draggedFilmIndex.current = null;
+                      }}
+                    >
+                      <div className="ld-film-poster-wrap">
+                        {f.poster_path ? (
+                          <img className="ld-film-poster" src={`${IMG_BASE}/w342${f.poster_path}`} alt={f.title} />
+                        ) : (
+                          <div className="ld-film-poster ld-film-poster--empty" />
+                        )}
+                        <button type="button" className="ld-film-remove" onClick={() => handleRemoveFilmFromList(f.tmdb_id)} aria-label="Remove">×</button>
+                      </div>
+                      <div className="ld-film-title">{f.title}</div>
+                      {personalRating != null && <div className="ld-film-rating">{personalRating}/100</div>}
+                    </div>
+                  );
+                })}
               </div>
             </>
           )}
         </div>
       )}
 
-      {createListOpen && (
-        <div className="ft-modal-backdrop" onClick={() => setCreateListOpen(false)}>
-          <div className="ft-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="ft-modal-head">
-              <h3 className="ft-modal-title">Create new list</h3>
-              <button type="button" className="ft-modal-close" onClick={() => setCreateListOpen(false)} aria-label="Close">✕</button>
-            </div>
-            <form onSubmit={handleCreateList} className="ft-modal-body">
-              <div className="ft-setup-field">
-                <label className="ft-setup-label" htmlFor="cl-name">LIST NAME</label>
-                <input
-                  id="cl-name"
-                  type="text"
-                  className="ft-setup-input"
-                  placeholder="e.g. Comfort movies"
-                  value={createListName}
-                  onChange={(e) => setCreateListName(e.target.value)}
-                  maxLength={80}
-                  autoFocus
-                  required
-                />
-              </div>
-              <div className="ft-setup-field">
-                <label className="ft-setup-label" htmlFor="cl-desc">DESCRIPTION (OPTIONAL)</label>
-                <textarea
-                  id="cl-desc"
-                  className="ft-modal-textarea"
-                  rows={3}
-                  placeholder="What's this list about?"
-                  value={createListDescription}
-                  onChange={(e) => setCreateListDescription(e.target.value)}
-                  maxLength={300}
-                />
-              </div>
-              <div className="ft-setup-privacy">
-                <div className="ft-setup-privacy-text">
-                  <div className="ft-setup-privacy-label">Private list</div>
-                  <div className="ft-setup-privacy-sub">Only you can see this list</div>
-                </div>
-                <label className="ft-toggle">
-                  <input type="checkbox" checked={createListPrivate} onChange={(e) => setCreateListPrivate(e.target.checked)} />
-                  <span className="ft-toggle-track"><span className="ft-toggle-knob" /></span>
-                </label>
-              </div>
-              <button type="submit" className="ft-setup-submit" disabled={createListBusy || !createListName.trim()}>
-                {createListBusy ? "Creating…" : "Create list"}
+      {(activeSubTab === "following" || activeSubTab === "followers") && !activeList && (
+        (() => {
+          const isFollowing = activeSubTab === "following";
+          const list = isFollowing ? following : followers;
+          const q = followsFilter.trim().toLowerCase();
+          const filtered = q
+            ? list.filter((p) =>
+                (p.username || "").toLowerCase().includes(q) ||
+                (p.display_name || "").toLowerCase().includes(q)
+              )
+            : list;
+          return (
+            <div className="follow-list-view">
+              <button type="button" className="follow-back" onClick={() => setActiveSubTab("profile")}>
+                ← {ownProfile?.username || "back"}
               </button>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {editListOpen && listDetail && (
-        <div className="ft-modal-backdrop" onClick={() => setEditListOpen(false)}>
-          <div className="ft-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="ft-modal-head">
-              <h3 className="ft-modal-title">Edit list</h3>
-              <button type="button" className="ft-modal-close" onClick={() => setEditListOpen(false)} aria-label="Close">✕</button>
-            </div>
-            <div className="ft-modal-body">
-              <div className="ft-setup-field">
-                <label className="ft-setup-label" htmlFor="el-name">LIST NAME</label>
-                <input
-                  id="el-name"
-                  type="text"
-                  className="ft-setup-input"
-                  value={editListName}
-                  onChange={(e) => setEditListName(e.target.value)}
-                  maxLength={80}
-                />
+              <div className="follow-tabs">
+                <button
+                  type="button"
+                  className={`follow-tab${!isFollowing ? " active" : ""}`}
+                  onClick={() => setActiveSubTab("followers")}
+                >
+                  Followers {followers.length}
+                </button>
+                <button
+                  type="button"
+                  className={`follow-tab${isFollowing ? " active" : ""}`}
+                  onClick={() => setActiveSubTab("following")}
+                >
+                  Following {following.length}
+                </button>
               </div>
-              <div className="ft-setup-field">
-                <label className="ft-setup-label" htmlFor="el-desc">DESCRIPTION</label>
-                <textarea
-                  id="el-desc"
-                  className="ft-modal-textarea"
-                  rows={3}
-                  value={editListDescription}
-                  onChange={(e) => setEditListDescription(e.target.value)}
-                  maxLength={300}
-                />
-              </div>
-              <div className="ft-setup-privacy">
-                <div className="ft-setup-privacy-text">
-                  <div className="ft-setup-privacy-label">Private list</div>
-                  <div className="ft-setup-privacy-sub">Only you can see this list</div>
-                </div>
-                <label className="ft-toggle">
-                  <input type="checkbox" checked={editListPrivate} onChange={(e) => setEditListPrivate(e.target.checked)} />
-                  <span className="ft-toggle-track"><span className="ft-toggle-knob" /></span>
-                </label>
-              </div>
-              <button type="button" className="ft-setup-submit" onClick={handleSaveListEdit} disabled={!editListName.trim()}>
-                Save changes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {followingModalOpen && (
-        <div className="ft-modal-backdrop" onClick={() => setFollowingModalOpen(false)}>
-          <div className="ft-modal ft-modal--users" onClick={(e) => e.stopPropagation()}>
-            <div className="ft-modal-head">
-              <h3 className="ft-modal-title">Following · {following.length}</h3>
-              <button type="button" className="ft-modal-close" onClick={() => setFollowingModalOpen(false)} aria-label="Close">✕</button>
-            </div>
-            <div className="ft-modal-body">
-              {following.length === 0 ? (
-                <div className="friends-empty-line">You're not following anyone yet.</div>
+              <input
+                type="text"
+                className="follow-filter-input"
+                placeholder="Search"
+                value={followsFilter}
+                onChange={(e) => setFollowsFilter(e.target.value)}
+              />
+
+              {filtered.length === 0 ? (
+                <div className="friends-empty-line">{q ? "No matches." : isFollowing ? "You're not following anyone yet." : "No followers yet."}</div>
               ) : (
-                <div className="user-card-grid">
-                  {following.map((p) => (
-                    <UserCard
-                      key={p.id}
-                      profile={p}
-                      status="accepted"
-                      currentUserId={userId}
-                      onFollow={handleFollow}
-                      onUnfollow={handleUnfollow}
-                    />
-                  ))}
+                <div className="follow-rows">
+                  {filtered.map((p) => {
+                    const isFollowed = followingIdSet.has(p.id);
+                    return (
+                      <div key={p.id} className="follow-row">
+                        <FriendsAvatar profile={p} size={44} />
+                        <div className="follow-row-info">
+                          <div className="follow-row-username">{p.username || "user"}</div>
+                          {p.display_name && <div className="follow-row-display">{p.display_name}</div>}
+                        </div>
+                        {p.id !== userId && (
+                          isFollowed ? (
+                            <button className="pill pill--ghost" onClick={() => handleUnfollow(p.id)}>Following</button>
+                          ) : (
+                            <button className="pill pill--wine" onClick={() => handleFollow(p.id)}>Follow</button>
+                          )
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {followersModalOpen && (
-        <div className="ft-modal-backdrop" onClick={() => setFollowersModalOpen(false)}>
-          <div className="ft-modal ft-modal--users" onClick={(e) => e.stopPropagation()}>
-            <div className="ft-modal-head">
-              <h3 className="ft-modal-title">Followers · {followers.length}</h3>
-              <button type="button" className="ft-modal-close" onClick={() => setFollowersModalOpen(false)} aria-label="Close">✕</button>
-            </div>
-            <div className="ft-modal-body">
-              {followers.length === 0 ? (
-                <div className="friends-empty-line">No followers yet.</div>
-              ) : (
-                <div className="user-card-grid">
-                  {followers.map((p) => (
-                    <UserCard
-                      key={p.id}
-                      profile={p}
-                      status={followingIdSet.has(p.id) ? "accepted" : null}
-                      currentUserId={userId}
-                      onFollow={handleFollow}
-                      onUnfollow={handleUnfollow}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+          );
+        })()
       )}
     </div>
   );
@@ -9801,6 +9775,7 @@ function MainApp() {
             toggleSave={guardedToggleSave}
             savedIds={savedIds}
             watchedMovies={watchedMovies}
+            watchedRatings={watchedRatings}
             goToJournal={goToJournal}
           />
         )}
