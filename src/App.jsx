@@ -7628,7 +7628,7 @@ function UserCard({ profile, status, currentUserId, onFollow, onUnfollow, onAcce
   );
 }
 
-function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJournal }) {
+function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJournal, ownLists, setOwnLists, listsLoading }) {
   const { user, isGuest, signInWithGoogle } = useAuth();
   const [, setSelectedMovie] = useMovieModal();
 
@@ -7663,9 +7663,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
   const [reactionCounts, setReactionCounts] = useState({});
   const [userReactions, setUserReactions] = useState(() => new Set());
 
-  // Lists
-  const [ownLists, setOwnLists] = useState([]);
-  const [listsLoading, setListsLoading] = useState(true);
+  // Lists (ownLists + listsLoading are lifted to MainApp; activeList + listDetail stay local)
   const [activeList, setActiveList] = useState(null);
   const [listDetail, setListDetail] = useState(null);
   const [listLoading, setListLoading] = useState(false);
@@ -7673,6 +7671,10 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
   // ListCard "..." dropdown menu — one open at a time
   const [openMenuListId, setOpenMenuListId] = useState(null);
   const menuRef = useRef(null);
+
+  // Shared hidden file input for "Change cover" — tracks target list via state
+  const coverPickerInputRef = useRef(null);
+  const [coverPickerListId, setCoverPickerListId] = useState(null);
 
   // Following/Followers full-page view filter
   const [followsFilter, setFollowsFilter] = useState("");
@@ -7692,12 +7694,11 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
   const savedIdSet = useMemo(() => new Set(savedIds || []), [savedIds]);
   const followingIdSet = useMemo(() => new Set(following.map((p) => p.id)), [following]);
 
-  // Initial load
+  // Initial load (ownLists is loaded in MainApp and passed in via props)
   useEffect(() => {
     if (!userId || isGuest) {
       setFeedLoading(false);
       setProfileLoading(false);
-      setListsLoading(false);
       return;
     }
     let cancelled = false;
@@ -7709,14 +7710,13 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
         setProfileLoading(false);
         if (profile) {
           setEditDisplayName(profile.display_name || "");
-          const [feed, trending, fol, flw, pend, ownAct, lists] = await Promise.all([
+          const [feed, trending, fol, flw, pend, ownAct] = await Promise.all([
             friendsService.getActivityFeed(userId).catch(() => []),
             friendsService.getTrendingInCircle(userId).catch(() => []),
             friendsService.getFollowing(userId).catch(() => []),
             friendsService.getFollowers(userId).catch(() => []),
             friendsService.getPendingRequests(userId).catch(() => []),
             friendsService.getOwnActivity(userId).catch(() => []),
-            listsService.getOwnLists(userId).catch(() => []),
           ]);
           if (cancelled) return;
           setFeedItems(feed);
@@ -7725,8 +7725,6 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
           setFollowers(flw);
           setPendingRequests(pend);
           setOwnActivity(ownAct);
-          setOwnLists(lists);
-          setListsLoading(false);
 
           // Batch-load reactions for all visible activity items
           const ids = [...new Set([...feed, ...ownAct].map((i) => i.id).filter(Boolean))];
@@ -7749,7 +7747,6 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
       } finally {
         if (!cancelled) {
           setFeedLoading(false);
-          setListsLoading(false);
         }
       }
     })();
@@ -8005,6 +8002,74 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
       setListDetail((prev) => prev && prev.id === list.id ? { ...prev, ...updated } : prev);
       setOpenMenuListId(null);
     } catch (e) { console.error("toggle privacy failed", e); }
+  };
+
+  // "Change cover" — opens the shared hidden file input, remembers which list
+  const handleListChangeCover = (list) => {
+    setCoverPickerListId(list.id);
+    setOpenMenuListId(null);
+    // Defer click until after state flush so the input is ready
+    setTimeout(() => coverPickerInputRef.current?.click(), 0);
+  };
+
+  const handleCoverPickerSelected = async (e) => {
+    const file = e.target.files?.[0];
+    const listId = coverPickerListId;
+    e.target.value = "";
+    if (!file || !listId) return;
+    try {
+      const url = await listsService.uploadListCover(listId, file);
+      setOwnLists((prev) => prev.map((l) => l.id === listId ? { ...l, cover_image_url: url } : l));
+      setListDetail((prev) => prev && prev.id === listId ? { ...prev, cover_image_url: url } : prev);
+      Toast.fire({ icon: "success", title: "Cover updated" });
+    } catch (err) {
+      console.error("cover upload failed", err);
+      Toast.fire({ icon: "error", title: "Cover upload failed" });
+    } finally {
+      setCoverPickerListId(null);
+    }
+  };
+
+  // "Share" — copies a deep link to clipboard
+  const handleListShare = (list) => {
+    const url = `${window.location.origin}/list/${list.id}`;
+    navigator.clipboard?.writeText(url).catch(() => {});
+    Toast.fire({ icon: "success", title: "Link copied!" });
+    setOpenMenuListId(null);
+  };
+
+  // "Duplicate" — clone list metadata + add each film sequentially
+  const handleListDuplicate = async (list) => {
+    if (!userId) return;
+    setOpenMenuListId(null);
+    try {
+      const newList = await listsService.createList(userId, {
+        name: `${list.name} (copy)`,
+        description: list.description,
+        is_public: list.is_public,
+      });
+      const detail = await listsService.getList(list.id);
+      const films = detail.films || [];
+      for (const film of films) {
+        await listsService.addFilmToList(newList.id, {
+          id: film.tmdb_id,
+          title: film.title,
+          poster_path: film.poster_path,
+          year: film.year,
+          rating: film.rating,
+          synopsis: film.synopsis,
+          genre_ids: film.genre_ids || [],
+        });
+      }
+      setOwnLists((prev) => [
+        { ...newList, list_films: [{ count: films.length }], previewPosters: list.previewPosters || [] },
+        ...prev,
+      ]);
+      Toast.fire({ icon: "success", title: "List duplicated!" });
+    } catch (err) {
+      console.error("duplicate list failed", err);
+      Toast.fire({ icon: "error", title: "Duplicate failed" });
+    }
   };
 
   const handleAddFilmToList = async (movie) => {
@@ -8398,6 +8463,14 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
             {listsLoading ? (
               <div className="friends-empty-line">Loading…</div>
             ) : ownLists.length > 0 && (
+              <>
+              <input
+                ref={coverPickerInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handleCoverPickerSelected}
+              />
               <div className="profile-lists-grid">
                 {ownLists.map((list) => {
                   const filmCount = list.list_films?.[0]?.count || 0;
@@ -8420,14 +8493,17 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                           ) : (
                             <div className="list-card-cover-fallback" />
                           )}
-                          <span className={`list-card-badge${list.is_public ? " list-card-badge--public" : " list-card-badge--private"}`}>
-                            {list.is_public ? "PUBLIC" : "PRIVATE"}
+                          <span className="list-card-privacy" aria-label={list.is_public ? "Public" : "Private"}>
+                            {list.is_public ? (
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
+                            ) : (
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                            )}
                           </span>
                         </div>
-                        <div className="list-card-body">
+                        <div className="list-card-info">
                           <div className="list-card-name">{list.name}</div>
                           <div className="list-card-count">{filmCount} {filmCount === 1 ? "FILM" : "FILMS"}</div>
-                          {list.description && <div className="list-card-desc">{list.description}</div>}
                         </div>
                       </button>
                       <button
@@ -8439,12 +8515,21 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                         ⋯
                       </button>
                       {menuOpen && (
-                        <div ref={menuRef} className="list-card-menu">
-                          <button type="button" className="list-card-menu-item" onClick={() => { setOpenMenuListId(null); setActiveList(list); }}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                            Edit
+                        <div ref={menuRef} className="list-card-dropdown">
+                          <button type="button" className="list-card-dropdown-item" onClick={() => { setOpenMenuListId(null); setActiveList(list); }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
+                            Rename
                           </button>
-                          <button type="button" className="list-card-menu-item" onClick={() => handleToggleListPrivacy(list)}>
+                          <button type="button" className="list-card-dropdown-item" onClick={() => { setOpenMenuListId(null); setActiveList(list); }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="14" y2="12" /><line x1="4" y1="18" x2="20" y2="18" /></svg>
+                            Edit description
+                          </button>
+                          <button type="button" className="list-card-dropdown-item" onClick={() => handleListChangeCover(list)}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
+                            Change cover
+                          </button>
+                          <div className="list-card-dropdown-divider" />
+                          <button type="button" className="list-card-dropdown-item" onClick={() => handleToggleListPrivacy(list)}>
                             {list.is_public ? (
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
                             ) : (
@@ -8452,7 +8537,16 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                             )}
                             Make {list.is_public ? "private" : "public"}
                           </button>
-                          <button type="button" className="list-card-menu-item list-card-menu-item--danger" onClick={() => handleDeleteList(list.id)}>
+                          <button type="button" className="list-card-dropdown-item" onClick={() => handleListShare(list)}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" /></svg>
+                            Share
+                          </button>
+                          <div className="list-card-dropdown-divider" />
+                          <button type="button" className="list-card-dropdown-item" onClick={() => handleListDuplicate(list)}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                            Duplicate
+                          </button>
+                          <button type="button" className="list-card-dropdown-item list-card-dropdown-item--danger" onClick={() => handleDeleteList(list.id)}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /></svg>
                             Delete
                           </button>
@@ -8462,6 +8556,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                   );
                 })}
               </div>
+              </>
             )}
           </div>
 
@@ -8501,7 +8596,34 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
           ) : (
             <>
               <div className="ld-header">
-                <div className="ld-header-text">
+                <label className="ld-cover-wrap">
+                  {listDetail.cover_image_url ? (
+                    <img src={listDetail.cover_image_url} alt="" className="ld-cover-img" />
+                  ) : (listDetail.films || []).some((f) => f.poster_path) ? (
+                    <div className="ld-cover-fallback">
+                      {[0, 1, 2, 3].map((i) => {
+                        const f = listDetail.films?.[i];
+                        return f?.poster_path ? (
+                          <img key={i} src={`${IMG_BASE}/w185${f.poster_path}`} alt="" />
+                        ) : (
+                          <div key={i} className="ld-cover-quadrant-empty" />
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="ld-cover-fallback-flat" />
+                  )}
+                  <span className="ld-cover-overlay" aria-hidden="true">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
+                  </span>
+                  <input type="file" accept="image/*" className="ld-cover-input" onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleUploadCover(f);
+                    e.target.value = "";
+                  }} />
+                </label>
+                <div className="ld-info">
+                  <div className="ld-type-label">LIST</div>
                   <input
                     className="ld-title-edit"
                     defaultValue={listDetail.name || ""}
@@ -8525,47 +8647,42 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                     }}
                   />
                   <div className="ld-meta">
-                    {listDetail.films?.length || 0} films · by @{ownProfile?.username} · {listDetail.is_public ? "PUBLIC" : "PRIVATE"}
+                    {listDetail.films?.length || 0} films · {listDetail.is_public ? "Public" : "Private"}
+                  </div>
+                  <div className="ld-actions">
+                    <button
+                      type="button"
+                      className={`pill ${listDetail.is_public ? "pill--ghost" : "pill--wine"}`}
+                      onClick={() => handleToggleListPrivacy(listDetail)}
+                    >
+                      {listDetail.is_public ? "Public" : "Private"}
+                    </button>
+                    <button type="button" className="ld-delete-btn" onClick={() => handleDeleteList(listDetail.id)}>
+                      Delete list
+                    </button>
                   </div>
                 </div>
-                <label className="ld-cover-wrap">
-                  {listDetail.cover_image_url ? (
-                    <img src={listDetail.cover_image_url} alt="" className="ld-cover-img" />
-                  ) : (
-                    <div className="ld-cover-fallback">
-                      {[0, 1, 2, 3].map((i) => {
-                        const f = listDetail.films?.[i];
-                        return f?.poster_path ? (
-                          <img key={i} src={`${IMG_BASE}/w185${f.poster_path}`} alt="" />
-                        ) : (
-                          <div key={i} className="ld-cover-quadrant-empty" />
-                        );
-                      })}
-                    </div>
-                  )}
-                  <span className="ld-cover-overlay">Change cover</span>
-                  <input type="file" accept="image/*" className="ld-cover-input" onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleUploadCover(f);
-                    e.target.value = "";
-                  }} />
-                </label>
               </div>
 
-              <div className="ld-films-section-head">
-                <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />FILMS · {listDetail.films?.length || 0}</div>
-                <span className={`list-card-badge${listDetail.is_public ? " list-card-badge--public" : " list-card-badge--private"} ld-section-badge`}>
-                  {listDetail.is_public ? "PUBLIC" : "PRIVATE"}
-                </span>
+              <div className="ld-always-search-wrap">
+                <input
+                  className="ld-always-search"
+                  type="text"
+                  placeholder="Search to add films..."
+                  value={listFilmQuery}
+                  onChange={(e) => setListFilmQuery(e.target.value)}
+                />
+                {listFilmQuery && (
+                  <button
+                    type="button"
+                    className="ld-always-search-clear"
+                    onClick={() => { setListFilmQuery(""); setListFilmResults([]); }}
+                    aria-label="Clear search"
+                  >
+                    ×
+                  </button>
+                )}
               </div>
-
-              <input
-                className="ld-always-search"
-                type="text"
-                placeholder="Search to add films..."
-                value={listFilmQuery}
-                onChange={(e) => setListFilmQuery(e.target.value)}
-              />
 
               {listFilmQuery.trim().length >= 2 && (
                 <div className="ld-search-row-inline">
@@ -8626,6 +8743,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                         <button type="button" className="ld-film-remove" onClick={() => handleRemoveFilmFromList(f.tmdb_id)} aria-label="Remove">×</button>
                       </div>
                       <div className="ld-film-title">{f.title}</div>
+                      {f.year && <div className="ld-film-year">{f.year}</div>}
                       {personalRating != null && <div className="ld-film-rating">{personalRating}/100</div>}
                     </div>
                   );
@@ -8803,6 +8921,9 @@ function MainApp() {
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [chatsLoading, setChatsLoading] = useState(true);
+  // Lifted from FriendsTab so it survives top-tab switches (Friends tab unmounts on switch away)
+  const [ownLists, setOwnLists] = useState([]);
+  const [friendsListsLoading, setFriendsListsLoading] = useState(false);
   const watchlistIdRef = useRef(null); // Supabase UUID of the default Watchlist collection
   const journalEntryIds = useRef(new Map()); // tmdb_id → Supabase journal_entries UUID
   const pendingRatings = useRef({}); // tmdb_id → rating, buffered when entry doesn't exist yet
@@ -9054,6 +9175,25 @@ function MainApp() {
     load();
     return () => { cancelled = true; };
   }, [user]);
+
+  // ── Friends-tab lists: load once per user, persist across top-tab switches ──
+  useEffect(() => {
+    if (!user || isGuest) {
+      setOwnLists([]);
+      setFriendsListsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setFriendsListsLoading(true);
+    listsService.getOwnLists(user.id)
+      .then((lists) => {
+        if (cancelled) return;
+        setOwnLists(lists || []);
+      })
+      .catch((e) => { console.error("Failed to load lists:", e); })
+      .finally(() => { if (!cancelled) setFriendsListsLoading(false); });
+    return () => { cancelled = true; };
+  }, [user, isGuest]);
 
   // ── Chat CRUD handlers (Supabase-first for authenticated, localStorage for guest) ──
 
@@ -9777,6 +9917,9 @@ function MainApp() {
             watchedMovies={watchedMovies}
             watchedRatings={watchedRatings}
             goToJournal={goToJournal}
+            ownLists={ownLists}
+            setOwnLists={setOwnLists}
+            listsLoading={friendsListsLoading}
           />
         )}
       </div>
