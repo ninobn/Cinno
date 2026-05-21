@@ -7676,6 +7676,10 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
   const coverPickerInputRef = useRef(null);
   const [coverPickerListId, setCoverPickerListId] = useState(null);
 
+  // Floating search dropdown in List Detail
+  const searchWrapRef = useRef(null);
+  const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
+
   // Following/Followers full-page view filter
   const [followsFilter, setFollowsFilter] = useState("");
 
@@ -7793,6 +7797,18 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [openMenuListId]);
+
+  // Close List Detail search dropdown on outside click
+  useEffect(() => {
+    if (!searchDropdownOpen) return;
+    const handler = (e) => {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target)) {
+        setSearchDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [searchDropdownOpen]);
 
   // Debounced film search inside list detail
   useEffect(() => {
@@ -8624,16 +8640,14 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                 </label>
                 <div className="ld-info">
                   <div className="ld-type-label">LIST</div>
-                  <input
+                  <div
+                    key={listDetail.id}
                     className="ld-title-edit"
-                    defaultValue={listDetail.name || ""}
-                    placeholder="List name"
-                    maxLength={80}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim();
-                      if (v && v !== listDetail.name) handleInlineUpdateList(listDetail.id, { name: v });
-                    }}
-                    onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                    contentEditable={true}
+                    suppressContentEditableWarning={true}
+                    dangerouslySetInnerHTML={{ __html: listDetail.name || "" }}
+                    onInput={(e) => handleInlineUpdateList(activeList.id, { name: e.currentTarget.textContent.trim() })}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
                   />
                   <textarea
                     className="ld-description-edit"
@@ -8664,56 +8678,63 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                 </div>
               </div>
 
-              <div className="ld-always-search-wrap">
+              <div className="ld-always-search-wrap" ref={searchWrapRef}>
                 <input
                   className="ld-always-search"
                   type="text"
                   placeholder="Search to add films..."
                   value={listFilmQuery}
-                  onChange={(e) => setListFilmQuery(e.target.value)}
+                  onChange={(e) => { setListFilmQuery(e.target.value); setSearchDropdownOpen(true); }}
+                  onFocus={() => setSearchDropdownOpen(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      setListFilmQuery("");
+                      setListFilmResults([]);
+                      setSearchDropdownOpen(false);
+                      e.target.blur();
+                    }
+                  }}
                 />
                 {listFilmQuery && (
                   <button
                     type="button"
                     className="ld-always-search-clear"
-                    onClick={() => { setListFilmQuery(""); setListFilmResults([]); }}
+                    onClick={() => { setListFilmQuery(""); setListFilmResults([]); setSearchDropdownOpen(false); }}
                     aria-label="Clear search"
                   >
                     ×
                   </button>
                 )}
+                {searchDropdownOpen && listFilmQuery.trim().length >= 2 && (
+                  <div className="ld-search-dropdown">
+                    {listFilmSearching && <div className="ld-search-empty">Searching…</div>}
+                    {!listFilmSearching && listFilmResults.length === 0 && <div className="ld-search-empty">No results</div>}
+                    {!listFilmSearching && listFilmResults.length > 0 && listFilmResults.map((m) => {
+                      const inList = listDetail.films.some((f) => f.tmdb_id === m.id);
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          className="ld-search-dropdown-item"
+                          onClick={() => handleAddFilmToList(m)}
+                          title={inList ? "Click to remove" : "Click to add"}
+                        >
+                          {m.poster_path ? (
+                            <img src={`${IMG_BASE}/w185${m.poster_path}`} alt="" className="ld-search-dropdown-poster" />
+                          ) : (
+                            <div className="ld-search-dropdown-poster ld-search-dropdown-poster--empty" />
+                          )}
+                          <div className="ld-search-dropdown-info">
+                            <div className="ld-search-dropdown-title">{m.title}</div>
+                            <div className="ld-search-dropdown-meta">{m.year}{m.genre ? ` · ${m.genre}` : ""}</div>
+                          </div>
+                          <span className="ld-search-dropdown-action">{inList ? "✓" : "+"}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-
-              {listFilmQuery.trim().length >= 2 && (
-                <div className="ld-search-row-inline">
-                  {listFilmSearching && <div className="ld-search-empty">Searching…</div>}
-                  {!listFilmSearching && listFilmResults.length === 0 && <div className="ld-search-empty">No results</div>}
-                  {!listFilmSearching && listFilmResults.length > 0 && (
-                    <div className="ld-search-scroller">
-                      {listFilmResults.map((m) => {
-                        const inList = listDetail.films.some((f) => f.tmdb_id === m.id);
-                        return (
-                          <button
-                            key={m.id}
-                            type="button"
-                            className={`ld-search-card${inList ? " ld-search-card--in-list" : ""}`}
-                            onClick={() => handleAddFilmToList(m)}
-                            title={inList ? "Click to remove" : "Click to add"}
-                          >
-                            {m.poster_path ? (
-                              <img src={`${IMG_BASE}/w185${m.poster_path}`} alt="" className="ld-search-card-poster" />
-                            ) : (
-                              <div className="ld-search-card-poster ld-search-card-poster--empty" />
-                            )}
-                            {inList && <div className="ld-search-card-check">✓</div>}
-                            <div className="ld-search-card-title">{m.title}</div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
 
               <div className="ld-films-grid">
                 {listDetail.films.length === 0 && !listFilmQuery.trim() ? (

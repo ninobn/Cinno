@@ -12760,6 +12760,8 @@ body {
   min-width: 200px;
   border-radius: 4px;
   transition: background 160ms ease;
+  overflow: visible !important;
+  padding-bottom: 14px;
 }
 .ld-title-edit:hover, .ld-title-edit:focus {
   background: rgba(138, 58, 74, 0.06);
@@ -12827,67 +12829,89 @@ body {
 }
 .ld-always-search-clear:hover { color: var(--ink); }
 
-.ld-search-row-inline { margin-bottom: 20px; }
 .ld-search-empty {
   padding: 12px;
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 13px;
   color: var(--subtle);
 }
-.ld-search-scroller {
-  display: flex;
-  gap: 10px;
-  overflow-x: auto;
-  padding-bottom: 8px;
-  scrollbar-width: thin;
-}
-.ld-search-card {
-  flex-shrink: 0;
-  width: 80px;
-  background: transparent;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  text-align: left;
-  position: relative;
-}
-.ld-search-card-poster {
-  width: 80px;
-  height: 120px;
-  border-radius: 6px;
-  object-fit: cover;
-  display: block;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-  transition: transform 160ms ease;
-}
-.ld-search-card-poster--empty { background: linear-gradient(135deg, #2a1520, #1a0a14); }
-.ld-search-card:hover .ld-search-card-poster { transform: translateY(-2px); }
-.ld-search-card-check {
+
+/* Floating search dropdown */
+.ld-search-dropdown {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #8a3a4a;
-  color: #f5f0eb;
-  font-size: 12px;
-  font-weight: 700;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  z-index: 50;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px;
+}
+[data-theme="dark"] .ld-search-dropdown {
+  background: #2A1420;
+  border-color: rgba(244, 237, 225, 0.1);
+}
+.ld-search-dropdown-item {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  color: var(--ink);
+  transition: background 160ms ease;
 }
-.ld-search-card--in-list .ld-search-card-poster { opacity: 0.55; }
-.ld-search-card-title {
+.ld-search-dropdown-item:hover { background: rgba(26, 20, 16, 0.06); }
+[data-theme="dark"] .ld-search-dropdown-item:hover { background: rgba(244, 237, 225, 0.06); }
+.ld-search-dropdown-poster {
+  width: 36px;
+  height: 54px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+  display: block;
+}
+.ld-search-dropdown-poster--empty { background: linear-gradient(135deg, #2a1520, #1a0a14); }
+.ld-search-dropdown-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.ld-search-dropdown-title {
   font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-top: 6px;
-  max-width: 80px;
+}
+.ld-search-dropdown-meta {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  color: var(--subtle);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.ld-search-dropdown-action {
+  margin-left: auto;
+  font-size: 18px;
+  font-weight: 700;
+  color: #8a3a4a;
+  flex-shrink: 0;
+  padding: 0 6px;
+  line-height: 1;
 }
 
 .ld-empty {
@@ -12952,9 +12976,13 @@ body {
   font-size: 12px;
   font-weight: 600;
   color: var(--ink);
-  white-space: nowrap;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.4;
+  padding-bottom: 6px;
 }
 .ld-film-year {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
