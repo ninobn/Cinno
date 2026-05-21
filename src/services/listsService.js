@@ -4,13 +4,36 @@ import { searchMovies } from '../tmdb.js';
 // ─── Lists CRUD ──────────────────────────────────────────────────────────────
 
 export async function getOwnLists(userId) {
-  const { data, error } = await supabase
+  const { data: lists, error } = await supabase
     .from('lists')
     .select('*, list_films(count)')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false });
   if (error) throw error;
-  return data || [];
+  if (!lists || lists.length === 0) return [];
+
+  // Fetch preview posters (up to 4 per list) in a single batched query.
+  // Postgrest can't natively LIMIT 4 PER GROUP — fetch all rows for these lists
+  // ordered by (list_id, sort_order), then group + slice in JS.
+  const listIds = lists.map((l) => l.id);
+  const { data: filmRows, error: filmsError } = await supabase
+    .from('list_films')
+    .select('list_id, sort_order, movies_cache(poster_path)')
+    .in('list_id', listIds)
+    .order('list_id', { ascending: true })
+    .order('sort_order', { ascending: true });
+  if (filmsError) throw filmsError;
+
+  const postersByList = {};
+  (filmRows || []).forEach((row) => {
+    const lid = row.list_id;
+    if (!postersByList[lid]) postersByList[lid] = [];
+    if (postersByList[lid].length >= 4) return;
+    const p = row.movies_cache?.poster_path;
+    if (p) postersByList[lid].push(p);
+  });
+
+  return lists.map((l) => ({ ...l, previewPosters: postersByList[l.id] || [] }));
 }
 
 export async function getPublicLists(userId) {

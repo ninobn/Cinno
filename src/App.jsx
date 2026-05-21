@@ -13,6 +13,7 @@ import * as watchlistService from "./services/watchlistService.js";
 import * as journalService from "./services/journalService.js";
 import * as discoverService from "./services/discoverService.js";
 import * as friendsService from "./services/friendsService.js";
+import * as listsService from "./services/listsService.js";
 import { supabase } from "./supabase.js";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -7627,61 +7628,7 @@ function UserCard({ profile, status, currentUserId, onFollow, onUnfollow, onAcce
   );
 }
 
-function PinSearchPopover({ onPick, onClose, currentUserId }) {
-  const [q, setQ] = useState("");
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!q.trim()) { setResults([]); return; }
-    const t = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const movies = await searchMovies(q);
-        setResults((movies || []).slice(0, 6));
-      } catch (e) {
-        console.error("pin search failed", e);
-      } finally {
-        setLoading(false);
-      }
-    }, 350);
-    return () => clearTimeout(t);
-  }, [q]);
-
-  return (
-    <div className="pin-popover" onClick={(e) => e.stopPropagation()}>
-      <div className="pin-popover-head">
-        <input
-          autoFocus
-          className="pin-popover-input"
-          placeholder="Search a film to pin..."
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <button className="pin-popover-close" onClick={onClose} aria-label="Close">✕</button>
-      </div>
-      <div className="pin-popover-results">
-        {loading && <div className="pin-popover-empty">Searching…</div>}
-        {!loading && q.trim() && results.length === 0 && <div className="pin-popover-empty">No matches</div>}
-        {!loading && results.map((m) => (
-          <button key={m.id} type="button" className="pin-popover-result" onClick={() => onPick(m)}>
-            {m.poster_path ? (
-              <img src={`${IMG_BASE}/w92${m.poster_path}`} alt="" />
-            ) : (
-              <div className="pin-popover-result-empty" />
-            )}
-            <div className="pin-popover-result-info">
-              <div className="pin-popover-result-title">{m.title}</div>
-              <div className="pin-popover-result-year">{m.year || ""}</div>
-            </div>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function FriendsTab({ toggleSave, savedIds }) {
+function FriendsTab({ toggleSave, savedIds, watchedMovies, goToJournal }) {
   const { user, isGuest, signInWithGoogle } = useAuth();
   const [, setSelectedMovie] = useMovieModal();
 
@@ -7709,16 +7656,47 @@ function FriendsTab({ toggleSave, savedIds }) {
   const [editingProfile, setEditingProfile] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState("");
 
-  // Pinned films
-  const [pinnedMovies, setPinnedMovies] = useState([]);
-  const [pinPickerSlot, setPinPickerSlot] = useState(null); // index of slot being filled
-
   // Own activity
   const [ownActivity, setOwnActivity] = useState([]);
 
   // Reactions (batched)
   const [reactionCounts, setReactionCounts] = useState({});
   const [userReactions, setUserReactions] = useState(() => new Set());
+
+  // Lists
+  const [ownLists, setOwnLists] = useState([]);
+  const [listsLoading, setListsLoading] = useState(true);
+  const [activeList, setActiveList] = useState(null);
+  const [listDetail, setListDetail] = useState(null);
+  const [listLoading, setListLoading] = useState(false);
+
+  // Create list modal
+  const [createListOpen, setCreateListOpen] = useState(false);
+  const [createListName, setCreateListName] = useState("");
+  const [createListDescription, setCreateListDescription] = useState("");
+  const [createListPrivate, setCreateListPrivate] = useState(false);
+  const [createListBusy, setCreateListBusy] = useState(false);
+
+  // Edit list modal
+  const [editListOpen, setEditListOpen] = useState(false);
+  const [editListName, setEditListName] = useState("");
+  const [editListDescription, setEditListDescription] = useState("");
+  const [editListPrivate, setEditListPrivate] = useState(false);
+
+  // Following/Followers modals
+  const [followingModalOpen, setFollowingModalOpen] = useState(false);
+  const [followersModalOpen, setFollowersModalOpen] = useState(false);
+
+  // Suggested users (feed empty state)
+  const [suggestedUsers, setSuggestedUsers] = useState([]);
+
+  // List film search (within detail view)
+  const [listFilmQuery, setListFilmQuery] = useState("");
+  const [listFilmResults, setListFilmResults] = useState([]);
+  const [listFilmSearching, setListFilmSearching] = useState(false);
+
+  // Drag-reorder
+  const draggedFilmIndex = useRef(null);
 
   const userId = user?.id;
   const savedIdSet = useMemo(() => new Set(savedIds || []), [savedIds]);
@@ -7729,6 +7707,7 @@ function FriendsTab({ toggleSave, savedIds }) {
     if (!userId || isGuest) {
       setFeedLoading(false);
       setProfileLoading(false);
+      setListsLoading(false);
       return;
     }
     let cancelled = false;
@@ -7740,13 +7719,14 @@ function FriendsTab({ toggleSave, savedIds }) {
         setProfileLoading(false);
         if (profile) {
           setEditDisplayName(profile.display_name || "");
-          const [feed, trending, fol, flw, pend, ownAct] = await Promise.all([
+          const [feed, trending, fol, flw, pend, ownAct, lists] = await Promise.all([
             friendsService.getActivityFeed(userId).catch(() => []),
             friendsService.getTrendingInCircle(userId).catch(() => []),
             friendsService.getFollowing(userId).catch(() => []),
             friendsService.getFollowers(userId).catch(() => []),
             friendsService.getPendingRequests(userId).catch(() => []),
             friendsService.getOwnActivity(userId).catch(() => []),
+            listsService.getOwnLists(userId).catch(() => []),
           ]);
           if (cancelled) return;
           setFeedItems(feed);
@@ -7755,6 +7735,8 @@ function FriendsTab({ toggleSave, savedIds }) {
           setFollowers(flw);
           setPendingRequests(pend);
           setOwnActivity(ownAct);
+          setOwnLists(lists);
+          setListsLoading(false);
 
           // Batch-load reactions for all visible activity items
           const ids = [...new Set([...feed, ...ownAct].map((i) => i.id).filter(Boolean))];
@@ -7775,33 +7757,67 @@ function FriendsTab({ toggleSave, savedIds }) {
       } catch (e) {
         console.error("FriendsTab load failed", e);
       } finally {
-        if (!cancelled) setFeedLoading(false);
+        if (!cancelled) {
+          setFeedLoading(false);
+          setListsLoading(false);
+        }
       }
     })();
     return () => { cancelled = true; };
   }, [userId, isGuest]);
 
-  // Hydrate pinned films from movies_cache
+  // Load suggested users when feed is empty
   useEffect(() => {
-    const ids = ownProfile?.pinned_film_ids;
-    if (!ids?.length) { setPinnedMovies([]); return; }
+    if (!userId || feedLoading || feedItems.length > 0) return;
     let cancelled = false;
-    (async () => {
-      try {
-        const { data } = await supabase
-          .from("movies_cache")
-          .select("tmdb_id, title, poster_path, year")
-          .in("tmdb_id", ids);
+    friendsService.searchUsers("", userId)
+      .then((all) => {
         if (cancelled) return;
-        const map = {};
-        (data || []).forEach((m) => { map[m.tmdb_id] = m; });
-        setPinnedMovies(ids.map((id) => map[id]).filter(Boolean));
-      } catch (e) {
-        console.error("pinned films load failed", e);
-      }
-    })();
+        const folSet = new Set(following.map((f) => f.id));
+        setSuggestedUsers((all || []).filter((u) => !folSet.has(u.id)).slice(0, 5));
+      })
+      .catch(() => {});
     return () => { cancelled = true; };
-  }, [ownProfile?.pinned_film_ids]);
+  }, [userId, feedLoading, feedItems.length, following]);
+
+  // Load list detail when a list becomes active
+  useEffect(() => {
+    if (!activeList) { setListDetail(null); return; }
+    let cancelled = false;
+    setListLoading(true);
+    listsService.getList(activeList.id)
+      .then((detail) => {
+        if (cancelled) return;
+        setListDetail(detail);
+        setEditListName(detail.name || "");
+        setEditListDescription(detail.description || "");
+        setEditListPrivate(!detail.is_public);
+      })
+      .catch((e) => { console.error("list load failed", e); })
+      .finally(() => { if (!cancelled) setListLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeList]);
+
+  // Debounced film search inside list detail
+  useEffect(() => {
+    if (!listFilmQuery.trim() || listFilmQuery.trim().length < 2) {
+      setListFilmResults([]);
+      return;
+    }
+    setListFilmSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const res = await listsService.searchFilmsForList(listFilmQuery.trim());
+        setListFilmResults(res || []);
+      } catch (e) {
+        console.error("film search failed", e);
+        setListFilmResults([]);
+      } finally {
+        setListFilmSearching(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [listFilmQuery]);
 
   // Debounced user search
   useEffect(() => {
@@ -7945,25 +7961,135 @@ function FriendsTab({ toggleSave, savedIds }) {
     } catch (e) { console.error(e); }
   };
 
-  const pinFilm = async (movie) => {
-    if (!userId || !ownProfile) return;
-    const current = ownProfile.pinned_film_ids || [];
-    if (current.includes(movie.id)) { setPinPickerSlot(null); return; }
-    const next = [...current.slice(0, 4), movie.id].slice(0, 4);
+  // ── Lists handlers ──
+  const handleCreateList = async (e) => {
+    e?.preventDefault();
+    if (!userId || !createListName.trim() || createListBusy) return;
+    setCreateListBusy(true);
     try {
-      await friendsService.updatePinnedFilms(userId, next);
-      setOwnProfile({ ...ownProfile, pinned_film_ids: next });
-      setPinPickerSlot(null);
-    } catch (e) { console.error(e); }
+      const newList = await listsService.createList(userId, {
+        name: createListName.trim(),
+        description: createListDescription.trim() || null,
+        is_public: !createListPrivate,
+      });
+      setOwnLists((prev) => [{ ...newList, list_films: [{ count: 0 }] }, ...prev]);
+      setCreateListOpen(false);
+      setCreateListName("");
+      setCreateListDescription("");
+      setCreateListPrivate(false);
+      setActiveList(newList);
+    } catch (e) { console.error("create list failed", e); }
+    finally { setCreateListBusy(false); }
   };
-  const unpinFilm = async (tmdbId) => {
-    if (!userId || !ownProfile) return;
-    const next = (ownProfile.pinned_film_ids || []).filter((id) => id !== tmdbId);
+
+  const handleDeleteList = async () => {
+    if (!activeList) return;
+    if (!window.confirm("Delete this list? This can't be undone.")) return;
     try {
-      await friendsService.updatePinnedFilms(userId, next);
-      setOwnProfile({ ...ownProfile, pinned_film_ids: next });
-    } catch (e) { console.error(e); }
+      await listsService.deleteList(activeList.id);
+      setOwnLists((prev) => prev.filter((l) => l.id !== activeList.id));
+      setActiveList(null);
+    } catch (e) { console.error("delete list failed", e); }
   };
+
+  const handleSaveListEdit = async () => {
+    if (!activeList) return;
+    try {
+      const updated = await listsService.updateList(activeList.id, {
+        name: editListName.trim(),
+        description: editListDescription.trim() || null,
+        is_public: !editListPrivate,
+      });
+      setListDetail((prev) => prev ? { ...prev, ...updated } : prev);
+      setOwnLists((prev) => prev.map((l) => l.id === updated.id ? { ...l, ...updated } : l));
+      setEditListOpen(false);
+    } catch (e) { console.error("update list failed", e); }
+  };
+
+  const handleAddFilmToList = async (movie) => {
+    if (!activeList || !listDetail) return;
+    if (listDetail.films.some((f) => f.tmdb_id === movie.id)) {
+      // Already in list — remove instead
+      await handleRemoveFilmFromList(movie.id);
+      return;
+    }
+    try {
+      await listsService.addFilmToList(activeList.id, movie);
+      setListDetail((prev) => prev ? {
+        ...prev,
+        films: [...prev.films, {
+          tmdb_id: movie.id,
+          title: movie.title,
+          poster_path: movie.poster_path,
+          year: movie.year,
+          rating: movie.rating,
+          genre_ids: movie.genre_ids || [],
+          sortOrder: prev.films.length,
+          addedAt: new Date().toISOString(),
+        }],
+      } : prev);
+      setOwnLists((prev) => prev.map((l) => {
+        if (l.id !== activeList.id) return l;
+        const cur = l.list_films?.[0]?.count || 0;
+        return { ...l, list_films: [{ count: cur + 1 }] };
+      }));
+      showToast("Added to list");
+    } catch (e) { console.error("add film failed", e); }
+  };
+
+  const handleRemoveFilmFromList = async (tmdbId) => {
+    if (!activeList || !listDetail) return;
+    try {
+      await listsService.removeFilmFromList(activeList.id, tmdbId);
+      setListDetail((prev) => prev ? {
+        ...prev,
+        films: prev.films.filter((f) => f.tmdb_id !== tmdbId),
+      } : prev);
+      setOwnLists((prev) => prev.map((l) => {
+        if (l.id !== activeList.id) return l;
+        const cur = l.list_films?.[0]?.count || 0;
+        return { ...l, list_films: [{ count: Math.max(0, cur - 1) }] };
+      }));
+    } catch (e) { console.error("remove film failed", e); }
+  };
+
+  const handleReorderFilms = async (fromIdx, toIdx) => {
+    if (!listDetail || fromIdx === toIdx) return;
+    const next = [...listDetail.films];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, moved);
+    setListDetail((prev) => prev ? { ...prev, films: next } : prev);
+    try {
+      await listsService.reorderListFilms(activeList.id, next.map((f) => f.tmdb_id));
+    } catch (e) { console.error("reorder failed", e); }
+  };
+
+  const handleUploadCover = async (file) => {
+    if (!activeList || !file) return;
+    try {
+      const url = await listsService.uploadListCover(activeList.id, file);
+      setListDetail((prev) => prev ? { ...prev, cover_image_url: url } : prev);
+      setOwnLists((prev) => prev.map((l) => l.id === activeList.id ? { ...l, cover_image_url: url } : l));
+    } catch (e) {
+      console.error("cover upload failed", e);
+      showToast("Cover upload failed (bucket missing?)");
+    }
+  };
+
+  // Top genres from watched movies
+  const topGenres = useMemo(() => {
+    if (!watchedMovies) return [];
+    const counts = {};
+    watchedMovies.forEach((m) => {
+      const g = m?.genre;
+      if (!g || g === "Film") return;
+      counts[g] = (counts[g] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([g]) => g);
+  }, [watchedMovies]);
 
   // ── Render: guest ──
   if (!user || isGuest) {
@@ -8053,13 +8179,17 @@ function FriendsTab({ toggleSave, savedIds }) {
   // ── Render: main tab ──
   return (
     <div className="content friends-tab">
-      <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR CIRCLE · FRIENDS</div>
+      {!activeList && (
+        <>
+          <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR CIRCLE · FRIENDS</div>
 
-      <div className="friends-subtabs">
-        <button className={`friends-subtab${activeSubTab === "feed" ? " active" : ""}`} onClick={() => setActiveSubTab("feed")}>Feed</button>
-        <button className={`friends-subtab${activeSubTab === "friends" ? " active" : ""}`} onClick={() => setActiveSubTab("friends")}>Friends</button>
-        <button className={`friends-subtab${activeSubTab === "profile" ? " active" : ""}`} onClick={() => setActiveSubTab("profile")}>Profile</button>
-      </div>
+          <div className="friends-subtabs">
+            <button className={`friends-subtab${activeSubTab === "feed" ? " active" : ""}`} onClick={() => setActiveSubTab("feed")}>Feed</button>
+            <button className={`friends-subtab${activeSubTab === "friends" ? " active" : ""}`} onClick={() => setActiveSubTab("friends")}>Friends</button>
+            <button className={`friends-subtab${activeSubTab === "profile" ? " active" : ""}`} onClick={() => setActiveSubTab("profile")}>Profile</button>
+          </div>
+        </>
+      )}
 
       {activeSubTab === "feed" && (
         <div className="friends-feed">
@@ -8070,11 +8200,30 @@ function FriendsTab({ toggleSave, savedIds }) {
               <div className="activity-card-skel" />
             </>
           ) : feedItems.length === 0 ? (
-            <div className="friends-empty">
-              <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR FEED</div>
-              <h3 className="friends-empty-headline">Follow some friends to see their activity.</h3>
-              <button className="pill pill--wine pill--lg" onClick={() => setActiveSubTab("friends")}>Find friends →</button>
-            </div>
+            <>
+              <div className="friends-empty">
+                <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR FEED</div>
+                <h3 className="friends-empty-headline">Follow some friends to see their activity.</h3>
+                <button className="pill pill--wine pill--lg" onClick={() => setActiveSubTab("friends")}>Find friends →</button>
+              </div>
+              {suggestedUsers.length > 0 && (
+                <div className="friends-section">
+                  <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />SUGGESTED · FIND FRIENDS</div>
+                  <div className="user-card-grid">
+                    {suggestedUsers.map((p) => (
+                      <UserCard
+                        key={p.id}
+                        profile={p}
+                        status={followingIdSet.has(p.id) ? "accepted" : null}
+                        currentUserId={userId}
+                        onFollow={handleFollow}
+                        onUnfollow={handleUnfollow}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <>
               {trendingInCircle.length > 0 && (
@@ -8126,26 +8275,6 @@ function FriendsTab({ toggleSave, savedIds }) {
             />
           </div>
 
-          {searchQuery.trim() && (
-            <div className="friends-section">
-              <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />SEARCH RESULTS</div>
-              {searchLoading && <div className="friends-empty-line">Searching…</div>}
-              {!searchLoading && searchResults.length === 0 && <div className="friends-empty-line">No users found.</div>}
-              <div className="user-card-grid">
-                {searchResults.map((p) => (
-                  <UserCard
-                    key={p.id}
-                    profile={p}
-                    status={followingIdSet.has(p.id) ? "accepted" : null}
-                    currentUserId={userId}
-                    onFollow={handleFollow}
-                    onUnfollow={handleUnfollow}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
           {pendingRequests.length > 0 && (
             <div className="friends-section">
               <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />FOLLOW REQUESTS · {pendingRequests.length}</div>
@@ -8164,33 +8293,13 @@ function FriendsTab({ toggleSave, savedIds }) {
             </div>
           )}
 
-          <div className="friends-section">
-            <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />FOLLOWING · {following.length}</div>
-            {following.length === 0 ? (
-              <div className="friends-empty-line">You're not following anyone yet.</div>
-            ) : (
+          {searchQuery.trim() ? (
+            <div className="friends-section">
+              <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />SEARCH RESULTS</div>
+              {searchLoading && <div className="friends-empty-line">Searching…</div>}
+              {!searchLoading && searchResults.length === 0 && <div className="friends-empty-line">No users found.</div>}
               <div className="user-card-grid">
-                {following.map((p) => (
-                  <UserCard
-                    key={p.id}
-                    profile={p}
-                    status="accepted"
-                    currentUserId={userId}
-                    onFollow={handleFollow}
-                    onUnfollow={handleUnfollow}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="friends-section">
-            <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />FOLLOWERS · {followers.length}</div>
-            {followers.length === 0 ? (
-              <div className="friends-empty-line">No followers yet.</div>
-            ) : (
-              <div className="user-card-grid">
-                {followers.map((p) => (
+                {searchResults.map((p) => (
                   <UserCard
                     key={p.id}
                     profile={p}
@@ -8201,16 +8310,25 @@ function FriendsTab({ toggleSave, savedIds }) {
                   />
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="friends-search-empty">
+              Search for friends by username
+            </div>
+          )}
         </div>
       )}
 
-      {activeSubTab === "profile" && ownProfile && (
+      {activeSubTab === "profile" && ownProfile && !activeList && (
         <div className="friends-profile">
-          <div className="profile-header">
-            <FriendsAvatar profile={ownProfile} size={64} />
-            <div className="profile-header-info">
+          <div className="profile-header-v2">
+            <div className="profile-avatar-wrap">
+              <FriendsAvatar profile={ownProfile} size={80} />
+              <button className="profile-avatar-edit" aria-label="Edit avatar" title="Avatar upload coming soon" type="button">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+              </button>
+            </div>
+            <div className="profile-info-v2">
               {editingProfile ? (
                 <input
                   className="profile-display-edit"
@@ -8219,57 +8337,103 @@ function FriendsTab({ toggleSave, savedIds }) {
                   maxLength={40}
                 />
               ) : (
-                <div className="profile-display">{ownProfile.display_name || ownProfile.username}</div>
+                <div className="profile-display-v2">{ownProfile.display_name || ownProfile.username}</div>
               )}
-              <div className="profile-username">@{ownProfile.username}</div>
-              <div className="profile-stats">{following.length} FOLLOWING · {followers.length} FOLLOWERS</div>
-            </div>
-            <div className="profile-actions">
-              {editingProfile ? (
-                <>
-                  <button className="pill pill--wine" onClick={saveProfileEdit}>Save</button>
-                  <button className="pill pill--ghost" onClick={() => { setEditingProfile(false); setEditDisplayName(ownProfile.display_name || ""); }}>Cancel</button>
-                </>
-              ) : (
-                <button className="pill pill--ghost" onClick={() => setEditingProfile(true)}>Edit</button>
-              )}
-              <button
-                className={`pill ${ownProfile.is_private ? "pill--wine" : "pill--ghost"}`}
-                onClick={togglePrivacy}
-                title="Toggle account privacy"
-              >
-                {ownProfile.is_private ? "Private" : "Public"}
-              </button>
+              <div className="profile-username-v2">@{ownProfile.username}</div>
+
+              <div className="profile-stats-v2">
+                <button type="button" className="profile-stat" onClick={() => goToJournal && goToJournal()}>
+                  <div className="profile-stat-num">{watchedMovies ? watchedMovies.size : 0}</div>
+                  <div className="profile-stat-label">FILMS</div>
+                </button>
+                <button type="button" className="profile-stat" onClick={() => setFollowingModalOpen(true)}>
+                  <div className="profile-stat-num">{following.length}</div>
+                  <div className="profile-stat-label">FOLLOWING</div>
+                </button>
+                <button type="button" className="profile-stat" onClick={() => setFollowersModalOpen(true)}>
+                  <div className="profile-stat-num">{followers.length}</div>
+                  <div className="profile-stat-label">FOLLOWERS</div>
+                </button>
+              </div>
+
+              <div className="profile-actions-v2">
+                {editingProfile ? (
+                  <>
+                    <button className="pill pill--wine" onClick={saveProfileEdit}>Save</button>
+                    <button className="pill pill--ghost" onClick={() => { setEditingProfile(false); setEditDisplayName(ownProfile.display_name || ""); }}>Cancel</button>
+                  </>
+                ) : (
+                  <button className="pill pill--ghost" onClick={() => setEditingProfile(true)}>Edit profile</button>
+                )}
+                <button
+                  className={`pill ${ownProfile.is_private ? "pill--wine" : "pill--ghost"}`}
+                  onClick={togglePrivacy}
+                  title="Toggle account privacy"
+                >
+                  {ownProfile.is_private ? "Private" : "Public"}
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="friends-section">
-            <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />PINNED FILMS · UP TO 4</div>
-            <div className="pinned-grid">
-              {[0, 1, 2, 3].map((i) => {
-                const m = pinnedMovies[i];
-                if (m) {
-                  return (
-                    <div key={i} className="pinned-slot pinned-slot--filled">
-                      {m.poster_path ? (
-                        <img src={`${IMG_BASE}/w342${m.poster_path}`} alt={m.title} />
-                      ) : (
-                        <div className="pinned-slot-empty-art" />
-                      )}
-                      <button className="pinned-slot-remove" onClick={() => unpinFilm(m.tmdb_id)} aria-label="Remove pin">✕</button>
-                    </div>
-                  );
-                }
-                return (
-                  <button key={i} className="pinned-slot pinned-slot--empty" onClick={() => setPinPickerSlot(i)} aria-label="Pin a film">
-                    <span>+</span>
-                  </button>
-                );
-              })}
+          {(ownProfile.bio || topGenres.length > 0) && (
+            <div className="profile-bio-section">
+              {ownProfile.bio && <p className="profile-bio">{ownProfile.bio}</p>}
+              {topGenres.length > 0 && (
+                <div className="profile-genre-pills">
+                  {topGenres.map((g) => (
+                    <span key={g} className="profile-genre-pill">{g}</span>
+                  ))}
+                </div>
+              )}
             </div>
-            {pinPickerSlot != null && (
-              <div className="pin-popover-backdrop" onClick={() => setPinPickerSlot(null)}>
-                <PinSearchPopover onPick={pinFilm} onClose={() => setPinPickerSlot(null)} currentUserId={userId} />
+          )}
+
+          <div className="friends-section">
+            <div className="profile-lists-header">
+              <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR LISTS</div>
+              <button className="pill pill--wine" onClick={() => setCreateListOpen(true)}>+ New list</button>
+            </div>
+            {listsLoading ? (
+              <div className="friends-empty-line">Loading…</div>
+            ) : ownLists.length === 0 ? (
+              <div className="profile-lists-empty">
+                <p>Create your first list</p>
+                <button className="pill pill--wine pill--lg" onClick={() => setCreateListOpen(true)}>+ New list</button>
+              </div>
+            ) : (
+              <div className="profile-lists-grid">
+                {ownLists.map((list) => {
+                  const filmCount = list.list_films?.[0]?.count || 0;
+                  const previews = list.previewPosters || [];
+                  return (
+                    <button key={list.id} type="button" className="list-card" onClick={() => setActiveList(list)}>
+                      <div className="list-card-cover">
+                        {list.cover_image_url ? (
+                          <img src={list.cover_image_url} alt="" className="list-card-cover-img" />
+                        ) : previews.length > 0 ? (
+                          <div className="list-card-cover-grid">
+                            {[0, 1, 2, 3].map((i) => previews[i] ? (
+                              <img key={i} src={`${IMG_BASE}/w185${previews[i]}`} alt="" />
+                            ) : (
+                              <div key={i} className="list-card-cover-quadrant-empty" />
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="list-card-cover-fallback" />
+                        )}
+                        <span className={`list-card-badge${list.is_public ? " list-card-badge--public" : " list-card-badge--private"}`}>
+                          {list.is_public ? "PUBLIC" : "PRIVATE"}
+                        </span>
+                      </div>
+                      <div className="list-card-body">
+                        <div className="list-card-name">{list.name}</div>
+                        <div className="list-card-count">{filmCount} {filmCount === 1 ? "FILM" : "FILMS"}</div>
+                        {list.description && <div className="list-card-desc">{list.description}</div>}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -8292,6 +8456,280 @@ function FriendsTab({ toggleSave, savedIds }) {
                 />
               ))
             )}
+          </div>
+        </div>
+      )}
+
+      {activeList && (
+        <div className="ld-view">
+          <button type="button" className="ld-back" onClick={() => { setActiveList(null); setListFilmQuery(""); setListFilmResults([]); }}>← Back</button>
+
+          {listLoading || !listDetail ? (
+            <div className="ld-loading">Loading…</div>
+          ) : (
+            <>
+              <div className="ld-header">
+                <div className="ld-header-text">
+                  <h2 className="ld-title">{listDetail.name}</h2>
+                  {listDetail.description && <p className="ld-description">{listDetail.description}</p>}
+                  <div className="ld-meta">
+                    {listDetail.films?.length || 0} films · by @{ownProfile?.username} · {listDetail.is_public ? "PUBLIC" : "PRIVATE"}
+                  </div>
+                  <div className="ld-actions">
+                    <button className="pill pill--wine" onClick={() => document.getElementById("ld-film-search")?.focus()}>+ Add films</button>
+                    <button className="pill pill--ghost" onClick={() => setEditListOpen(true)}>Edit</button>
+                    <button className="pill pill--ghost pill--danger" onClick={handleDeleteList}>Delete</button>
+                  </div>
+                </div>
+                <label className="ld-cover-wrap">
+                  {listDetail.cover_image_url ? (
+                    <img src={listDetail.cover_image_url} alt="" className="ld-cover-img" />
+                  ) : (
+                    <div className="ld-cover-fallback">
+                      {[0, 1, 2, 3].map((i) => {
+                        const f = listDetail.films?.[i];
+                        return f?.poster_path ? (
+                          <img key={i} src={`${IMG_BASE}/w185${f.poster_path}`} alt="" />
+                        ) : (
+                          <div key={i} className="ld-cover-quadrant-empty" />
+                        );
+                      })}
+                    </div>
+                  )}
+                  <span className="ld-cover-overlay">Change cover</span>
+                  <input type="file" accept="image/*" className="ld-cover-input" onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleUploadCover(f);
+                    e.target.value = "";
+                  }} />
+                </label>
+              </div>
+
+              <div className="ld-search-row">
+                <input
+                  id="ld-film-search"
+                  className="ld-search-input"
+                  type="text"
+                  placeholder="Search any film…"
+                  value={listFilmQuery}
+                  onChange={(e) => setListFilmQuery(e.target.value)}
+                />
+                {listFilmQuery.trim().length >= 2 && (
+                  <div className="ld-search-results">
+                    {listFilmSearching && <div className="ld-search-empty">Searching…</div>}
+                    {!listFilmSearching && listFilmResults.length === 0 && <div className="ld-search-empty">No results</div>}
+                    {!listFilmSearching && listFilmResults.map((m) => {
+                      const inList = listDetail.films.some((f) => f.tmdb_id === m.id);
+                      return (
+                        <button key={m.id} type="button" className="ld-search-result" onClick={() => handleAddFilmToList(m)}>
+                          {m.poster_path ? (
+                            <img src={`${IMG_BASE}/w92${m.poster_path}`} alt="" />
+                          ) : (
+                            <div className="ld-search-result-empty" />
+                          )}
+                          <div className="ld-search-result-info">
+                            <div className="ld-search-result-title">{m.title}</div>
+                            <div className="ld-search-result-year">{m.year}</div>
+                          </div>
+                          <div className={`ld-search-result-badge${inList ? " ld-search-result-badge--on" : ""}`}>
+                            {inList ? "✓" : "+"}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="ld-films-grid">
+                {listDetail.films.length === 0 ? (
+                  <div className="ld-empty">No films yet. Search above to add some.</div>
+                ) : listDetail.films.map((f, i) => (
+                  <div
+                    key={f.tmdb_id}
+                    className="ld-film"
+                    draggable={true}
+                    onDragStart={() => { draggedFilmIndex.current = i; }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const from = draggedFilmIndex.current;
+                      if (from != null && from !== i) handleReorderFilms(from, i);
+                      draggedFilmIndex.current = null;
+                    }}
+                  >
+                    <div className="ld-film-poster-wrap">
+                      {f.poster_path ? (
+                        <img className="ld-film-poster" src={`${IMG_BASE}/w342${f.poster_path}`} alt={f.title} />
+                      ) : (
+                        <div className="ld-film-poster ld-film-poster--empty" />
+                      )}
+                      <button type="button" className="ld-film-remove" onClick={() => handleRemoveFilmFromList(f.tmdb_id)} aria-label="Remove">×</button>
+                    </div>
+                    <div className="ld-film-title">{f.title}</div>
+                    <div className="ld-film-year">{f.year || "—"}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {createListOpen && (
+        <div className="ft-modal-backdrop" onClick={() => setCreateListOpen(false)}>
+          <div className="ft-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="ft-modal-head">
+              <h3 className="ft-modal-title">Create new list</h3>
+              <button type="button" className="ft-modal-close" onClick={() => setCreateListOpen(false)} aria-label="Close">✕</button>
+            </div>
+            <form onSubmit={handleCreateList} className="ft-modal-body">
+              <div className="ft-setup-field">
+                <label className="ft-setup-label" htmlFor="cl-name">LIST NAME</label>
+                <input
+                  id="cl-name"
+                  type="text"
+                  className="ft-setup-input"
+                  placeholder="e.g. Comfort movies"
+                  value={createListName}
+                  onChange={(e) => setCreateListName(e.target.value)}
+                  maxLength={80}
+                  autoFocus
+                  required
+                />
+              </div>
+              <div className="ft-setup-field">
+                <label className="ft-setup-label" htmlFor="cl-desc">DESCRIPTION (OPTIONAL)</label>
+                <textarea
+                  id="cl-desc"
+                  className="ft-modal-textarea"
+                  rows={3}
+                  placeholder="What's this list about?"
+                  value={createListDescription}
+                  onChange={(e) => setCreateListDescription(e.target.value)}
+                  maxLength={300}
+                />
+              </div>
+              <div className="ft-setup-privacy">
+                <div className="ft-setup-privacy-text">
+                  <div className="ft-setup-privacy-label">Private list</div>
+                  <div className="ft-setup-privacy-sub">Only you can see this list</div>
+                </div>
+                <label className="ft-toggle">
+                  <input type="checkbox" checked={createListPrivate} onChange={(e) => setCreateListPrivate(e.target.checked)} />
+                  <span className="ft-toggle-track"><span className="ft-toggle-knob" /></span>
+                </label>
+              </div>
+              <button type="submit" className="ft-setup-submit" disabled={createListBusy || !createListName.trim()}>
+                {createListBusy ? "Creating…" : "Create list"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editListOpen && listDetail && (
+        <div className="ft-modal-backdrop" onClick={() => setEditListOpen(false)}>
+          <div className="ft-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="ft-modal-head">
+              <h3 className="ft-modal-title">Edit list</h3>
+              <button type="button" className="ft-modal-close" onClick={() => setEditListOpen(false)} aria-label="Close">✕</button>
+            </div>
+            <div className="ft-modal-body">
+              <div className="ft-setup-field">
+                <label className="ft-setup-label" htmlFor="el-name">LIST NAME</label>
+                <input
+                  id="el-name"
+                  type="text"
+                  className="ft-setup-input"
+                  value={editListName}
+                  onChange={(e) => setEditListName(e.target.value)}
+                  maxLength={80}
+                />
+              </div>
+              <div className="ft-setup-field">
+                <label className="ft-setup-label" htmlFor="el-desc">DESCRIPTION</label>
+                <textarea
+                  id="el-desc"
+                  className="ft-modal-textarea"
+                  rows={3}
+                  value={editListDescription}
+                  onChange={(e) => setEditListDescription(e.target.value)}
+                  maxLength={300}
+                />
+              </div>
+              <div className="ft-setup-privacy">
+                <div className="ft-setup-privacy-text">
+                  <div className="ft-setup-privacy-label">Private list</div>
+                  <div className="ft-setup-privacy-sub">Only you can see this list</div>
+                </div>
+                <label className="ft-toggle">
+                  <input type="checkbox" checked={editListPrivate} onChange={(e) => setEditListPrivate(e.target.checked)} />
+                  <span className="ft-toggle-track"><span className="ft-toggle-knob" /></span>
+                </label>
+              </div>
+              <button type="button" className="ft-setup-submit" onClick={handleSaveListEdit} disabled={!editListName.trim()}>
+                Save changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {followingModalOpen && (
+        <div className="ft-modal-backdrop" onClick={() => setFollowingModalOpen(false)}>
+          <div className="ft-modal ft-modal--users" onClick={(e) => e.stopPropagation()}>
+            <div className="ft-modal-head">
+              <h3 className="ft-modal-title">Following · {following.length}</h3>
+              <button type="button" className="ft-modal-close" onClick={() => setFollowingModalOpen(false)} aria-label="Close">✕</button>
+            </div>
+            <div className="ft-modal-body">
+              {following.length === 0 ? (
+                <div className="friends-empty-line">You're not following anyone yet.</div>
+              ) : (
+                <div className="user-card-grid">
+                  {following.map((p) => (
+                    <UserCard
+                      key={p.id}
+                      profile={p}
+                      status="accepted"
+                      currentUserId={userId}
+                      onFollow={handleFollow}
+                      onUnfollow={handleUnfollow}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {followersModalOpen && (
+        <div className="ft-modal-backdrop" onClick={() => setFollowersModalOpen(false)}>
+          <div className="ft-modal ft-modal--users" onClick={(e) => e.stopPropagation()}>
+            <div className="ft-modal-head">
+              <h3 className="ft-modal-title">Followers · {followers.length}</h3>
+              <button type="button" className="ft-modal-close" onClick={() => setFollowersModalOpen(false)} aria-label="Close">✕</button>
+            </div>
+            <div className="ft-modal-body">
+              {followers.length === 0 ? (
+                <div className="friends-empty-line">No followers yet.</div>
+              ) : (
+                <div className="user-card-grid">
+                  {followers.map((p) => (
+                    <UserCard
+                      key={p.id}
+                      profile={p}
+                      status={followingIdSet.has(p.id) ? "accepted" : null}
+                      currentUserId={userId}
+                      onFollow={handleFollow}
+                      onUnfollow={handleUnfollow}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -8393,6 +8831,7 @@ function MainApp() {
   const [chatsLoading, setChatsLoading] = useState(true);
   const watchlistIdRef = useRef(null); // Supabase UUID of the default Watchlist collection
   const journalEntryIds = useRef(new Map()); // tmdb_id → Supabase journal_entries UUID
+  const pendingRatings = useRef({}); // tmdb_id → rating, buffered when entry doesn't exist yet
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -8838,7 +9277,15 @@ function MainApp() {
     // Supabase: add journal entry + cache movie
     if (user) {
       journalService.addJournalEntry(user.id, movie, { watchDate }).then((entry) => {
-        if (entry) journalEntryIds.current.set(id, entry.id);
+        if (entry) {
+          journalEntryIds.current.set(id, entry.id);
+          // Flush a rating that arrived before the journal entry existed
+          const pending = pendingRatings.current[id];
+          if (pending != null) {
+            journalService.updateJournalEntry(entry.id, { personalRating: pending }).catch(syncFailToast);
+            delete pendingRatings.current[id];
+          }
+        }
       }).catch(syncFailToast);
       friendsService.recordActivity(user.id, "logged", movie.id, {
         rating: watchedRatings.get(id),
@@ -8871,6 +9318,12 @@ function MainApp() {
       const entryId = journalEntryIds.current.get(id);
       if (entryId) {
         journalService.updateJournalEntry(entryId, { personalRating: rating }).catch(syncFailToast);
+      } else if (rating !== null) {
+        // Journal entry not created yet (e.g. rapid log-then-rate from Discover);
+        // buffer the rating so toggleWatched's .then() can flush it once the entry resolves.
+        pendingRatings.current[id] = rating;
+      } else {
+        delete pendingRatings.current[id];
       }
       if (rating !== null) {
         friendsService.recordActivity(user.id, "rated", id, { rating }).catch(() => {});
@@ -9347,6 +9800,8 @@ function MainApp() {
           <FriendsTab
             toggleSave={guardedToggleSave}
             savedIds={savedIds}
+            watchedMovies={watchedMovies}
+            goToJournal={goToJournal}
           />
         )}
       </div>

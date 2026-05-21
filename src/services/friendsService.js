@@ -158,7 +158,7 @@ export async function recordActivity(userId, actionType, tmdbId, options = {}) {
       rating,
       note,
       created_at: new Date().toISOString(),
-    }, { onConflict: 'user_id,tmdb_id,action_type' });
+    }, { onConflict: 'user_id,tmdb_id,action_type', ignoreDuplicates: false });
   if (error) throw error;
 }
 
@@ -207,6 +207,7 @@ export async function getOwnActivity(userId, limit = 30) {
     .from('activity')
     .select('*')
     .eq('user_id', userId)
+    .eq('action_type', 'logged')
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw error;
