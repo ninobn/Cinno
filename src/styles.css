@@ -13400,3 +13400,176 @@ body {
   .trending-circle { padding: 14px 16px; }
 }
 
+/* ── Pending follow requests (top of Followers view) ──────────────────────── */
+.pending-requests-section { margin-bottom: 0; }
+.pending-eyebrow { color: #8a3a4a; margin-bottom: 16px; }
+.pending-eyebrow-rule { background: #8a3a4a; }
+.pending-request-rows { display: flex; flex-direction: column; }
+.pending-request-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  min-height: 64px;
+  background: rgba(138, 58, 74, 0.05);
+  border: 1px solid rgba(138, 58, 74, 0.15);
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+.pending-request-row .follow-row-username,
+.pending-request-row .follow-row-username-btn {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.pending-request-row .follow-row-display {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  color: var(--subtle);
+}
+.pending-request-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.pending-accept-btn,
+.pending-decline-btn {
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.pending-requests-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 16px 0;
+}
+
+@media (max-width: 600px) {
+  .pending-request-row { padding: 10px 12px; flex-wrap: wrap; }
+  .pending-request-actions { margin-left: 0; width: 100%; justify-content: flex-end; }
+  .pending-accept-btn,
+  .pending-decline-btn { padding: 7px 14px; font-size: 12px; }
+}
+
+/* ── Viewing another user's profile ───────────────────────────────────────── */
+.viewing-profile { padding-top: 8px; padding-bottom: 80px; }
+.vp-back {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  margin-bottom: 24px;
+  transition: color 160ms ease;
+}
+.vp-back:hover { color: var(--accent); }
+.vp-stats {
+  margin-top: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--subtle);
+}
+.vp-follow-btn { margin-left: auto; align-self: flex-start; }
+.vp-private {
+  text-align: center;
+  padding: 32px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.vp-private-icon {
+  font-size: 32px;
+  margin-bottom: 6px;
+  line-height: 1;
+}
+.vp-private-headline {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.vp-private-sub {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  color: var(--subtle);
+}
+.vp-empty-italic { font-style: italic; }
+
+/* Clickable avatar/username buttons (strip native button styling) */
+.activity-card-avatar-btn,
+.user-card-avatar-btn,
+.follow-row-avatar-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  display: inline-flex;
+  border-radius: 50%;
+  transition: opacity 160ms ease;
+}
+.activity-card-avatar-btn:hover,
+.user-card-avatar-btn:hover,
+.follow-row-avatar-btn:hover { opacity: 0.85; }
+
+.activity-card-username-btn,
+.user-card-username-btn,
+.follow-row-username-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-align: left;
+  transition: color 160ms ease;
+}
+.activity-card-username-btn:hover,
+.user-card-username-btn:hover,
+.follow-row-username-btn:hover { color: var(--accent); }
+
+/* Read-only list detail variants */
+.ld-cover-wrap--ro { cursor: default; }
+.ld-cover-wrap--ro:hover .ld-cover-overlay { opacity: 0; }
+.ld-title-edit--ro {
+  cursor: default;
+  outline: none;
+  white-space: normal;
+}
+.ld-description-edit--ro {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  color: var(--subtle);
+  line-height: 1.5;
+  margin: 0;
+  background: transparent;
+  border: none;
+  resize: none;
+}
+
+/* Mobile: viewed profile header stacks; follow button always visible */
+@media (max-width: 600px) {
+  .viewing-profile .profile-header-v2 { flex-direction: column; align-items: center; text-align: center; }
+  .viewing-profile .profile-info-v2 { align-items: center; }
+  .viewing-profile .profile-lists-grid { grid-template-columns: repeat(2, 1fr); }
+  .viewing-profile .profile-activity-card { width: 80px; }
+  .viewing-profile .profile-activity-poster { width: 80px; }
+  .viewing-profile .profile-activity-title { max-width: 80px; }
+  .vp-follow-btn { margin-left: 0; align-self: center; margin-top: 8px; }
+
+  /* Follow button on UserCards must always be visible on mobile (defensive) */
+  .ft-follow-btn,
+  .user-card .pill,
+  .user-card-actions .pill { opacity: 1 !important; visibility: visible !important; }
+
+  /* Feed empty state: add breathing room between "Find friends" CTA and the
+     SUGGESTED · FIND FRIENDS section that follows it on mobile */
+  .friends-empty + .friends-section { margin-top: 32px; }
+}
+

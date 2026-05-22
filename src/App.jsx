@@ -7523,16 +7523,29 @@ function actionLabel(actionType) {
   }
 }
 
-function ActivityCard({ item, hideUser = false, onReact, onToggleSave, isSaved, reactionCount = 0, isReacted = false }) {
+function ActivityCard({ item, hideUser = false, onReact, onToggleSave, isSaved, reactionCount = 0, isReacted = false, onOpenProfile }) {
   const movie = item.movie;
   const genre = movie?.genre_ids?.length ? (GENRE_MAP[movie.genre_ids[0]] || "Film") : "Film";
+  const handleOpenUser = onOpenProfile && item.user ? () => onOpenProfile(item.user) : null;
 
   return (
     <div className="activity-card">
       {!hideUser && (
         <div className="activity-card-header">
-          <FriendsAvatar profile={item.user} size={32} />
-          <span className="activity-card-username">{item.user?.display_name || item.user?.username || "Someone"}</span>
+          {handleOpenUser ? (
+            <button type="button" className="activity-card-avatar-btn" onClick={handleOpenUser} aria-label={`View ${item.user?.username || "profile"}`}>
+              <FriendsAvatar profile={item.user} size={32} />
+            </button>
+          ) : (
+            <FriendsAvatar profile={item.user} size={32} />
+          )}
+          {handleOpenUser ? (
+            <button type="button" className="activity-card-username activity-card-username-btn" onClick={handleOpenUser}>
+              {item.user?.display_name || item.user?.username || "Someone"}
+            </button>
+          ) : (
+            <span className="activity-card-username">{item.user?.display_name || item.user?.username || "Someone"}</span>
+          )}
           <span className="activity-card-action">{actionLabel(item.action_type)}</span>
           <span className="activity-card-time">{formatRelativeTime(item.created_at)}</span>
         </div>
@@ -7579,13 +7592,14 @@ function ActivityCard({ item, hideUser = false, onReact, onToggleSave, isSaved, 
   );
 }
 
-function UserCard({ profile, status, currentUserId, onFollow, onUnfollow, onAccept, onDecline, mode }) {
+function UserCard({ profile, status, currentUserId, onFollow, onUnfollow, onAccept, onDecline, mode, onOpenProfile }) {
   const [busy, setBusy] = useState(false);
   const wrap = async (fn) => {
     if (busy) return;
     setBusy(true);
     try { await fn(); } finally { setBusy(false); }
   };
+  const handleOpen = onOpenProfile && profile.id !== currentUserId ? () => onOpenProfile(profile) : null;
 
   if (profile.id === currentUserId) {
     return (
@@ -7618,9 +7632,19 @@ function UserCard({ profile, status, currentUserId, onFollow, onUnfollow, onAcce
 
   return (
     <div className="user-card">
-      <FriendsAvatar profile={profile} size={40} />
+      {handleOpen ? (
+        <button type="button" className="user-card-avatar-btn" onClick={handleOpen} aria-label={`View ${profile.username || "profile"}`}>
+          <FriendsAvatar profile={profile} size={40} />
+        </button>
+      ) : (
+        <FriendsAvatar profile={profile} size={40} />
+      )}
       <div className="user-card-info">
-        <div className="user-card-username">{profile.username || "user"}</div>
+        {handleOpen ? (
+          <button type="button" className="user-card-username user-card-username-btn" onClick={handleOpen}>{profile.username || "user"}</button>
+        ) : (
+          <div className="user-card-username">{profile.username || "user"}</div>
+        )}
         <div className="user-card-display">{profile.display_name || ""}</div>
       </div>
       {action}
@@ -7694,9 +7718,32 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
   // Drag-reorder
   const draggedFilmIndex = useRef(null);
 
+  // Viewing another user's profile
+  const [viewingProfile, setViewingProfile] = useState(null);
+  const [viewedProfile, setViewedProfile] = useState(null);
+  const [viewedFollowStatus, setViewedFollowStatus] = useState(null);
+  const [viewedFollowers, setViewedFollowers] = useState([]);
+  const [viewedFollowing, setViewedFollowing] = useState([]);
+  const [viewedLists, setViewedLists] = useState([]);
+  const [viewedActivity, setViewedActivity] = useState([]);
+  const [viewedLoading, setViewedLoading] = useState(true);
+  const [savedListIds, setSavedListIds] = useState(() => new Set());
+
   const userId = user?.id;
   const savedIdSet = useMemo(() => new Set(savedIds || []), [savedIds]);
   const followingIdSet = useMemo(() => new Set(following.map((p) => p.id)), [following]);
+
+  const openProfile = useCallback((profile) => {
+    if (!profile || profile.id === userId) return;
+    setActiveList(null);
+    setViewingProfile({
+      id: profile.id,
+      username: profile.username,
+      display_name: profile.display_name,
+      avatar_url: profile.avatar_url,
+      is_private: profile.is_private,
+    });
+  }, [userId]);
 
   // Initial load (ownLists is loaded in MainApp and passed in via props)
   useEffect(() => {
@@ -7848,6 +7895,101 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
     }, 400);
     return () => clearTimeout(t);
   }, [searchQuery, userId]);
+
+  // Load viewed profile data when navigating to another user
+  useEffect(() => {
+    if (!viewingProfile?.id || !userId) return;
+    let cancelled = false;
+    setViewedLoading(true);
+    setViewedProfile(null);
+    setViewedLists([]);
+    setViewedActivity([]);
+    (async () => {
+      try {
+        const [profile, status, flw, fol] = await Promise.all([
+          friendsService.getProfile(viewingProfile.id).catch(() => null),
+          friendsService.getFollowStatus(userId, viewingProfile.id).catch(() => null),
+          friendsService.getFollowers(viewingProfile.id).catch(() => []),
+          friendsService.getFollowing(viewingProfile.id).catch(() => []),
+        ]);
+        if (cancelled) return;
+        setViewedProfile(profile);
+        setViewedFollowStatus(status);
+        setViewedFollowers(flw);
+        setViewedFollowing(fol);
+
+        const canSee = profile && (!profile.is_private || status === "accepted");
+        if (canSee) {
+          const [lists, activity] = await Promise.all([
+            listsService.getPublicLists(viewingProfile.id).catch(() => []),
+            friendsService.getOwnActivity(viewingProfile.id, 5).catch(() => []),
+          ]);
+          if (cancelled) return;
+          setViewedLists(lists);
+          setViewedActivity(activity);
+        }
+      } catch (e) {
+        console.error("viewed profile load failed", e);
+      } finally {
+        if (!cancelled) setViewedLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [viewingProfile?.id, userId]);
+
+  // Load saved-list ids once so the read-only list detail can show Save/Saved correctly
+  useEffect(() => {
+    if (!userId || isGuest) return;
+    let cancelled = false;
+    listsService.getSavedLists(userId)
+      .then((lists) => {
+        if (cancelled) return;
+        setSavedListIds(new Set((lists || []).map((l) => l.id)));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [userId, isGuest]);
+
+  const handleViewedFollowToggle = async () => {
+    if (!userId || !viewingProfile) return;
+    try {
+      if (viewedFollowStatus === null) {
+        const result = await friendsService.followUser(userId, viewingProfile.id);
+        setViewedFollowStatus(result);
+        refreshFollowLists();
+      } else {
+        await friendsService.unfollowUser(userId, viewingProfile.id);
+        setViewedFollowStatus(null);
+        refreshFollowLists();
+        // If account is private, hide its lists/activity after unfollow
+        if (viewedProfile?.is_private) {
+          setViewedLists([]);
+          setViewedActivity([]);
+        }
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const handleToggleSavedList = async (listId) => {
+    if (!userId) return;
+    const wasSaved = savedListIds.has(listId);
+    setSavedListIds((prev) => {
+      const next = new Set(prev);
+      if (wasSaved) next.delete(listId); else next.add(listId);
+      return next;
+    });
+    try {
+      if (wasSaved) await listsService.unsaveList(userId, listId);
+      else await listsService.saveList(userId, listId);
+    } catch (e) {
+      console.error("save list toggle failed", e);
+      setSavedListIds((prev) => {
+        const next = new Set(prev);
+        if (wasSaved) next.add(listId); else next.delete(listId);
+        return next;
+      });
+    }
+  };
 
   const refreshFollowLists = useCallback(async () => {
     if (!userId) return;
@@ -8173,6 +8315,23 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
       .map(([g]) => g);
   }, [watchedMovies]);
 
+  // Top genres for the currently viewed profile (derived from their recent activity)
+  const viewedTopGenres = useMemo(() => {
+    if (!viewedActivity || viewedActivity.length === 0) return [];
+    const counts = {};
+    viewedActivity.forEach((item) => {
+      const ids = item.movie?.genre_ids;
+      if (!ids || ids.length === 0) return;
+      const g = GENRE_MAP[ids[0]];
+      if (!g || g === "Film") return;
+      counts[g] = (counts[g] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([g]) => g);
+  }, [viewedActivity]);
+
   // ── Render: guest ──
   if (!user || isGuest) {
     return (
@@ -8261,7 +8420,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
   // ── Render: main tab ──
   return (
     <div className="content friends-tab">
-      {!activeList && activeSubTab !== "following" && activeSubTab !== "followers" && (
+      {!viewingProfile && !activeList && activeSubTab !== "following" && activeSubTab !== "followers" && (
         <>
           <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR CIRCLE · FRIENDS</div>
 
@@ -8273,7 +8432,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
         </>
       )}
 
-      {activeSubTab === "feed" && (
+      {!viewingProfile && activeSubTab === "feed" && (
         <div className="friends-feed">
           {feedLoading ? (
             <>
@@ -8300,6 +8459,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                         currentUserId={userId}
                         onFollow={handleFollow}
                         onUnfollow={handleUnfollow}
+                        onOpenProfile={openProfile}
                       />
                     ))}
                   </div>
@@ -8338,6 +8498,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                   isSaved={item.movie ? savedIdSet.has(item.movie.tmdb_id) : false}
                   reactionCount={reactionCounts[item.id] || 0}
                   isReacted={userReactions.has(item.id)}
+                  onOpenProfile={openProfile}
                 />
               ))}
             </>
@@ -8345,7 +8506,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
         </div>
       )}
 
-      {activeSubTab === "friends" && (
+      {!viewingProfile && activeSubTab === "friends" && (
         <div className="friends-list-view">
           <div className="friends-search-row">
             <input
@@ -8356,24 +8517,6 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-
-          {pendingRequests.length > 0 && (
-            <div className="friends-section">
-              <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />FOLLOW REQUESTS · {pendingRequests.length}</div>
-              <div className="user-card-grid">
-                {pendingRequests.map((p) => (
-                  <UserCard
-                    key={p.id}
-                    profile={p}
-                    mode="pending"
-                    currentUserId={userId}
-                    onAccept={handleAccept}
-                    onDecline={handleDecline}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
 
           {searchQuery.trim() ? (
             <div className="friends-section">
@@ -8389,6 +8532,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                     currentUserId={userId}
                     onFollow={handleFollow}
                     onUnfollow={handleUnfollow}
+                    onOpenProfile={openProfile}
                   />
                 ))}
               </div>
@@ -8401,7 +8545,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
         </div>
       )}
 
-      {activeSubTab === "profile" && ownProfile && !activeList && (
+      {!viewingProfile && activeSubTab === "profile" && ownProfile && !activeList && (
         <div className="friends-profile">
           <div className="profile-header-v2">
             <div className="profile-avatar-wrap">
@@ -8603,152 +8747,311 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
         </div>
       )}
 
-      {activeList && (
+      {viewingProfile && !activeList && (
+        <div className="viewing-profile">
+          <button type="button" className="vp-back" onClick={() => setViewingProfile(null)}>← Back</button>
+
+          {viewedLoading || !viewedProfile ? (
+            <div className="friends-empty-line">Loading…</div>
+          ) : (
+            <>
+              <div className="profile-header-v2">
+                <div className="profile-avatar-wrap">
+                  <FriendsAvatar profile={viewedProfile} size={80} />
+                </div>
+                <div className="profile-info-v2">
+                  <div className="profile-display-v2">{viewedProfile.display_name || viewedProfile.username}</div>
+                  <div className="profile-username-v2">@{viewedProfile.username}</div>
+                  <div className="vp-stats">
+                    {viewedActivity.length} films · {viewedFollowing.length} following · {viewedFollowers.length} followers
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className={`pill ${viewedFollowStatus === null ? "pill--wine" : "pill--ghost"}${viewedFollowStatus === "pending" ? " pill--muted" : ""} vp-follow-btn`}
+                  onClick={handleViewedFollowToggle}
+                >
+                  {viewedFollowStatus === null
+                    ? "Follow"
+                    : viewedFollowStatus === "pending"
+                    ? "Requested"
+                    : "✓ Following"}
+                </button>
+              </div>
+
+              {viewedProfile.is_private && viewedFollowStatus !== "accepted" ? (
+                <div className="vp-private">
+                  <div className="vp-private-icon" aria-hidden="true">🔒</div>
+                  <div className="vp-private-headline">This account is private</div>
+                  <div className="vp-private-sub">Follow to see their films and lists.</div>
+                </div>
+              ) : (
+                <>
+                  {viewedTopGenres.length > 0 && (
+                    <div className="profile-bio-section">
+                      <div className="profile-genre-pills">
+                        {viewedTopGenres.map((g) => (
+                          <span key={g} className="profile-genre-pill">{g}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="friends-section">
+                    <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />LISTS</div>
+                    {viewedLists.length === 0 ? (
+                      <div className="friends-empty-line vp-empty-italic">No public lists yet.</div>
+                    ) : (
+                      <div className="profile-lists-grid">
+                        {viewedLists.map((list) => {
+                          const filmCount = list.list_films?.[0]?.count || 0;
+                          return (
+                            <div key={list.id} className="list-card-wrap">
+                              <button type="button" className="list-card" onClick={() => setActiveList(list)}>
+                                <div className="list-card-cover">
+                                  {list.cover_image_url ? (
+                                    <img src={list.cover_image_url} alt="" className="list-card-cover-img" />
+                                  ) : (
+                                    <div className="list-card-cover-fallback" />
+                                  )}
+                                </div>
+                                <div className="list-card-info">
+                                  <div className="list-card-name">{list.name}</div>
+                                  <div className="list-card-count">{filmCount} {filmCount === 1 ? "FILM" : "FILMS"}</div>
+                                </div>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="friends-section">
+                    <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />RECENTLY WATCHED</div>
+                    {viewedActivity.length === 0 ? (
+                      <div className="friends-empty-line">No recent activity.</div>
+                    ) : (
+                      <div className="profile-activity-row">
+                        {viewedActivity.slice(0, 5).map((item) => {
+                          const movie = item.movie;
+                          return (
+                            <div key={item.id} className="profile-activity-card">
+                              {movie?.poster_path ? (
+                                <img src={`${IMG_BASE}/w185${movie.poster_path}`} alt={movie.title || ""} className="profile-activity-poster" />
+                              ) : (
+                                <div className="profile-activity-poster profile-activity-poster--empty" aria-hidden="true" />
+                              )}
+                              <div className="profile-activity-title">{movie?.title || "—"}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {activeList && (() => {
+        const isReadOnly = viewingProfile !== null;
+        const isSavedList = listDetail ? savedListIds.has(listDetail.id) : false;
+        return (
         <div className="ld-view">
-          <button type="button" className="ld-back" onClick={() => { setActiveList(null); setListFilmQuery(""); setListFilmResults([]); }}>← Back</button>
+          <button type="button" className="ld-back" onClick={() => { setActiveList(null); setListFilmQuery(""); setListFilmResults([]); }}>
+            {isReadOnly ? `← Back to @${viewingProfile?.username || ""}` : "← Back"}
+          </button>
 
           {listLoading || !listDetail ? (
             <div className="ld-loading">Loading…</div>
           ) : (
             <>
               <div className="ld-header">
-                <label className="ld-cover-wrap">
-                  {listDetail.cover_image_url ? (
-                    <img src={listDetail.cover_image_url} alt="" className="ld-cover-img" />
-                  ) : (listDetail.films || []).some((f) => f.poster_path) ? (
-                    <div className="ld-cover-fallback">
-                      {[0, 1, 2, 3].map((i) => {
-                        const f = listDetail.films?.[i];
-                        return f?.poster_path ? (
-                          <img key={i} src={`${IMG_BASE}/w185${f.poster_path}`} alt="" />
-                        ) : (
-                          <div key={i} className="ld-cover-quadrant-empty" />
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="ld-cover-fallback-flat" />
-                  )}
-                  <span className="ld-cover-overlay" aria-hidden="true">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
-                  </span>
-                  <input type="file" accept="image/*" className="ld-cover-input" onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleUploadCover(f);
-                    e.target.value = "";
-                  }} />
-                </label>
+                {isReadOnly ? (
+                  <div className="ld-cover-wrap ld-cover-wrap--ro">
+                    {listDetail.cover_image_url ? (
+                      <img src={listDetail.cover_image_url} alt="" className="ld-cover-img" />
+                    ) : (listDetail.films || []).some((f) => f.poster_path) ? (
+                      <div className="ld-cover-fallback">
+                        {[0, 1, 2, 3].map((i) => {
+                          const f = listDetail.films?.[i];
+                          return f?.poster_path ? (
+                            <img key={i} src={`${IMG_BASE}/w185${f.poster_path}`} alt="" />
+                          ) : (
+                            <div key={i} className="ld-cover-quadrant-empty" />
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="ld-cover-fallback-flat" />
+                    )}
+                  </div>
+                ) : (
+                  <label className="ld-cover-wrap">
+                    {listDetail.cover_image_url ? (
+                      <img src={listDetail.cover_image_url} alt="" className="ld-cover-img" />
+                    ) : (listDetail.films || []).some((f) => f.poster_path) ? (
+                      <div className="ld-cover-fallback">
+                        {[0, 1, 2, 3].map((i) => {
+                          const f = listDetail.films?.[i];
+                          return f?.poster_path ? (
+                            <img key={i} src={`${IMG_BASE}/w185${f.poster_path}`} alt="" />
+                          ) : (
+                            <div key={i} className="ld-cover-quadrant-empty" />
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="ld-cover-fallback-flat" />
+                    )}
+                    <span className="ld-cover-overlay" aria-hidden="true">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
+                    </span>
+                    <input type="file" accept="image/*" className="ld-cover-input" onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleUploadCover(f);
+                      e.target.value = "";
+                    }} />
+                  </label>
+                )}
                 <div className="ld-info">
                   <div className="ld-type-label">LIST</div>
-                  <div
-                    key={listDetail.id}
-                    className="ld-title-edit"
-                    contentEditable={true}
-                    suppressContentEditableWarning={true}
-                    dangerouslySetInnerHTML={{ __html: listDetail.name || "" }}
-                    onInput={(e) => handleInlineUpdateList(activeList.id, { name: e.currentTarget.textContent.trim() })}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
-                  />
-                  <textarea
-                    className="ld-description-edit"
-                    defaultValue={listDetail.description || ""}
-                    placeholder="Add a description..."
-                    maxLength={300}
-                    rows={2}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim();
-                      if (v !== (listDetail.description || "")) handleInlineUpdateList(listDetail.id, { description: v || null });
-                    }}
-                  />
+                  {isReadOnly ? (
+                    <div className="ld-title-edit ld-title-edit--ro">{listDetail.name || ""}</div>
+                  ) : (
+                    <div
+                      key={listDetail.id}
+                      className="ld-title-edit"
+                      contentEditable={true}
+                      suppressContentEditableWarning={true}
+                      dangerouslySetInnerHTML={{ __html: listDetail.name || "" }}
+                      onInput={(e) => handleInlineUpdateList(activeList.id, { name: e.currentTarget.textContent.trim() })}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
+                    />
+                  )}
+                  {isReadOnly ? (
+                    listDetail.description ? (
+                      <p className="ld-description-edit ld-description-edit--ro">{listDetail.description}</p>
+                    ) : null
+                  ) : (
+                    <textarea
+                      className="ld-description-edit"
+                      defaultValue={listDetail.description || ""}
+                      placeholder="Add a description..."
+                      maxLength={300}
+                      rows={2}
+                      onBlur={(e) => {
+                        const v = e.target.value.trim();
+                        if (v !== (listDetail.description || "")) handleInlineUpdateList(listDetail.id, { description: v || null });
+                      }}
+                    />
+                  )}
                   <div className="ld-meta">
-                    {listDetail.films?.length || 0} films · {listDetail.is_public ? "Public" : "Private"}
+                    {listDetail.films?.length || 0} films{!isReadOnly && ` · ${listDetail.is_public ? "Public" : "Private"}`}
                   </div>
                   <div className="ld-actions">
-                    <button
-                      type="button"
-                      className={`pill ${listDetail.is_public ? "pill--ghost" : "pill--wine"}`}
-                      onClick={() => handleToggleListPrivacy(listDetail)}
-                    >
-                      {listDetail.is_public ? "Public" : "Private"}
-                    </button>
-                    <button type="button" className="ld-delete-btn" onClick={() => handleDeleteList(listDetail.id)}>
-                      Delete list
-                    </button>
+                    {isReadOnly ? (
+                      <button
+                        type="button"
+                        className={`pill ${isSavedList ? "pill--ghost" : "pill--wine"}`}
+                        onClick={() => handleToggleSavedList(listDetail.id)}
+                      >
+                        {isSavedList ? "Saved ✓" : "Save list"}
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className={`pill ${listDetail.is_public ? "pill--ghost" : "pill--wine"}`}
+                          onClick={() => handleToggleListPrivacy(listDetail)}
+                        >
+                          {listDetail.is_public ? "Public" : "Private"}
+                        </button>
+                        <button type="button" className="ld-delete-btn" onClick={() => handleDeleteList(listDetail.id)}>
+                          Delete list
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <div className="ld-always-search-wrap" ref={searchWrapRef}>
-                <input
-                  className="ld-always-search"
-                  type="text"
-                  placeholder="Search to add films..."
-                  value={listFilmQuery}
-                  onChange={(e) => { setListFilmQuery(e.target.value); setSearchDropdownOpen(true); }}
-                  onFocus={() => setSearchDropdownOpen(true)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      setListFilmQuery("");
-                      setListFilmResults([]);
-                      setSearchDropdownOpen(false);
-                      e.target.blur();
-                    }
-                  }}
-                />
-                {listFilmQuery && (
-                  <button
-                    type="button"
-                    className="ld-always-search-clear"
-                    onClick={() => { setListFilmQuery(""); setListFilmResults([]); setSearchDropdownOpen(false); }}
-                    aria-label="Clear search"
-                  >
-                    ×
-                  </button>
-                )}
-                {searchDropdownOpen && listFilmQuery.trim().length >= 2 && (
-                  <div className="ld-search-dropdown">
-                    {listFilmSearching && <div className="ld-search-empty">Searching…</div>}
-                    {!listFilmSearching && listFilmResults.length === 0 && <div className="ld-search-empty">No results</div>}
-                    {!listFilmSearching && listFilmResults.length > 0 && listFilmResults.map((m) => {
-                      const inList = listDetail.films.some((f) => f.tmdb_id === m.id);
-                      return (
-                        <button
-                          key={m.id}
-                          type="button"
-                          className="ld-search-dropdown-item"
-                          onClick={() => handleAddFilmToList(m)}
-                          title={inList ? "Click to remove" : "Click to add"}
-                        >
-                          {m.poster_path ? (
-                            <img src={`${IMG_BASE}/w185${m.poster_path}`} alt="" className="ld-search-dropdown-poster" />
-                          ) : (
-                            <div className="ld-search-dropdown-poster ld-search-dropdown-poster--empty" />
-                          )}
-                          <div className="ld-search-dropdown-info">
-                            <div className="ld-search-dropdown-title">{m.title}</div>
-                            <div className="ld-search-dropdown-meta">{m.year}{m.genre ? ` · ${m.genre}` : ""}</div>
-                          </div>
-                          <span className="ld-search-dropdown-action">{inList ? "✓" : "+"}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              {!isReadOnly && (
+                <div className="ld-always-search-wrap" ref={searchWrapRef}>
+                  <input
+                    className="ld-always-search"
+                    type="text"
+                    placeholder="Search to add films..."
+                    value={listFilmQuery}
+                    onChange={(e) => { setListFilmQuery(e.target.value); setSearchDropdownOpen(true); }}
+                    onFocus={() => setSearchDropdownOpen(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        setListFilmQuery("");
+                        setListFilmResults([]);
+                        setSearchDropdownOpen(false);
+                        e.target.blur();
+                      }
+                    }}
+                  />
+                  {listFilmQuery && (
+                    <button
+                      type="button"
+                      className="ld-always-search-clear"
+                      onClick={() => { setListFilmQuery(""); setListFilmResults([]); setSearchDropdownOpen(false); }}
+                      aria-label="Clear search"
+                    >
+                      ×
+                    </button>
+                  )}
+                  {searchDropdownOpen && listFilmQuery.trim().length >= 2 && (
+                    <div className="ld-search-dropdown">
+                      {listFilmSearching && <div className="ld-search-empty">Searching…</div>}
+                      {!listFilmSearching && listFilmResults.length === 0 && <div className="ld-search-empty">No results</div>}
+                      {!listFilmSearching && listFilmResults.length > 0 && listFilmResults.map((m) => {
+                        const inList = listDetail.films.some((f) => f.tmdb_id === m.id);
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            className="ld-search-dropdown-item"
+                            onClick={() => handleAddFilmToList(m)}
+                            title={inList ? "Click to remove" : "Click to add"}
+                          >
+                            {m.poster_path ? (
+                              <img src={`${IMG_BASE}/w185${m.poster_path}`} alt="" className="ld-search-dropdown-poster" />
+                            ) : (
+                              <div className="ld-search-dropdown-poster ld-search-dropdown-poster--empty" />
+                            )}
+                            <div className="ld-search-dropdown-info">
+                              <div className="ld-search-dropdown-title">{m.title}</div>
+                              <div className="ld-search-dropdown-meta">{m.year}{m.genre ? ` · ${m.genre}` : ""}</div>
+                            </div>
+                            <span className="ld-search-dropdown-action">{inList ? "✓" : "+"}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="ld-films-grid">
                 {listDetail.films.length === 0 && !listFilmQuery.trim() ? (
-                  <div className="ld-empty">Search above to add your first film.</div>
+                  <div className="ld-empty">{isReadOnly ? "No films in this list yet." : "Search above to add your first film."}</div>
                 ) : listDetail.films.map((f, i) => {
                   const personalRating = watchedRatings?.get(f.tmdb_id);
                   return (
                     <div
                       key={f.tmdb_id}
                       className="ld-film"
-                      draggable={true}
-                      onDragStart={() => { draggedFilmIndex.current = i; }}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
+                      draggable={!isReadOnly}
+                      onDragStart={isReadOnly ? undefined : () => { draggedFilmIndex.current = i; }}
+                      onDragOver={isReadOnly ? undefined : (e) => e.preventDefault()}
+                      onDrop={isReadOnly ? undefined : (e) => {
                         e.preventDefault();
                         const from = draggedFilmIndex.current;
                         if (from != null && from !== i) handleReorderFilms(from, i);
@@ -8761,11 +9064,13 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                         ) : (
                           <div className="ld-film-poster ld-film-poster--empty" />
                         )}
-                        <button type="button" className="ld-film-remove" onClick={() => handleRemoveFilmFromList(f.tmdb_id)} aria-label="Remove">×</button>
+                        {!isReadOnly && (
+                          <button type="button" className="ld-film-remove" onClick={() => handleRemoveFilmFromList(f.tmdb_id)} aria-label="Remove">×</button>
+                        )}
                       </div>
                       <div className="ld-film-title">{f.title}</div>
                       {f.year && <div className="ld-film-year">{f.year}</div>}
-                      {personalRating != null && <div className="ld-film-rating">{personalRating}/100</div>}
+                      {!isReadOnly && personalRating != null && <div className="ld-film-rating">{personalRating}/100</div>}
                     </div>
                   );
                 })}
@@ -8773,12 +9078,14 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
             </>
           )}
         </div>
-      )}
+        );
+      })()}
 
-      {(activeSubTab === "following" || activeSubTab === "followers") && !activeList && (
+      {!viewingProfile && (activeSubTab === "following" || activeSubTab === "followers") && !activeList && (
         (() => {
           const isFollowing = activeSubTab === "following";
-          const list = isFollowing ? following : followers;
+          const acceptedFollowers = followers.filter((f) => f.followStatus !== "pending");
+          const list = isFollowing ? following : acceptedFollowers;
           const q = followsFilter.trim().toLowerCase();
           const filtered = q
             ? list.filter((p) =>
@@ -8786,6 +9093,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                 (p.display_name || "").toLowerCase().includes(q)
               )
             : list;
+          const showPending = !isFollowing && pendingRequests.length > 0;
           return (
             <div className="follow-list-view">
               <button type="button" className="follow-back" onClick={() => setActiveSubTab("profile")}>
@@ -8798,7 +9106,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                   className={`follow-tab${!isFollowing ? " active" : ""}`}
                   onClick={() => setActiveSubTab("followers")}
                 >
-                  Followers {followers.length}
+                  Followers {acceptedFollowers.length}
                 </button>
                 <button
                   type="button"
@@ -8817,17 +9125,63 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                 onChange={(e) => setFollowsFilter(e.target.value)}
               />
 
+              {showPending && (
+                <div className="pending-requests-section">
+                  <div className="friends-eyebrow pending-eyebrow"><span className="friends-eyebrow-rule pending-eyebrow-rule" />FOLLOW REQUESTS · {pendingRequests.length}</div>
+                  <div className="pending-request-rows">
+                    {pendingRequests.map((p) => {
+                      const canOpen = p.id !== userId;
+                      return (
+                        <div key={p.id} className="pending-request-row">
+                          {canOpen ? (
+                            <button type="button" className="follow-row-avatar-btn" onClick={() => openProfile(p)} aria-label={`View ${p.username || "profile"}`}>
+                              <FriendsAvatar profile={p} size={44} />
+                            </button>
+                          ) : (
+                            <FriendsAvatar profile={p} size={44} />
+                          )}
+                          <div className="follow-row-info">
+                            {canOpen ? (
+                              <button type="button" className="follow-row-username follow-row-username-btn" onClick={() => openProfile(p)}>{p.username || "user"}</button>
+                            ) : (
+                              <div className="follow-row-username">{p.username || "user"}</div>
+                            )}
+                            {p.display_name && <div className="follow-row-display">{p.display_name}</div>}
+                          </div>
+                          <div className="pending-request-actions">
+                            <button type="button" className="pill pill--wine pending-accept-btn" onClick={() => handleAccept(p.id)}>Accept</button>
+                            <button type="button" className="pill pill--ghost pending-decline-btn" onClick={() => handleDecline(p.id)}>Decline</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="pending-requests-divider" />
+                </div>
+              )}
+
               {filtered.length === 0 ? (
                 <div className="friends-empty-line">{q ? "No matches." : isFollowing ? "You're not following anyone yet." : "No followers yet."}</div>
               ) : (
                 <div className="follow-rows">
                   {filtered.map((p) => {
                     const isFollowed = followingIdSet.has(p.id);
+                    const canOpen = p.id !== userId;
                     return (
                       <div key={p.id} className="follow-row">
-                        <FriendsAvatar profile={p} size={44} />
+                        {canOpen ? (
+                          <button type="button" className="follow-row-avatar-btn" onClick={() => openProfile(p)} aria-label={`View ${p.username || "profile"}`}>
+                            <FriendsAvatar profile={p} size={44} />
+                          </button>
+                        ) : (
+                          <FriendsAvatar profile={p} size={44} />
+                        )}
                         <div className="follow-row-info">
-                          <div className="follow-row-username">{p.username || "user"}</div>
+                          {canOpen ? (
+                            <button type="button" className="follow-row-username follow-row-username-btn" onClick={() => openProfile(p)}>{p.username || "user"}</button>
+                          ) : (
+                            <div className="follow-row-username">{p.username || "user"}</div>
+                          )}
                           {p.display_name && <div className="follow-row-display">{p.display_name}</div>}
                         </div>
                         {p.id !== userId && (
