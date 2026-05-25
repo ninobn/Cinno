@@ -7498,6 +7498,51 @@ function formatRelativeTime(iso) {
   return DateTime.fromISO(iso).toFormat("LLL d").toUpperCase();
 }
 
+// Short relative time for the redesigned feed: "42m" / "3h" / "2d" / "May 12"
+function formatRelativeTimeShort(iso) {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  const diffMs = Date.now() - then;
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return "now";
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d`;
+  return DateTime.fromISO(iso).toFormat("LLL d");
+}
+
+// Group feed items (already sorted newest-first) into contiguous day buckets
+function groupByDay(items) {
+  const groups = [];
+  let currentDay = null;
+  let currentGroup = [];
+  items.forEach((item) => {
+    const day = new Date(item.created_at).toDateString();
+    if (day !== currentDay) {
+      if (currentGroup.length > 0) groups.push({ day: currentDay, items: currentGroup });
+      currentDay = day;
+      currentGroup = [];
+    }
+    currentGroup.push(item);
+  });
+  if (currentGroup.length > 0) groups.push({ day: currentDay, items: currentGroup });
+  return groups;
+}
+
+// Day divider label: "TODAY" / "YESTERDAY" / "MON 12"
+function feedDayLabel(dayStr) {
+  if (!dayStr) return "";
+  const today = new Date().toDateString();
+  const yesterday = new Date(Date.now() - 86400000).toDateString();
+  if (dayStr === today) return "TODAY";
+  if (dayStr === yesterday) return "YESTERDAY";
+  const date = new Date(dayStr);
+  const weekday = date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
+  return `${weekday} ${date.getDate()}`;
+}
+
 function profileInitials(profile) {
   if (!profile) return "?";
   const src = (profile.display_name || profile.username || "").trim();
@@ -7523,71 +7568,566 @@ function actionLabel(actionType) {
   }
 }
 
-function ActivityCard({ item, hideUser = false, onReact, onToggleSave, isSaved, reactionCount = 0, isReacted = false, onOpenProfile }) {
+function ActivityCard({
+  item,
+  onReact,
+  onToggleSave,
+  isSaved = false,
+  isWatched = false,
+  reactionCount = 0,
+  isReacted = false,
+  onOpenProfile,
+  commentCount = 0,
+  expanded = false,
+  onToggleComments,
+  comments,
+  commentInput = "",
+  onCommentInputChange,
+  onPostComment,
+  currentProfile,
+  ownView = false,
+}) {
   const movie = item.movie;
   const genre = movie?.genre_ids?.length ? (GENRE_MAP[movie.genre_ids[0]] || "Film") : "Film";
   const handleOpenUser = onOpenProfile && item.user ? () => onOpenProfile(item.user) : null;
+  // movies_cache rows carry `tmdb_id`, but toggleSave expects `.id`
+  const saveMovie = movie ? { ...movie, id: movie.tmdb_id } : null;
+  const showRating = (item.action_type === "rated" || item.action_type === "logged") && item.rating != null;
 
   return (
-    <div className="activity-card">
-      {!hideUser && (
-        <div className="activity-card-header">
-          {handleOpenUser ? (
-            <button type="button" className="activity-card-avatar-btn" onClick={handleOpenUser} aria-label={`View ${item.user?.username || "profile"}`}>
-              <FriendsAvatar profile={item.user} size={32} />
-            </button>
-          ) : (
-            <FriendsAvatar profile={item.user} size={32} />
-          )}
-          {handleOpenUser ? (
-            <button type="button" className="activity-card-username activity-card-username-btn" onClick={handleOpenUser}>
-              {item.user?.display_name || item.user?.username || "Someone"}
-            </button>
-          ) : (
-            <span className="activity-card-username">{item.user?.display_name || item.user?.username || "Someone"}</span>
-          )}
-          <span className="activity-card-action">{actionLabel(item.action_type)}</span>
-          <span className="activity-card-time">{formatRelativeTime(item.created_at)}</span>
-        </div>
-      )}
-      <div className="activity-card-film">
-        {movie?.poster_path ? (
-          <img className="activity-card-poster" src={`${IMG_BASE}/w185${movie.poster_path}`} alt={movie.title || ""} />
+    <div className={`feed-card${ownView ? " feed-card--own" : ""}`}>
+      {/* HEADER STRIP */}
+      <div className="feed-card-header">
+        {handleOpenUser ? (
+          <button type="button" className="feed-card-avatar-btn" onClick={handleOpenUser} aria-label={`View ${item.user?.username || "profile"}`}>
+            <FriendsAvatar profile={item.user} size={26} />
+          </button>
         ) : (
-          <div className="activity-card-poster activity-card-poster--empty" aria-hidden="true" />
+          <FriendsAvatar profile={item.user} size={26} />
         )}
-        <div className="activity-card-film-info">
-          <div className="activity-card-title">{movie?.title || "Unknown film"}</div>
-          <div className="activity-card-meta">{movie?.year || "—"} · {genre}</div>
-          {item.action_type === "rated" && item.rating != null && (
-            <div className="activity-card-rating">{Math.round(item.rating)}/100</div>
-          )}
-          {item.note && <div className="activity-card-note">"{item.note}"</div>}
+        {handleOpenUser ? (
+          <button type="button" className="feed-card-username feed-card-username-btn" onClick={handleOpenUser}>
+            {item.user?.display_name || item.user?.username || "Someone"}
+          </button>
+        ) : (
+          <span className="feed-card-username">{item.user?.display_name || item.user?.username || "Someone"}</span>
+        )}
+        <span className="feed-card-action">{actionLabel(item.action_type)}</span>
+        <span className="feed-card-time">{formatRelativeTimeShort(item.created_at)}</span>
+      </div>
+
+      {/* FILM ROW */}
+      <div className="feed-card-film">
+        {movie?.poster_path ? (
+          <img className="feed-card-poster" src={`${IMG_BASE}/w185${movie.poster_path}`} alt={movie.title || ""} />
+        ) : (
+          <div className="feed-card-poster feed-card-poster--empty" aria-hidden="true" />
+        )}
+        <div className="feed-card-film-info">
+          <div className="feed-card-title">{movie?.title || "Unknown film"}</div>
+          <div className="feed-card-meta">{movie?.year || "—"} · {genre}</div>
+          {showRating && <div className="feed-card-rating">{Math.round(item.rating)}/100</div>}
         </div>
       </div>
-      <div className="activity-card-footer">
+
+      {/* NOTE */}
+      {item.note && <div className="feed-card-note">"{item.note}"</div>}
+
+      {/* TODO: list-creation activity (action_type 'listed') is not recorded yet — render a list card here once available */}
+
+      {/* Own-profile view shows only the post (rating + note) — no social chips/footer.
+          TODO: add a Reply/threading affordance on own posts in the future. */}
+      {!ownView && (
+        <>
+      {/* REACTION CHIPS */}
+      <div className="feed-card-chips">
         <button
           type="button"
-          className={`activity-react-btn${isReacted ? " activity-react-btn--on" : ""}`}
+          className={`feed-chip${isReacted ? " feed-chip--on" : ""}`}
           onClick={onReact}
           disabled={!onReact}
           aria-label="React"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill={isReacted ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill={isReacted ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
           </svg>
           <span>{reactionCount}</span>
         </button>
-        {movie && (
+        <button
+          type="button"
+          className={`feed-chip${isSaved ? " feed-chip--on" : ""}`}
+          onClick={() => { if (saveMovie && !isSaved) onToggleSave(saveMovie); }}
+          disabled={!saveMovie}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          <span>Want to watch</span>
+        </button>
+        <button
+          type="button"
+          className={`feed-chip${isWatched ? " feed-chip--on" : ""}`}
+          disabled
+          aria-label="Seen it"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+          <span>Seen it</span>
+        </button>
+      </div>
+
+      {/* FOOTER ROW */}
+      <div className="feed-card-footer">
+        <button
+          type="button"
+          className="feed-reply-btn"
+          onClick={() => onToggleComments && onToggleComments(item.id)}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+          </svg>
+          <span>Reply{commentCount > 0 ? ` · ${commentCount}` : ""}</span>
+        </button>
+        {saveMovie && (
           <button
             type="button"
-            className="activity-watchlist-btn"
-            onClick={() => onToggleSave(movie)}
+            className={`feed-watchlist-btn${isSaved ? " feed-watchlist-btn--saved" : ""}`}
+            onClick={() => onToggleSave(saveMovie)}
           >
-            {isSaved ? "On watchlist" : "+ Watchlist"}
+            {isSaved ? "Saved ✓" : "+ Watchlist"}
           </button>
         )}
       </div>
+
+      {/* COMMENT SECTION */}
+      {expanded && (
+        <div className="feed-comments">
+          {(comments || []).map((c) => (
+            <div className="feed-comment" key={c.id}>
+              <FriendsAvatar profile={c.user} size={20} />
+              <div className="feed-comment-body">
+                <div className="feed-comment-user">{c.user?.display_name || c.user?.username || "Someone"}</div>
+                <div className="feed-comment-text">{c.content}</div>
+                <div className="feed-comment-time">{formatRelativeTimeShort(c.created_at)}</div>
+              </div>
+            </div>
+          ))}
+          <div className="feed-comment-input-row">
+            <FriendsAvatar profile={currentProfile} size={20} />
+            <input
+              className="feed-comment-input"
+              type="text"
+              placeholder="Add a comment..."
+              value={commentInput}
+              onChange={(e) => onCommentInputChange && onCommentInputChange(item.id, e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (commentInput.trim() && onPostComment) onPostComment(item.id, commentInput);
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// Inline "suggested for you" card, slotted between activity cards every 4th item
+function FeedSuggestedCard({ suggested, onFollow, onOpenProfile }) {
+  const [busy, setBusy] = useState(false);
+  const handleFollow = async () => {
+    if (busy) return;
+    setBusy(true);
+    try { await onFollow(suggested.id); } finally { setBusy(false); }
+  };
+  const open = onOpenProfile ? () => onOpenProfile(suggested) : null;
+  return (
+    <div className="feed-suggested-card">
+      <div className="feed-suggested-eyebrow">SUGGESTED FOR YOU</div>
+      <div className="feed-suggested-row">
+        {open ? (
+          <button type="button" className="feed-suggested-avatar-btn" onClick={open} aria-label={`View ${suggested.username || "profile"}`}>
+            <FriendsAvatar profile={suggested} size={32} />
+          </button>
+        ) : (
+          <FriendsAvatar profile={suggested} size={32} />
+        )}
+        <div className="feed-suggested-info">
+          {open ? (
+            <button type="button" className="feed-suggested-username feed-suggested-username-btn" onClick={open}>
+              {suggested.username || "user"}
+            </button>
+          ) : (
+            <div className="feed-suggested-username">{suggested.username || "user"}</div>
+          )}
+          <div className="feed-suggested-taste">Film enthusiast</div>
+        </div>
+        <button type="button" className="feed-suggested-follow" disabled={busy} onClick={handleFollow}>
+          Follow
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Compact suggested-user row for the right feed sidebar
+function FeedRailSuggestedRow({ suggested, onFollow, onOpenProfile }) {
+  const [busy, setBusy] = useState(false);
+  const handleFollow = async () => {
+    if (busy) return;
+    setBusy(true);
+    try { await onFollow(suggested.id); } finally { setBusy(false); }
+  };
+  const open = onOpenProfile ? () => onOpenProfile(suggested) : null;
+  return (
+    <div className="feed-right-suggested-row">
+      {open ? (
+        <button type="button" className="feed-suggested-avatar-btn" onClick={open} aria-label={`View ${suggested.username || "profile"}`}>
+          <FriendsAvatar profile={suggested} size={36} />
+        </button>
+      ) : (
+        <FriendsAvatar profile={suggested} size={36} />
+      )}
+      <div className="feed-right-suggested-info">
+        {open ? (
+          <button type="button" className="feed-suggested-username-btn feed-right-suggested-username" onClick={open}>{suggested.username || "user"}</button>
+        ) : (
+          <div className="feed-right-suggested-username">{suggested.username || "user"}</div>
+        )}
+        <div className="feed-right-suggested-taste">Film enthusiast</div>
+      </div>
+      <button type="button" className="feed-right-follow" disabled={busy} onClick={handleFollow}>Follow</button>
+    </div>
+  );
+}
+
+// ── Unified search result rows (shared by the dropdown and the See-all overlay) ──
+function FeedSearchPersonRow({ person, onOpen, large = false }) {
+  const count = person.followerCount || 0;
+  return (
+    <button type="button" className={`fsr-row${large ? " fsr-row--lg" : ""}`} onClick={() => onOpen && onOpen(person)}>
+      <FriendsAvatar profile={person} size={large ? 44 : 34} />
+      <div className="fsr-info">
+        <div className="fsr-title">{person.display_name || person.username}</div>
+        <div className="fsr-sub">@{person.username} · {count} follower{count === 1 ? "" : "s"}</div>
+      </div>
+    </button>
+  );
+}
+
+function FeedSearchListRow({ list, onOpen, large = false }) {
+  const size = large ? 52 : 40;
+  const count = list.filmCount || 0;
+  return (
+    <button type="button" className={`fsr-row${large ? " fsr-row--lg" : ""}`} onClick={() => onOpen && onOpen(list)}>
+      {list.cover_image_url ? (
+        <img className="fsr-list-cover" src={list.cover_image_url} alt="" style={{ width: size, height: size }} />
+      ) : (
+        <div className="fsr-list-cover fsr-list-cover--empty" style={{ width: size, height: size }} aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></svg>
+        </div>
+      )}
+      <div className="fsr-info">
+        <div className="fsr-title">{list.name}</div>
+        <div className="fsr-sub">{list.creator ? `@${list.creator.username}` : "—"} · {count} film{count === 1 ? "" : "s"}</div>
+      </div>
+    </button>
+  );
+}
+
+function FeedSearchFilmRow({ film, large = false }) {
+  const genre = film.genre_ids?.length ? (GENRE_MAP[film.genre_ids[0]] || "Film") : "Film";
+  return (
+    <div className={`fsr-row fsr-row--static${large ? " fsr-row--lg" : ""}`}>
+      {film.poster_path ? (
+        <img className="fsr-film-poster" src={`${IMG_BASE}/w92${film.poster_path}`} alt="" />
+      ) : (
+        <div className="fsr-film-poster fsr-film-poster--empty" aria-hidden="true" />
+      )}
+      <div className="fsr-info">
+        <div className="fsr-title">{film.title}</div>
+        <div className="fsr-sub">{film.year || "—"} · {genre}</div>
+      </div>
+    </div>
+  );
+}
+
+// ── Shared Friends-tab layout pieces (reused by Feed / Friends / Profile) ──
+
+// Unified search bar + Spotify-style dropdown. Rendered above all three columns.
+const FEED_SEARCH_PLACEHOLDERS = {
+  feed: "Search people, lists, films...",
+  friends: "Search people, lists, films...",
+  profile: "Search people, lists, films...",
+  lists: "Search lists...",
+};
+
+function FriendsSearchBar({ wrapRef, query, open, loading, results, onChange, onFocusOpen, onSeeAll, onOpenProfile, activeSubTab }) {
+  const total = results.people.length + results.lists.length + results.films.length;
+  const placeholder = FEED_SEARCH_PLACEHOLDERS[activeSubTab] ?? "Search people, lists, films...";
+  return (
+    <div className="feed-search" ref={wrapRef}>
+      <div className="feed-search-bar">
+        <svg className="feed-search-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+        <input
+          className="feed-search-input"
+          type="text"
+          placeholder={placeholder}
+          value={query}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={onFocusOpen}
+        />
+      </div>
+      {open && (
+        <div className="feed-search-dropdown">
+          {loading ? (
+            <div className="feed-search-status"><span className="feed-search-spinner" aria-hidden="true" /></div>
+          ) : total === 0 ? (
+            <div className="feed-search-status feed-search-status--empty">No results for &ldquo;{query.trim()}&rdquo;</div>
+          ) : (
+            <>
+              {results.people.length > 0 && (
+                <div className="feed-search-section">
+                  <div className="feed-search-section-head">
+                    <span className="feed-search-section-label">People</span>
+                    <button type="button" className="feed-search-seeall" onClick={() => onSeeAll("people")}>See all →</button>
+                  </div>
+                  {results.people.slice(0, 3).map((p) => (
+                    <FeedSearchPersonRow key={p.id} person={p} onOpen={onOpenProfile} />
+                  ))}
+                </div>
+              )}
+              {results.lists.length > 0 && (
+                <div className="feed-search-section">
+                  <div className="feed-search-section-head">
+                    <span className="feed-search-section-label">Lists</span>
+                    <button type="button" className="feed-search-seeall" onClick={() => onSeeAll("lists")}>See all →</button>
+                  </div>
+                  {results.lists.slice(0, 3).map((l) => (
+                    <FeedSearchListRow key={l.id} list={l} onOpen={(x) => x.creator && onOpenProfile(x.creator)} />
+                  ))}
+                </div>
+              )}
+              {results.films.length > 0 && (
+                <div className="feed-search-section">
+                  <div className="feed-search-section-head">
+                    <span className="feed-search-section-label">Films</span>
+                    <button type="button" className="feed-search-seeall" onClick={() => onSeeAll("films")}>See all →</button>
+                  </div>
+                  {results.films.slice(0, 3).map((f) => (
+                    <FeedSearchFilmRow key={f.tmdb_id} film={f} />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Left sidebar: mini profile card + quick nav. Reused by Feed and Friends sub-tabs.
+// Quick nav links shared by every sub-tab's left column (Feed/Friends/Profile/Lists).
+function FriendsQuickNav({ activeSubTab, onNav }) {
+  return (
+    <nav className="feed-nav">
+      <button type="button" className={`feed-nav-item${activeSubTab === "feed" ? " active" : ""}`} onClick={() => onNav("feed")}>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 9.5 12 3l9 6.5" /><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" /></svg>
+        <span>Feed</span>
+      </button>
+      <button type="button" className={`feed-nav-item${activeSubTab === "friends" ? " active" : ""}`} onClick={() => onNav("friends")}>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+        <span>Friends</span>
+      </button>
+      <button type="button" className={`feed-nav-item${activeSubTab === "profile" ? " active" : ""}`} onClick={() => onNav("profile")}>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+        <span>Profile</span>
+      </button>
+      <button type="button" className={`feed-nav-item${activeSubTab === "lists" ? " active" : ""}`} onClick={() => onNav("lists")}>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="20" y2="18" /></svg>
+        <span>Lists</span>
+      </button>
+    </nav>
+  );
+}
+
+function FriendsLeftSidebar({ ownProfile, filmCount, followingCount, followersCount, activeSubTab, onNav, onShowFollowing, onShowFollowers }) {
+  return (
+    <aside className="feed-left">
+      {ownProfile && (
+        <div className="feed-mini-profile">
+          <FriendsAvatar profile={ownProfile} size={48} />
+          <div className="feed-mini-name">{ownProfile.display_name || ownProfile.username}</div>
+          <div className="feed-mini-username">@{ownProfile.username}</div>
+          <div className="feed-mini-stats">
+            <div className="feed-mini-stat">
+              <div className="feed-mini-stat-num">{filmCount}</div>
+              <div className="feed-mini-stat-label">Films</div>
+            </div>
+            <button type="button" className="feed-mini-stat" onClick={onShowFollowing}>
+              <div className="feed-mini-stat-num">{followingCount}</div>
+              <div className="feed-mini-stat-label">Following</div>
+            </button>
+            <button type="button" className="feed-mini-stat" onClick={onShowFollowers}>
+              <div className="feed-mini-stat-num">{followersCount}</div>
+              <div className="feed-mini-stat-label">Followers</div>
+            </button>
+          </div>
+        </div>
+      )}
+      <FriendsQuickNav activeSubTab={activeSubTab} onNav={onNav} />
+    </aside>
+  );
+}
+
+// Right sidebar: trending in circle + suggested friends. Reused by Feed and Friends sub-tabs.
+function FriendsRightSidebar({ trendingInCircle, suggestedUsers, onFollowSuggested, onOpenProfile, onSeeMore }) {
+  return (
+    <aside className="feed-right">
+      <div className="feed-right-card feed-right-card--mb">
+        <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />TRENDING IN YOUR CIRCLE</div>
+        {trendingInCircle.length === 0 ? (
+          <div className="feed-right-empty">Nothing trending yet.</div>
+        ) : (
+          <div className="feed-right-trending-list">
+            {trendingInCircle.map((row, i) => (
+              <div className="feed-right-trending-row" key={row.movie.tmdb_id}>
+                <span className="feed-right-trending-rank">{i + 1}</span>
+                {row.movie.poster_path ? (
+                  <img className="feed-right-trending-poster" src={`${IMG_BASE}/w92${row.movie.poster_path}`} alt="" />
+                ) : (
+                  <div className="feed-right-trending-poster feed-right-trending-poster--empty" />
+                )}
+                <div className="feed-right-trending-info">
+                  <div className="feed-right-trending-title">{row.movie.title}</div>
+                  <div className="feed-right-trending-sub">{row.friendCount} friend{row.friendCount === 1 ? "" : "s"}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="feed-right-card">
+        <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />SUGGESTED FRIENDS</div>
+        {suggestedUsers.length === 0 ? (
+          <div className="feed-right-empty">No suggestions yet.</div>
+        ) : (
+          <>
+            {suggestedUsers.slice(0, 4).map((s) => (
+              <FeedRailSuggestedRow
+                key={s.id}
+                suggested={s}
+                onFollow={onFollowSuggested}
+                onOpenProfile={onOpenProfile}
+              />
+            ))}
+            <button type="button" className="feed-right-seemore" onClick={onSeeMore}>See more</button>
+          </>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+// Mobile-only bottom tab bar for switching Friends sub-tabs (≤1024px).
+// Rendered at the app root (outside the tab-panel) so it can slide in/out smoothly.
+function FriendsMobileNav({ activeSubTab, onNav, visible }) {
+  const items = [
+    {
+      key: "feed", label: "Feed",
+      icon: (<><path d="M4 5h11a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2V5z" /><path d="M16 9h3a1 1 0 0 1 1 1v8a2 2 0 0 1-2 2" /><line x1="7" y1="9" x2="13" y2="9" /><line x1="7" y1="13" x2="13" y2="13" /><line x1="7" y1="17" x2="11" y2="17" /></>),
+    },
+    {
+      key: "friends", label: "Friends",
+      icon: (<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></>),
+    },
+    {
+      key: "profile", label: "Profile",
+      icon: (<><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>),
+    },
+    {
+      key: "lists", label: "Lists",
+      icon: (<><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></>),
+    },
+  ];
+  return (
+    <nav className={`friends-mobile-nav${visible ? " friends-mobile-nav--visible" : ""}`} aria-hidden={!visible}>
+      {items.map((item) => {
+        const target = item.navTo || item.key;
+        const active = activeSubTab === item.key;
+        return (
+          <button
+            key={item.key}
+            type="button"
+            className={`friends-mobile-nav-item${active ? " friends-mobile-nav-item--active" : ""}`}
+            onClick={() => onNav(target)}
+            tabIndex={visible ? 0 : -1}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{item.icon}</svg>
+            <span>{item.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+// Magazine-style list card for the full Lists sub-tab (own + saved lists).
+function ListMagazineCard({ list, onOpen, saved = false, menuOpen, onToggleMenu, menuRef, menuItems }) {
+  const filmCount = list.list_films?.[0]?.count ?? list.filmCount ?? 0;
+  const previews = list.previewPosters || [];
+  return (
+    <div className="list-card-magazine-wrap">
+      <button type="button" className="list-card-magazine" onClick={() => onOpen(list)}>
+        <div className="lcm-cover">
+          {list.cover_image_url ? (
+            <img className="lcm-cover-full" src={list.cover_image_url} alt="" />
+          ) : previews.length > 0 ? (
+            <div className="lcm-cover-grid">
+              {[0, 1, 2, 3].map((i) => previews[i] ? (
+                <img key={i} src={`${IMG_BASE}/w185${previews[i]}`} alt="" />
+              ) : (
+                <div key={i} className="lcm-cover-empty" />
+              ))}
+            </div>
+          ) : (
+            <div className="lcm-cover-fallback" />
+          )}
+          {saved && (
+            <span className="lcm-saved-badge" aria-label="Saved list">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 2h12a1 1 0 0 1 1 1v18l-7-4-7 4V3a1 1 0 0 1 1-1z" /></svg>
+            </span>
+          )}
+        </div>
+        <div className="lcm-info">
+          <div className="lcm-name">{list.name}</div>
+          {saved && list.creator && <div className="lcm-creator">@{list.creator.username}</div>}
+          <div className="lcm-count">{filmCount} {filmCount === 1 ? "FILM" : "FILMS"}</div>
+        </div>
+      </button>
+      <button type="button" className="lcm-menu-btn" onClick={(e) => { e.stopPropagation(); onToggleMenu(list.id); }} aria-label="List options">⋯</button>
+      {menuOpen && (
+        <div ref={menuRef} className="list-card-dropdown lcm-dropdown">
+          {menuItems.map((mi, idx) => (
+            <button
+              key={idx}
+              type="button"
+              className={`list-card-dropdown-item${mi.danger ? " list-card-dropdown-item--danger" : ""}`}
+              onClick={mi.onClick}
+            >
+              {mi.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -7652,11 +8192,10 @@ function UserCard({ profile, status, currentUserId, onFollow, onUnfollow, onAcce
   );
 }
 
-function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJournal, ownLists, setOwnLists, listsLoading }) {
+function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRatings, goToJournal, ownLists, setOwnLists, listsLoading, activeSubTab, setActiveSubTab, listsTabOrigin }) {
   const { user, isGuest, signInWithGoogle } = useAuth();
   const [, setSelectedMovie] = useMovieModal();
 
-  const [activeSubTab, setActiveSubTab] = useState("feed");
   const [feedItems, setFeedItems] = useState([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [trendingInCircle, setTrendingInCircle] = useState([]);
@@ -7682,15 +8221,39 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
 
   // Own activity
   const [ownActivity, setOwnActivity] = useState([]);
+  // Own "expressive" posts (ratings + notes) for the Profile center feed
+  const [profileActivity, setProfileActivity] = useState([]);
 
   // Reactions (batched)
   const [reactionCounts, setReactionCounts] = useState({});
   const [userReactions, setUserReactions] = useState(() => new Set());
 
+  // Comments (batched counts + lazily-loaded per-card threads)
+  const [commentCounts, setCommentCounts] = useState({});
+  const [expandedComments, setExpandedComments] = useState(() => new Set());
+  const [commentInputs, setCommentInputs] = useState({});
+  const [cardComments, setCardComments] = useState({});
+
+  // Unified feed search (search bar + Spotify-style dropdown + See-all overlay)
+  const [feedSearchQuery, setFeedSearchQuery] = useState("");
+  const [feedSearchResults, setFeedSearchResults] = useState({ people: [], lists: [], films: [] });
+  const [feedSearchLoading, setFeedSearchLoading] = useState(false);
+  const [feedSearchOpen, setFeedSearchOpen] = useState(false);
+  const [seeAllCategory, setSeeAllCategory] = useState(null);   // null | 'people' | 'lists' | 'films'
+  const [seeAllResults, setSeeAllResults] = useState({ people: [], lists: [], films: [] });
+  const [seeAllLoading, setSeeAllLoading] = useState(false);
+  const [seeAllPage, setSeeAllPage] = useState(0);
+  const feedSearchRef = useRef(null);          // wrapper, for click-outside close
+  const feedSearchDebounceRef = useRef(null);  // useRef-based 300ms debounce
+
   // Lists (ownLists + listsLoading are lifted to MainApp; activeList + listDetail stay local)
   const [activeList, setActiveList] = useState(null);
   const [listDetail, setListDetail] = useState(null);
   const [listLoading, setListLoading] = useState(false);
+  // listsTabOrigin (where the Lists sub-tab was entered from) is lifted to MainApp (prop).
+  // listDetailOrigin (where a specific list was opened from) is local — the two are independent
+  // so returning from a list detail never clobbers the Lists sub-tab's origin.
+  const [listDetailOrigin, setListDetailOrigin] = useState(null);
 
   // ListCard "..." dropdown menu — one open at a time
   const [openMenuListId, setOpenMenuListId] = useState(null);
@@ -7728,9 +8291,12 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
   const [viewedActivity, setViewedActivity] = useState([]);
   const [viewedLoading, setViewedLoading] = useState(true);
   const [savedListIds, setSavedListIds] = useState(() => new Set());
+  const [savedLists, setSavedLists] = useState([]);
+  const [savedListsLoading, setSavedListsLoading] = useState(true);
 
   const userId = user?.id;
   const savedIdSet = useMemo(() => new Set(savedIds || []), [savedIds]);
+  const watchedIdSet = useMemo(() => new Set(watchedIds || []), [watchedIds]);
   const followingIdSet = useMemo(() => new Set(following.map((p) => p.id)), [following]);
 
   const openProfile = useCallback((profile) => {
@@ -7744,6 +8310,19 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
       is_private: profile.is_private,
     });
   }, [userId]);
+
+  // Open a list detail view, remembering the sub-tab we came from for its back button
+  const openList = useCallback((list) => {
+    setListDetailOrigin(activeSubTab);
+    setActiveList(list);
+  }, [activeSubTab]);
+
+  // Switching sub-tab (via left sidebar or the mobile bottom bar) exits any
+  // viewed-profile / list-detail full-screen sub-view.
+  useEffect(() => {
+    setViewingProfile(null);
+    setActiveList(null);
+  }, [activeSubTab]);
 
   // Initial load (ownLists is loaded in MainApp and passed in via props)
   useEffect(() => {
@@ -7761,13 +8340,14 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
         setProfileLoading(false);
         if (profile) {
           setEditDisplayName(profile.display_name || "");
-          const [feed, trending, fol, flw, pend, ownAct] = await Promise.all([
+          const [feed, trending, fol, flw, pend, ownAct, profAct] = await Promise.all([
             friendsService.getActivityFeed(userId).catch(() => []),
             friendsService.getTrendingInCircle(userId).catch(() => []),
             friendsService.getFollowing(userId).catch(() => []),
             friendsService.getFollowers(userId).catch(() => []),
             friendsService.getPendingRequests(userId).catch(() => []),
             friendsService.getOwnActivity(userId).catch(() => []),
+            friendsService.getOwnExpressiveActivity(userId).catch(() => []),
           ]);
           if (cancelled) return;
           setFeedItems(feed);
@@ -7776,6 +8356,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
           setFollowers(flw);
           setPendingRequests(pend);
           setOwnActivity(ownAct);
+          setProfileActivity(profAct);
 
           // Batch-load reactions for all visible activity items
           const ids = [...new Set([...feed, ...ownAct].map((i) => i.id).filter(Boolean))];
@@ -7791,6 +8372,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
             } catch (e) {
               console.error("reaction batch load failed", e);
             }
+            friendsService.getCommentCounts(ids).then((c) => { if (!cancelled) setCommentCounts(c); }).catch(() => {});
           }
         }
       } catch (e) {
@@ -7804,9 +8386,9 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
     return () => { cancelled = true; };
   }, [userId, isGuest]);
 
-  // Load suggested users when feed is empty
+  // Load suggested users — used both by the empty state and inline feed cards
   useEffect(() => {
-    if (!userId || feedLoading || feedItems.length > 0) return;
+    if (!userId || feedLoading) return;
     let cancelled = false;
     friendsService.searchUsers("", userId)
       .then((all) => {
@@ -7816,7 +8398,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [userId, feedLoading, feedItems.length, following]);
+  }, [userId, feedLoading, following]);
 
   // Load list detail when a list becomes active
   useEffect(() => {
@@ -7937,16 +8519,19 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
     return () => { cancelled = true; };
   }, [viewingProfile?.id, userId]);
 
-  // Load saved-list ids once so the read-only list detail can show Save/Saved correctly
+  // Load saved lists (used by the Lists sub-tab and to drive Save/Saved state in list detail)
   useEffect(() => {
-    if (!userId || isGuest) return;
+    if (!userId || isGuest) { setSavedListsLoading(false); return; }
     let cancelled = false;
+    setSavedListsLoading(true);
     listsService.getSavedLists(userId)
       .then((lists) => {
         if (cancelled) return;
+        setSavedLists(lists || []);
         setSavedListIds(new Set((lists || []).map((l) => l.id)));
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setSavedListsLoading(false); });
     return () => { cancelled = true; };
   }, [userId, isGuest]);
 
@@ -7988,6 +8573,22 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
         if (wasSaved) next.add(listId); else next.delete(listId);
         return next;
       });
+    }
+  };
+
+  // Remove a list from the user's saved collection (Lists sub-tab "Saved" cards)
+  const handleRemoveSavedList = async (listId) => {
+    if (!userId) return;
+    const removed = savedLists.find((l) => l.id === listId);
+    setSavedLists((prev) => prev.filter((l) => l.id !== listId));
+    setSavedListIds((prev) => { const next = new Set(prev); next.delete(listId); return next; });
+    setOpenMenuListId(null);
+    try {
+      await listsService.unsaveList(userId, listId);
+    } catch (e) {
+      console.error("remove saved list failed", e);
+      if (removed) setSavedLists((prev) => [removed, ...prev]);
+      setSavedListIds((prev) => new Set(prev).add(listId));
     }
   };
 
@@ -8058,6 +8659,123 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
       }));
     });
   }, [userId, userReactions]);
+
+  // Toggle a card's comment thread; lazily load comments on first expand
+  const handleToggleComments = useCallback((activityId) => {
+    const willExpand = !expandedComments.has(activityId);
+    setExpandedComments((prev) => {
+      const next = new Set(prev);
+      if (willExpand) next.add(activityId); else next.delete(activityId);
+      return next;
+    });
+    if (willExpand && cardComments[activityId] === undefined) {
+      // Mark as loaded immediately to prevent a refetch on re-expand
+      setCardComments((prev) => ({ ...prev, [activityId]: [] }));
+      friendsService.getComments(activityId)
+        .then((comments) => setCardComments((prev) => ({ ...prev, [activityId]: comments })))
+        .catch(() => {});
+    }
+  }, [expandedComments, cardComments]);
+
+  const handleCommentInputChange = useCallback((activityId, value) => {
+    setCommentInputs((prev) => ({ ...prev, [activityId]: value }));
+  }, []);
+
+  const handlePostComment = useCallback((activityId, content) => {
+    if (!userId || !content.trim()) return;
+    friendsService.postComment(userId, activityId, content.trim())
+      .then((newComment) => {
+        setCardComments((prev) => ({
+          ...prev,
+          [activityId]: [...(prev[activityId] || []), newComment],
+        }));
+        setCommentCounts((prev) => ({
+          ...prev,
+          [activityId]: (prev[activityId] || 0) + 1,
+        }));
+        setCommentInputs((prev) => ({ ...prev, [activityId]: "" }));
+      })
+      .catch(() => {});
+  }, [userId]);
+
+  // Follow a suggested user from an inline feed card, then drop them from the list
+  const handleFollowSuggested = useCallback(async (suggestedId) => {
+    if (!userId) return;
+    try {
+      await friendsService.followUser(userId, suggestedId);
+      setSuggestedUsers((prev) => prev.filter((u) => u.id !== suggestedId));
+      refreshFollowLists();
+    } catch (e) { console.error(e); }
+  }, [userId, refreshFollowLists]);
+
+  // ── Unified feed search handlers ──
+  const runFeedSearch = useCallback((q) => {
+    const query = (q || "").trim();
+    if (query.length < 2) {
+      setFeedSearchResults({ people: [], lists: [], films: [] });
+      setFeedSearchLoading(false);
+      setFeedSearchOpen(false);
+      return;
+    }
+    setFeedSearchOpen(true);
+    setFeedSearchLoading(true);
+    friendsService.searchFriendsTab(query, userId)
+      .then((res) => setFeedSearchResults(res))
+      .catch(() => setFeedSearchResults({ people: [], lists: [], films: [] }))
+      .finally(() => setFeedSearchLoading(false));
+  }, [userId]);
+
+  const runSeeAllSearch = useCallback((q) => {
+    const query = (q || "").trim();
+    if (query.length < 2) { setSeeAllResults({ people: [], lists: [], films: [] }); return; }
+    setSeeAllLoading(true);
+    friendsService.searchFriendsTab(query, userId, { limit: 50 })
+      .then((res) => setSeeAllResults(res))
+      .catch(() => setSeeAllResults({ people: [], lists: [], films: [] }))
+      .finally(() => setSeeAllLoading(false));
+  }, [userId]);
+
+  // 300ms useRef-based debounce; refreshes the overlay too when it is open
+  const handleFeedSearchChange = useCallback((value) => {
+    setFeedSearchQuery(value);
+    setSeeAllPage(0);
+    if (feedSearchDebounceRef.current) clearTimeout(feedSearchDebounceRef.current);
+    feedSearchDebounceRef.current = setTimeout(() => {
+      runFeedSearch(value);
+      if (seeAllCategory) runSeeAllSearch(value);
+    }, 300);
+  }, [runFeedSearch, runSeeAllSearch, seeAllCategory]);
+
+  const openSeeAll = useCallback((category) => {
+    setSeeAllCategory(category);
+    setSeeAllPage(0);
+    setFeedSearchOpen(false);
+    runSeeAllSearch(feedSearchQuery);
+  }, [feedSearchQuery, runSeeAllSearch]);
+
+  const closeSeeAll = useCallback(() => {
+    setSeeAllCategory(null);
+    setSeeAllPage(0);
+  }, []);
+
+  // Opening a profile from a search result clears the search UI first
+  const handleSearchOpenProfile = useCallback((profile) => {
+    setFeedSearchOpen(false);
+    setSeeAllCategory(null);
+    openProfile(profile);
+  }, [openProfile]);
+
+  // Close the dropdown when clicking outside the search wrapper
+  useEffect(() => {
+    if (!feedSearchOpen) return;
+    const handler = (e) => {
+      if (feedSearchRef.current && !feedSearchRef.current.contains(e.target)) {
+        setFeedSearchOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [feedSearchOpen]);
 
   const usernameNormalized = setupUsername.trim().toLowerCase();
   const usernameValid = /^[a-z0-9_]{3,20}$/.test(usernameNormalized);
@@ -8420,38 +9138,241 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
   // ── Render: main tab ──
   return (
     <div className="content friends-tab">
-      {!viewingProfile && !activeList && activeSubTab !== "following" && activeSubTab !== "followers" && (
-        <>
-          <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR CIRCLE · FRIENDS</div>
+      {/* Top eyebrow + pill toggle removed — navigation lives in the left sidebar
+          (Feed/Friends/Profile all use the shared three-column layout). */}
 
-          <div className="friends-subtabs">
-            <button className={`friends-subtab${activeSubTab === "feed" ? " active" : ""}`} onClick={() => setActiveSubTab("feed")}>Feed</button>
-            <button className={`friends-subtab${activeSubTab === "friends" ? " active" : ""}`} onClick={() => setActiveSubTab("friends")}>Friends</button>
-            <button className={`friends-subtab${activeSubTab === "profile" ? " active" : ""}`} onClick={() => setActiveSubTab("profile")}>Profile</button>
+      {!viewingProfile && activeSubTab === "feed" && (
+        <>
+          <FriendsSearchBar
+            wrapRef={feedSearchRef}
+            query={feedSearchQuery}
+            open={feedSearchOpen}
+            loading={feedSearchLoading}
+            results={feedSearchResults}
+            onChange={handleFeedSearchChange}
+            onFocusOpen={() => { if (feedSearchQuery.trim().length >= 2) setFeedSearchOpen(true); }}
+            onSeeAll={openSeeAll}
+            onOpenProfile={handleSearchOpenProfile}
+            activeSubTab={activeSubTab}
+          />
+
+          <div className="feed-layout">
+            <FriendsLeftSidebar
+              ownProfile={ownProfile}
+              filmCount={watchedMovies ? watchedMovies.size : 0}
+              followingCount={following.length}
+              followersCount={followers.length}
+              activeSubTab={activeSubTab}
+              onNav={setActiveSubTab}
+              onShowFollowing={() => { setFollowsFilter(""); setActiveSubTab("following"); }}
+              onShowFollowers={() => { setFollowsFilter(""); setActiveSubTab("followers"); }}
+            />
+
+            {/* CENTER FEED */}
+            <div className="feed-center">
+            <div className="friends-feed">
+              {feedLoading ? (
+                <>
+                  <div className="activity-card-skel" />
+                  <div className="activity-card-skel" />
+                  <div className="activity-card-skel" />
+                </>
+              ) : feedItems.length === 0 ? (
+                <>
+                  <div className="friends-empty">
+                    <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR FEED</div>
+                    <h3 className="friends-empty-headline">Follow some friends to see their activity.</h3>
+                    <button className="pill pill--wine pill--lg" onClick={() => setActiveSubTab("friends")}>Find friends →</button>
+                  </div>
+                  {suggestedUsers.length > 0 && (
+                    <div className="friends-section">
+                      <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />SUGGESTED · FIND FRIENDS</div>
+                      <div className="user-card-grid">
+                        {suggestedUsers.map((p) => (
+                          <UserCard
+                            key={p.id}
+                            profile={p}
+                            status={followingIdSet.has(p.id) ? "accepted" : null}
+                            currentUserId={userId}
+                            onFollow={handleFollow}
+                            onUnfollow={handleUnfollow}
+                            onOpenProfile={openProfile}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {(() => {
+                    const groups = groupByDay(feedItems);
+                    const filteredSuggested = suggestedUsers.filter((s) => !followingIdSet.has(s.id));
+                    const nodes = [];
+                    let feedIndex = 0;
+                    groups.forEach((group) => {
+                      nodes.push(
+                        <div className="feed-day-divider" key={`day-${group.day}`}>
+                          <span className="feed-day-label">{feedDayLabel(group.day)}</span>
+                          <span className="feed-day-line" />
+                        </div>
+                      );
+                      group.items.forEach((item) => {
+                        const idx = feedIndex;
+                        nodes.push(
+                          <ActivityCard
+                            key={item.id}
+                            item={item}
+                            onReact={() => handleReaction(item.id)}
+                            onToggleSave={toggleSave}
+                            isSaved={item.movie ? savedIdSet.has(item.movie.tmdb_id) : false}
+                            isWatched={item.movie ? watchedIdSet.has(item.movie.tmdb_id) : false}
+                            reactionCount={reactionCounts[item.id] || 0}
+                            isReacted={userReactions.has(item.id)}
+                            onOpenProfile={openProfile}
+                            commentCount={commentCounts[item.id] || 0}
+                            expanded={expandedComments.has(item.id)}
+                            onToggleComments={handleToggleComments}
+                            comments={cardComments[item.id]}
+                            commentInput={commentInputs[item.id] || ""}
+                            onCommentInputChange={handleCommentInputChange}
+                            onPostComment={handlePostComment}
+                            currentProfile={ownProfile}
+                          />
+                        );
+                        // Inline "suggested for you" card after every 4th activity card
+                        if (filteredSuggested.length > 0 && (idx + 1) % 4 === 0) {
+                          const suggested = filteredSuggested[Math.floor(idx / 4) % filteredSuggested.length];
+                          nodes.push(
+                            <FeedSuggestedCard
+                              key={`feed-sug-${idx}-${suggested.id}`}
+                              suggested={suggested}
+                              onFollow={handleFollowSuggested}
+                              onOpenProfile={openProfile}
+                            />
+                          );
+                        }
+                        feedIndex += 1;
+                      });
+                    });
+                    return nodes;
+                  })()}
+                </>
+              )}
+            </div>
           </div>
+
+            <FriendsRightSidebar
+              trendingInCircle={trendingInCircle}
+              suggestedUsers={suggestedUsers}
+              onFollowSuggested={handleFollowSuggested}
+              onOpenProfile={openProfile}
+              onSeeMore={() => setActiveSubTab("friends")}
+            />
+          </div>
+
+          {/* See-all full-tab overlay (covers the Friends tab area, below the top bar) */}
+          {seeAllCategory && (() => {
+            const items = seeAllResults[seeAllCategory] || [];
+            const pageSize = 20;
+            const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+            const start = seeAllPage * pageSize;
+            const pageItems = items.slice(start, start + pageSize);
+            const catLabel = seeAllCategory === "people" ? "People" : seeAllCategory === "lists" ? "Lists" : "Films";
+            return (
+              <div className="feed-search-overlay">
+                <div className="feed-search-overlay-bar">
+                  <button type="button" className="feed-search-overlay-back" onClick={closeSeeAll} aria-label="Back">←</button>
+                  <div className="feed-search-bar feed-search-bar--overlay">
+                    <svg className="feed-search-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                    <input
+                      className="feed-search-input"
+                      type="text"
+                      placeholder="Search people, lists, films..."
+                      value={feedSearchQuery}
+                      onChange={(e) => handleFeedSearchChange(e.target.value)}
+                    />
+                  </div>
+                  <button type="button" className="feed-search-overlay-close" onClick={closeSeeAll} aria-label="Close">×</button>
+                </div>
+                <div className="feed-search-overlay-header">{catLabel} · All results for &ldquo;{feedSearchQuery.trim()}&rdquo;</div>
+                <div className="feed-search-overlay-body">
+                  {seeAllLoading ? (
+                    <div className="feed-search-status"><span className="feed-search-spinner" aria-hidden="true" /></div>
+                  ) : items.length === 0 ? (
+                    <div className="feed-search-status feed-search-status--empty">No results.</div>
+                  ) : (
+                    <>
+                      <div className="feed-search-overlay-list">
+                        {pageItems.map((it) => {
+                          if (seeAllCategory === "people") return <FeedSearchPersonRow key={it.id} person={it} onOpen={handleSearchOpenProfile} large />;
+                          if (seeAllCategory === "lists") return <FeedSearchListRow key={it.id} list={it} onOpen={(x) => x.creator && handleSearchOpenProfile(x.creator)} large />;
+                          return <FeedSearchFilmRow key={it.tmdb_id} film={it} large />;
+                        })}
+                      </div>
+                      {items.length > pageSize && (
+                        <div className="feed-search-pager">
+                          <button type="button" className="feed-search-pager-btn" disabled={seeAllPage === 0} onClick={() => setSeeAllPage((p) => Math.max(0, p - 1))}>← Prev</button>
+                          <span className="feed-search-pager-info">Page {seeAllPage + 1} of {totalPages}</span>
+                          <button type="button" className="feed-search-pager-btn" disabled={start + pageSize >= items.length} onClick={() => setSeeAllPage((p) => p + 1)}>Next →</button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </>
       )}
 
-      {!viewingProfile && activeSubTab === "feed" && (
-        <div className="friends-feed">
-          {feedLoading ? (
-            <>
-              <div className="activity-card-skel" />
-              <div className="activity-card-skel" />
-              <div className="activity-card-skel" />
-            </>
-          ) : feedItems.length === 0 ? (
-            <>
-              <div className="friends-empty">
-                <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR FEED</div>
-                <h3 className="friends-empty-headline">Follow some friends to see their activity.</h3>
-                <button className="pill pill--wine pill--lg" onClick={() => setActiveSubTab("friends")}>Find friends →</button>
+      {!viewingProfile && activeSubTab === "friends" && (
+        <>
+          <FriendsSearchBar
+            wrapRef={feedSearchRef}
+            query={feedSearchQuery}
+            open={feedSearchOpen}
+            loading={feedSearchLoading}
+            results={feedSearchResults}
+            onChange={handleFeedSearchChange}
+            onFocusOpen={() => { if (feedSearchQuery.trim().length >= 2) setFeedSearchOpen(true); }}
+            onSeeAll={openSeeAll}
+            onOpenProfile={handleSearchOpenProfile}
+            activeSubTab={activeSubTab}
+          />
+
+          <div className="feed-layout">
+            <FriendsLeftSidebar
+              ownProfile={ownProfile}
+              filmCount={watchedMovies ? watchedMovies.size : 0}
+              followingCount={following.length}
+              followersCount={followers.length}
+              activeSubTab={activeSubTab}
+              onNav={setActiveSubTab}
+              onShowFollowing={() => { setFollowsFilter(""); setActiveSubTab("following"); }}
+              onShowFollowers={() => { setFollowsFilter(""); setActiveSubTab("followers"); }}
+            />
+
+            <div className="feed-center">
+              <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />FIND FRIENDS</div>
+              <div className="friends-center-search">
+                <svg className="feed-search-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                <input
+                  type="text"
+                  className="friends-center-search-input"
+                  placeholder="Search by username…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
               </div>
-              {suggestedUsers.length > 0 && (
+
+              {searchQuery.trim() ? (
                 <div className="friends-section">
-                  <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />SUGGESTED · FIND FRIENDS</div>
+                  <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />SEARCH RESULTS</div>
+                  {searchLoading && <div className="friends-empty-line">Searching…</div>}
+                  {!searchLoading && searchResults.length === 0 && <div className="friends-empty-line">No users found.</div>}
                   <div className="user-card-grid">
-                    {suggestedUsers.map((p) => (
+                    {searchResults.map((p) => (
                       <UserCard
                         key={p.id}
                         profile={p}
@@ -8464,165 +9385,145 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                     ))}
                   </div>
                 </div>
-              )}
-            </>
-          ) : (
-            <>
-              {trendingInCircle.length > 0 && (
-                <div className="trending-circle">
-                  <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />TRENDING IN YOUR CIRCLE</div>
-                  <div className="trending-circle-list">
-                    {trendingInCircle.map((row, i) => (
-                      <div key={row.movie.tmdb_id} className="trending-circle-row">
-                        <span className="trending-circle-rank">{i + 1}</span>
-                        {row.movie.poster_path ? (
-                          <img className="trending-circle-poster" src={`${IMG_BASE}/w92${row.movie.poster_path}`} alt="" />
-                        ) : (
-                          <div className="trending-circle-poster trending-circle-poster--empty" />
-                        )}
-                        <div className="trending-circle-info">
-                          <div className="trending-circle-title">{row.movie.title}</div>
-                          <div className="trending-circle-sub">{row.friendCount} friend{row.friendCount === 1 ? "" : "s"} watching</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+              ) : (
+                <div className="friends-center-empty">
+                  <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                  <div className="friends-center-empty-title">Find your people</div>
+                  <div className="friends-center-empty-sub">Search by username to follow friends and see what they're watching.</div>
                 </div>
               )}
-              {feedItems.map((item) => (
-                <ActivityCard
-                  key={item.id}
-                  item={item}
-                  onReact={() => handleReaction(item.id)}
-                  onToggleSave={toggleSave}
-                  isSaved={item.movie ? savedIdSet.has(item.movie.tmdb_id) : false}
-                  reactionCount={reactionCounts[item.id] || 0}
-                  isReacted={userReactions.has(item.id)}
-                  onOpenProfile={openProfile}
-                />
-              ))}
-            </>
-          )}
-        </div>
-      )}
+            </div>
 
-      {!viewingProfile && activeSubTab === "friends" && (
-        <div className="friends-list-view">
-          <div className="friends-search-row">
-            <input
-              type="text"
-              className="friends-search-input"
-              placeholder="Search by username…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+            <FriendsRightSidebar
+              trendingInCircle={trendingInCircle}
+              suggestedUsers={suggestedUsers}
+              onFollowSuggested={handleFollowSuggested}
+              onOpenProfile={openProfile}
+              onSeeMore={() => setActiveSubTab("friends")}
             />
           </div>
-
-          {searchQuery.trim() ? (
-            <div className="friends-section">
-              <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />SEARCH RESULTS</div>
-              {searchLoading && <div className="friends-empty-line">Searching…</div>}
-              {!searchLoading && searchResults.length === 0 && <div className="friends-empty-line">No users found.</div>}
-              <div className="user-card-grid">
-                {searchResults.map((p) => (
-                  <UserCard
-                    key={p.id}
-                    profile={p}
-                    status={followingIdSet.has(p.id) ? "accepted" : null}
-                    currentUserId={userId}
-                    onFollow={handleFollow}
-                    onUnfollow={handleUnfollow}
-                    onOpenProfile={openProfile}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="friends-search-empty">
-              Search for friends by username
-            </div>
-          )}
-        </div>
+        </>
       )}
 
       {!viewingProfile && activeSubTab === "profile" && ownProfile && !activeList && (
-        <div className="friends-profile">
-          <div className="profile-header-v2">
-            <div className="profile-avatar-wrap">
-              <FriendsAvatar profile={ownProfile} size={80} />
-              <button className="profile-avatar-edit" aria-label="Edit avatar" title="Avatar upload coming soon" type="button">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-              </button>
-            </div>
-            <div className="profile-info-v2">
-              {editingProfile ? (
-                <input
-                  className="profile-display-edit"
-                  value={editDisplayName}
-                  onChange={(e) => setEditDisplayName(e.target.value)}
-                  maxLength={40}
-                />
-              ) : (
-                <div className="profile-display-v2">{ownProfile.display_name || ownProfile.username}</div>
-              )}
-              <div className="profile-username-v2">@{ownProfile.username}</div>
+        <>
+          <FriendsSearchBar
+            wrapRef={feedSearchRef}
+            query={feedSearchQuery}
+            open={feedSearchOpen}
+            loading={feedSearchLoading}
+            results={feedSearchResults}
+            onChange={handleFeedSearchChange}
+            onFocusOpen={() => { if (feedSearchQuery.trim().length >= 2) setFeedSearchOpen(true); }}
+            onSeeAll={openSeeAll}
+            onOpenProfile={handleSearchOpenProfile}
+            activeSubTab={activeSubTab}
+          />
 
-              <div className="profile-stats-v2">
-                <button type="button" className="profile-stat" onClick={() => goToJournal && goToJournal()}>
-                  <div className="profile-stat-num">{watchedMovies ? watchedMovies.size : 0}</div>
-                  <div className="profile-stat-label">FILMS</div>
-                </button>
-                <button type="button" className="profile-stat" onClick={() => { setFollowsFilter(""); setActiveSubTab("following"); }}>
-                  <div className="profile-stat-num">{following.length}</div>
-                  <div className="profile-stat-label">FOLLOWING</div>
-                </button>
-                <button type="button" className="profile-stat" onClick={() => { setFollowsFilter(""); setActiveSubTab("followers"); }}>
-                  <div className="profile-stat-num">{followers.length}</div>
-                  <div className="profile-stat-label">FOLLOWERS</div>
-                </button>
-              </div>
-
-              <div className="profile-actions-v2">
-                {editingProfile ? (
-                  <>
-                    <button className="pill pill--wine" onClick={saveProfileEdit}>Save</button>
-                    <button className="pill pill--ghost" onClick={() => { setEditingProfile(false); setEditDisplayName(ownProfile.display_name || ""); }}>Cancel</button>
-                  </>
-                ) : (
-                  <button className="pill pill--ghost" onClick={() => setEditingProfile(true)}>Edit profile</button>
-                )}
-                <button
-                  className={`pill ${ownProfile.is_private ? "pill--wine" : "pill--ghost"}`}
-                  onClick={togglePrivacy}
-                  title="Toggle account privacy"
-                >
-                  {ownProfile.is_private ? "Private" : "Public"}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {(ownProfile.bio || topGenres.length > 0) && (
-            <div className="profile-bio-section">
-              {ownProfile.bio && <p className="profile-bio">{ownProfile.bio}</p>}
-              {topGenres.length > 0 && (
-                <div className="profile-genre-pills">
-                  {topGenres.map((g) => (
-                    <span key={g} className="profile-genre-pill">{g}</span>
-                  ))}
+          <div className="feed-layout friends-profile-layout">
+            {/* LEFT — Identity */}
+            <aside className="feed-left">
+              <div className="profile-identity">
+                <div className="profile-avatar-wrap">
+                  <FriendsAvatar profile={ownProfile} size={88} />
+                  <button className="profile-avatar-edit" aria-label="Edit avatar" title="Avatar upload coming soon" type="button">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                  </button>
                 </div>
-              )}
-            </div>
-          )}
+                {editingProfile ? (
+                  <input
+                    className="profile-display-edit"
+                    value={editDisplayName}
+                    onChange={(e) => setEditDisplayName(e.target.value)}
+                    maxLength={40}
+                  />
+                ) : (
+                  <div className="profile-display-v2">{ownProfile.display_name || ownProfile.username}</div>
+                )}
+                <div className="profile-username-v2">@{ownProfile.username}</div>
 
-          <div className="friends-section">
-            <div className="profile-lists-header">
-              <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR LISTS</div>
-              <button className="pill pill--wine" onClick={handleNewListInstant}>+ New list</button>
+                <div className="profile-identity-stats">
+                  <button type="button" className="feed-mini-stat" onClick={() => goToJournal && goToJournal()}>
+                    <div className="feed-mini-stat-num">{watchedMovies ? watchedMovies.size : 0}</div>
+                    <div className="feed-mini-stat-label">Films</div>
+                  </button>
+                  <button type="button" className="feed-mini-stat" onClick={() => { setFollowsFilter(""); setActiveSubTab("following"); }}>
+                    <div className="feed-mini-stat-num">{following.length}</div>
+                    <div className="feed-mini-stat-label">Following</div>
+                  </button>
+                  <button type="button" className="feed-mini-stat" onClick={() => { setFollowsFilter(""); setActiveSubTab("followers"); }}>
+                    <div className="feed-mini-stat-num">{followers.length}</div>
+                    <div className="feed-mini-stat-label">Followers</div>
+                  </button>
+                </div>
+
+                <div className="profile-identity-actions">
+                  {editingProfile ? (
+                    <>
+                      <button className="pill pill--wine" onClick={saveProfileEdit}>Save</button>
+                      <button className="pill pill--ghost" onClick={() => { setEditingProfile(false); setEditDisplayName(ownProfile.display_name || ""); }}>Cancel</button>
+                    </>
+                  ) : (
+                    <button className="pill pill--ghost" onClick={() => setEditingProfile(true)}>Edit profile</button>
+                  )}
+                  <button
+                    className={`pill ${ownProfile.is_private ? "pill--wine" : "pill--ghost"}`}
+                    onClick={togglePrivacy}
+                    title="Toggle account privacy"
+                  >
+                    {ownProfile.is_private ? "Private" : "Public"}
+                  </button>
+                </div>
+
+                {topGenres.length > 0 && (
+                  <div className="profile-genre-pills">
+                    {topGenres.map((g) => (
+                      <span key={g} className="profile-genre-pill">{g}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <FriendsQuickNav activeSubTab={activeSubTab} onNav={setActiveSubTab} />
+            </aside>
+
+            {/* CENTER — your posts (ratings + written notes only) */}
+            <div className="feed-center">
+              <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR POSTS</div>
+              <div className="friends-feed">
+                {profileActivity.length === 0 ? (
+                  <div className="friends-center-empty">
+                    <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 17.3 6.2 21l1.5-6.6L2 9.9l6.7-.6L12 3l3.3 6.3 6.7.6-5.7 4.5L17.8 21z" /></svg>
+                    <div className="friends-center-empty-title">No posts yet</div>
+                    <div className="friends-center-empty-sub">Your ratings and reviews will appear here.</div>
+                  </div>
+                ) : (
+                  groupByDay(profileActivity).map((group) => (
+                    <div key={`pday-${group.day}`}>
+                      <div className="feed-day-divider">
+                        <span className="feed-day-label">{feedDayLabel(group.day)}</span>
+                        <span className="feed-day-line" />
+                      </div>
+                      {group.items.map((item) => (
+                        <ActivityCard key={item.id} item={{ ...item, user: ownProfile }} ownView />
+                      ))}
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
+
+            {/* RIGHT — Collections */}
+            <aside className="feed-right">
+              <div className="feed-right-card feed-right-card--mb">
+                <div className="profile-lists-header">
+                  <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR LISTS</div>
+                  <button className="pill pill--wine pill--sm" onClick={() => setActiveSubTab("lists")}>+ View all</button>
+                </div>
             {listsLoading ? (
               <div className="friends-empty-line">Loading…</div>
-            ) : ownLists.length > 0 && (
+            ) : ownLists.length === 0 ? (
+              <div className="feed-right-empty">No lists yet.</div>
+            ) : (
               <>
               <input
                 ref={coverPickerInputRef}
@@ -8631,14 +9532,14 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                 style={{ display: "none" }}
                 onChange={handleCoverPickerSelected}
               />
-              <div className="profile-lists-grid">
-                {ownLists.map((list) => {
+              <div className="profile-lists-grid profile-lists-grid--sidebar">
+                {ownLists.slice(0, 4).map((list) => {
                   const filmCount = list.list_films?.[0]?.count || 0;
                   const previews = list.previewPosters || [];
                   const menuOpen = openMenuListId === list.id;
                   return (
                     <div key={list.id} className="list-card-wrap">
-                      <button type="button" className="list-card" onClick={() => setActiveList(list)}>
+                      <button type="button" className="list-card" onClick={() => openList(list)}>
                         <div className="list-card-cover">
                           {list.cover_image_url ? (
                             <img src={list.cover_image_url} alt="" className="list-card-cover-img" />
@@ -8676,11 +9577,11 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                       </button>
                       {menuOpen && (
                         <div ref={menuRef} className="list-card-dropdown">
-                          <button type="button" className="list-card-dropdown-item" onClick={() => { setOpenMenuListId(null); setActiveList(list); }}>
+                          <button type="button" className="list-card-dropdown-item" onClick={() => { setOpenMenuListId(null); openList(list); }}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
                             Rename
                           </button>
-                          <button type="button" className="list-card-dropdown-item" onClick={() => { setOpenMenuListId(null); setActiveList(list); }}>
+                          <button type="button" className="list-card-dropdown-item" onClick={() => { setOpenMenuListId(null); openList(list); }}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="14" y2="12" /><line x1="4" y1="18" x2="20" y2="18" /></svg>
                             Edit description
                           </button>
@@ -8718,33 +9619,129 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
               </div>
               </>
             )}
-          </div>
-
-          <div className="friends-section">
-            <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />RECENTLY WATCHED</div>
-            {ownActivity.length === 0 ? (
-              <div className="friends-empty-line">Films you log will appear here.</div>
-            ) : (
-              <div className="profile-activity-row">
-                {ownActivity.slice(0, 5).map((item) => {
-                  const movie = item.movie;
-                  const rating = watchedRatings?.get(item.tmdb_id);
-                  return (
-                    <div key={item.id} className="profile-activity-card">
-                      {movie?.poster_path ? (
-                        <img src={`${IMG_BASE}/w185${movie.poster_path}`} alt={movie.title || ""} className="profile-activity-poster" />
-                      ) : (
-                        <div className="profile-activity-poster profile-activity-poster--empty" aria-hidden="true" />
-                      )}
-                      <div className="profile-activity-title">{movie?.title || "—"}</div>
-                      {rating != null && <div className="profile-activity-rating">{rating}/100</div>}
-                    </div>
-                  );
-                })}
               </div>
-            )}
+
+              <div className="feed-right-card">
+                <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />RECENTLY WATCHED</div>
+                {ownActivity.length === 0 ? (
+                  <div className="feed-right-empty">Films you log will appear here.</div>
+                ) : (
+                  <div className="profile-activity-row">
+                    {ownActivity.slice(0, 8).map((item) => {
+                      const movie = item.movie;
+                      const rating = watchedRatings?.get(item.tmdb_id);
+                      return (
+                        <div key={item.id} className="profile-activity-card">
+                          {movie?.poster_path ? (
+                            <img src={`${IMG_BASE}/w185${movie.poster_path}`} alt={movie.title || ""} className="profile-activity-poster" />
+                          ) : (
+                            <div className="profile-activity-poster profile-activity-poster--empty" aria-hidden="true" />
+                          )}
+                          <div className="profile-activity-title">{movie?.title || "—"}</div>
+                          {rating != null && <div className="profile-activity-rating">{rating}/100</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </aside>
           </div>
-        </div>
+        </>
+      )}
+
+      {!viewingProfile && activeSubTab === "lists" && !activeList && (
+        <>
+          <FriendsSearchBar
+            wrapRef={feedSearchRef}
+            query={feedSearchQuery}
+            open={feedSearchOpen}
+            loading={feedSearchLoading}
+            results={feedSearchResults}
+            onChange={handleFeedSearchChange}
+            onFocusOpen={() => { if (feedSearchQuery.trim().length >= 2) setFeedSearchOpen(true); }}
+            onSeeAll={openSeeAll}
+            onOpenProfile={handleSearchOpenProfile}
+            activeSubTab={activeSubTab}
+          />
+
+          <div className="lists-page">
+            <input
+              ref={coverPickerInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={handleCoverPickerSelected}
+            />
+
+            {listsTabOrigin && listsTabOrigin !== "lists" && (
+              <button type="button" className="ld-back" onClick={() => setActiveSubTab(listsTabOrigin)}>← Back</button>
+            )}
+
+            {/* YOUR LISTS */}
+            <div className="lists-section">
+              <div className="profile-lists-header">
+                <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />YOUR LISTS</div>
+                <button className="pill pill--wine pill--sm" onClick={handleNewListInstant}>+ New list</button>
+              </div>
+              {listsLoading ? (
+                <div className="friends-empty-line">Loading…</div>
+              ) : ownLists.length === 0 ? (
+                <div className="lists-empty">
+                  <div className="lists-empty-text">You haven't created any lists yet.</div>
+                  <button className="pill pill--wine" onClick={handleNewListInstant}>+ Create your first list</button>
+                </div>
+              ) : (
+                <div className="lists-grid">
+                  {ownLists.map((list) => (
+                    <ListMagazineCard
+                      key={list.id}
+                      list={list}
+                      onOpen={openList}
+                      menuOpen={openMenuListId === list.id}
+                      onToggleMenu={(id) => setOpenMenuListId(openMenuListId === id ? null : id)}
+                      menuRef={menuRef}
+                      menuItems={[
+                        { label: "Rename", onClick: () => { setOpenMenuListId(null); openList(list); } },
+                        { label: "Edit description", onClick: () => { setOpenMenuListId(null); openList(list); } },
+                        { label: "Delete", danger: true, onClick: () => handleDeleteList(list.id) },
+                      ]}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* SAVED LISTS */}
+            <div className="lists-section">
+              <div className="friends-eyebrow"><span className="friends-eyebrow-rule" />SAVED LISTS</div>
+              {savedListsLoading ? (
+                <div className="friends-empty-line">Loading…</div>
+              ) : savedLists.length === 0 ? (
+                <div className="lists-empty">
+                  <div className="lists-empty-text">Lists you save from others will appear here.</div>
+                </div>
+              ) : (
+                <div className="lists-grid">
+                  {savedLists.map((list) => (
+                    <ListMagazineCard
+                      key={list.id}
+                      list={list}
+                      saved
+                      onOpen={openList}
+                      menuOpen={openMenuListId === list.id}
+                      onToggleMenu={(id) => setOpenMenuListId(openMenuListId === id ? null : id)}
+                      menuRef={menuRef}
+                      menuItems={[
+                        { label: "Remove from saved", danger: true, onClick: () => handleRemoveSavedList(list.id) },
+                      ]}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {viewingProfile && !activeList && (
@@ -8807,7 +9804,7 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
                           const filmCount = list.list_films?.[0]?.count || 0;
                           return (
                             <div key={list.id} className="list-card-wrap">
-                              <button type="button" className="list-card" onClick={() => setActiveList(list)}>
+                              <button type="button" className="list-card" onClick={() => openList(list)}>
                                 <div className="list-card-cover">
                                   {list.cover_image_url ? (
                                     <img src={list.cover_image_url} alt="" className="list-card-cover-img" />
@@ -8861,9 +9858,11 @@ function FriendsTab({ toggleSave, savedIds, watchedMovies, watchedRatings, goToJ
         const isSavedList = listDetail ? savedListIds.has(listDetail.id) : false;
         return (
         <div className="ld-view">
-          <button type="button" className="ld-back" onClick={() => { setActiveList(null); setListFilmQuery(""); setListFilmResults([]); }}>
-            {isReadOnly ? `← Back to @${viewingProfile?.username || ""}` : "← Back"}
-          </button>
+          {(listDetailOrigin !== null || isReadOnly) && (
+            <button type="button" className="ld-back" onClick={() => { setActiveList(null); setListFilmQuery(""); setListFilmResults([]); if (!isReadOnly) setActiveSubTab(listDetailOrigin ?? "lists"); }}>
+              {isReadOnly ? `← Back to @${viewingProfile?.username || ""}` : "← Back"}
+            </button>
+          )}
 
           {listLoading || !listDetail ? (
             <div className="ld-loading">Loading…</div>
@@ -9262,6 +10261,21 @@ function MainApp() {
       setTimeout(() => AOS.refresh(), 50);
     }, 150);
   }, []);
+  // Friends sub-tab is lifted here so the mobile bottom bar (rendered outside the
+  // tab-panel, so it can slide out smoothly) can drive it.
+  const [friendsSubTab, setFriendsSubTab] = useState("feed");
+  // Where the user was before entering the Lists sub-tab (for the Lists back button).
+  // Lifted here since the mobile bottom bar (a Lists entry point) lives at this level.
+  // Kept separate from the list-detail origin so the two never overwrite each other.
+  const [listsTabOrigin, setListsTabOrigin] = useState(null);
+  const [friendsNavVisible, setFriendsNavVisible] = useState(false);
+  useEffect(() => { setFriendsNavVisible(activeTab === "friends"); }, [activeTab]);
+  // Navigate the Friends sub-tab; capture the origin when entering 'lists' so the
+  // Lists back button can return there. Used by every sub-tab entry point.
+  const navFriendsSubTab = useCallback((tab) => {
+    if (tab === "lists" && friendsSubTab !== "lists") setListsTabOrigin(friendsSubTab);
+    setFriendsSubTab(tab);
+  }, [friendsSubTab]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const scrollPositions = useRef({});
 
@@ -10289,15 +11303,26 @@ function MainApp() {
           <FriendsTab
             toggleSave={guardedToggleSave}
             savedIds={savedIds}
+            watchedIds={watchedIds}
             watchedMovies={watchedMovies}
             watchedRatings={watchedRatings}
             goToJournal={goToJournal}
             ownLists={ownLists}
             setOwnLists={setOwnLists}
             listsLoading={friendsListsLoading}
+            activeSubTab={friendsSubTab}
+            setActiveSubTab={navFriendsSubTab}
+            listsTabOrigin={listsTabOrigin}
           />
         )}
       </div>
+
+      {/* Mobile-only Friends sub-tab bar — slides in/out as the Friends tab toggles */}
+      <FriendsMobileNav
+        activeSubTab={friendsSubTab}
+        onNav={navFriendsSubTab}
+        visible={friendsNavVisible}
+      />
 
       {settingsOpen && (
         <SettingsModal

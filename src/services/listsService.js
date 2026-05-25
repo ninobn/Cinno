@@ -227,11 +227,47 @@ export async function isListSaved(userId, listId) {
 export async function getSavedLists(userId) {
   const { data, error } = await supabase
     .from('list_saves')
-    .select('list_id, lists(*, list_films(count))')
+    .select('saved_at, lists(*, list_films(count))')
     .eq('user_id', userId)
     .order('saved_at', { ascending: false });
   if (error) throw error;
-  return (data || []).map((row) => row.lists).filter(Boolean);
+
+  const lists = (data || []).map((row) => row.lists).filter(Boolean);
+  if (lists.length === 0) return [];
+
+  const listIds = lists.map((l) => l.id);
+  const creatorIds = [...new Set(lists.map((l) => l.user_id).filter(Boolean))];
+
+  // Batch preview posters (up to 4 per list) and creator profiles in parallel.
+  const [filmsRes, profilesRes] = await Promise.all([
+    supabase
+      .from('list_films')
+      .select('list_id, sort_order, movies_cache(poster_path)')
+      .in('list_id', listIds)
+      .order('list_id', { ascending: true })
+      .order('sort_order', { ascending: true }),
+    creatorIds.length > 0
+      ? supabase.from('user_profiles').select('id, username, display_name, avatar_url').in('id', creatorIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const postersByList = {};
+  (filmsRes.data || []).forEach((row) => {
+    const lid = row.list_id;
+    if (!postersByList[lid]) postersByList[lid] = [];
+    if (postersByList[lid].length >= 4) return;
+    const p = row.movies_cache?.poster_path;
+    if (p) postersByList[lid].push(p);
+  });
+
+  const profileMap = {};
+  (profilesRes.data || []).forEach((p) => { profileMap[p.id] = p; });
+
+  return lists.map((l) => ({
+    ...l,
+    creator: profileMap[l.user_id] || null,
+    previewPosters: postersByList[l.id] || [],
+  }));
 }
 
 // ─── Search (TMDB for adding films) ──────────────────────────────────────────

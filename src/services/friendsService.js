@@ -41,6 +41,119 @@ export async function updatePinnedFilms(userId, tmdbIds) {
   if (error) throw error;
 }
 
+// ─── Unified Friends-tab search ────────────────────────────────────────────
+
+// Score a single field against the query: exact = 3, prefix = 2, contains = 1, none = 0.
+function scoreMatch(value, query) {
+  if (!value) return 0;
+  const v = String(value).toLowerCase();
+  const q = query.toLowerCase();
+  if (v === q) return 3;
+  if (v.startsWith(q)) return 2;
+  if (v.includes(q)) return 1;
+  return 0;
+}
+
+// Pure ranking helper — sorts items by how well `field` matches `query`
+// (exact > prefix > contains). Exported so it can be tested or reused, and so
+// the scoring can later be upgraded to weighted ranking in one place.
+export function rankResults(items, query, field) {
+  const q = (query || '').trim().toLowerCase();
+  if (!q) return [...(items || [])];
+  return [...(items || [])]
+    .map((item) => ({ item, score: scoreMatch(item?.[field], q) }))
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.item);
+}
+
+// Unified search across People → Lists → Films for the Friends tab.
+// Films are only returned when there is no strong People/Lists match
+// (strong = at least one exact or prefix hit). Each category fails soft:
+// a query error yields an empty section rather than throwing.
+export async function searchFriendsTab(query, currentUserId, options = {}) {
+  const q = (query || '').trim();
+  const out = { people: [], lists: [], films: [] };
+  if (q.length < 2) return out;
+
+  const peopleLimit = options.limit || 10;
+  const listsLimit = options.limit || 10;
+  const filmsLimit = options.limit || 5;
+  const like = `%${q}%`;
+
+  // People — match username OR display_name, ranked by username relevance
+  try {
+    const { data, error } = await supabase
+      .from('user_profiles')
+      .select('id, username, display_name, avatar_url, is_private')
+      .or(`username.ilike.${like},display_name.ilike.${like}`)
+      .neq('id', currentUserId)
+      .limit(peopleLimit);
+    if (error) throw error;
+    let people = rankResults(data || [], q, 'username');
+    const ids = people.map((p) => p.id);
+    if (ids.length > 0) {
+      const { data: followRows } = await supabase
+        .from('follows')
+        .select('following_id')
+        .in('following_id', ids)
+        .eq('status', 'accepted');
+      const counts = {};
+      (followRows || []).forEach((r) => { counts[r.following_id] = (counts[r.following_id] || 0) + 1; });
+      people = people.map((p) => ({ ...p, followerCount: counts[p.id] || 0 }));
+    }
+    out.people = people;
+  } catch (e) {
+    out.people = [];
+  }
+
+  // Lists — public lists by name, with creator profile + film count
+  try {
+    const { data, error } = await supabase
+      .from('lists')
+      .select('*, list_films(count)')
+      .ilike('name', like)
+      .eq('is_public', true)
+      .limit(listsLimit);
+    if (error) throw error;
+    const lists = rankResults(data || [], q, 'name');
+    const creatorIds = [...new Set(lists.map((l) => l.user_id).filter(Boolean))];
+    const profileMap = {};
+    if (creatorIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('user_profiles')
+        .select('id, username, display_name, avatar_url')
+        .in('id', creatorIds);
+      (profiles || []).forEach((p) => { profileMap[p.id] = p; });
+    }
+    out.lists = lists.map((l) => ({
+      ...l,
+      creator: profileMap[l.user_id] || null,
+      filmCount: l.list_films?.[0]?.count || 0,
+    }));
+  } catch (e) {
+    out.lists = [];
+  }
+
+  // Films — only when neither People nor Lists has a strong (exact/prefix) match
+  const peopleStrong = out.people.some((p) => scoreMatch(p.username, q) >= 2 || scoreMatch(p.display_name, q) >= 2);
+  const listsStrong = out.lists.some((l) => scoreMatch(l.name, q) >= 2);
+  if (!peopleStrong && !listsStrong) {
+    try {
+      const { data, error } = await supabase
+        .from('movies_cache')
+        .select('tmdb_id, title, poster_path, year, genre_ids')
+        .ilike('title', like)
+        .limit(filmsLimit);
+      if (error) throw error;
+      out.films = rankResults(data || [], q, 'title');
+    } catch (e) {
+      out.films = [];
+    }
+  }
+
+  return out;
+}
+
 // ─── Follow ──────────────────────────────────────────────────────────────────
 
 export async function followUser(followerId, followingId) {
@@ -227,6 +340,35 @@ export async function getOwnActivity(userId, limit = 30) {
   }));
 }
 
+// Own "expressive" activity for the Profile center feed: ratings and written
+// notes/reviews only (the intentional posts) — never raw logged/watchlisted rows
+// unless they carry a note. Joined with movies_cache, newest first.
+export async function getOwnExpressiveActivity(userId, limit = 20) {
+  const { data, error } = await supabase
+    .from('activity')
+    .select('*')
+    .eq('user_id', userId)
+    .or('action_type.eq.rated,action_type.eq.noted,note.not.is.null')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+
+  const rows = (data || []).filter(
+    (item) => item.action_type === 'rated' || item.action_type === 'noted' || (item.note && item.note.trim())
+  );
+
+  const tmdbIds = [...new Set(rows.map((a) => a.tmdb_id))];
+  const { data: movies } = await supabase
+    .from('movies_cache')
+    .select('tmdb_id, title, poster_path, year, rating, genre_ids')
+    .in('tmdb_id', tmdbIds);
+
+  const movieMap = {};
+  (movies || []).forEach((m) => { movieMap[m.tmdb_id] = m; });
+
+  return rows.map((item) => ({ ...item, movie: movieMap[item.tmdb_id] || null }));
+}
+
 export async function getTrendingInCircle(userId, limit = 3) {
   const { data: followData } = await supabase
     .from('follows')
@@ -348,4 +490,18 @@ export async function postComment(userId, activityId, content) {
     .single();
   if (error) throw error;
   return { ...data, user: data.user_profiles };
+}
+
+export async function getCommentCounts(activityIds) {
+  if (!activityIds || activityIds.length === 0) return {};
+  const { data, error } = await supabase
+    .from('comments')
+    .select('activity_id')
+    .in('activity_id', activityIds);
+  if (error) throw error;
+  const counts = {};
+  (data || []).forEach(row => {
+    counts[row.activity_id] = (counts[row.activity_id] || 0) + 1;
+  });
+  return counts;
 }
