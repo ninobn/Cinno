@@ -327,3 +327,25 @@ export async function getUserReactions(userId, activityIds) {
   if (error) throw error;
   return new Set((data || []).map((r) => r.activity_id));
 }
+
+// ─── Comments ────────────────────────────────────────────────────────────────
+
+export async function getComments(activityId) {
+  const { data, error } = await supabase
+    .from('comments')
+    .select('*, user_profiles(id, username, display_name, avatar_url)')
+    .eq('activity_id', activityId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(c => ({ ...c, user: c.user_profiles }));
+}
+
+export async function postComment(userId, activityId, content) {
+  const { data, error } = await supabase
+    .from('comments')
+    .insert({ user_id: userId, activity_id: activityId, content })
+    .select('*, user_profiles(id, username, display_name, avatar_url)')
+    .single();
+  if (error) throw error;
+  return { ...data, user: data.user_profiles };
+}
