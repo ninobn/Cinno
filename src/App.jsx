@@ -2025,17 +2025,6 @@ function CinnoCompanionCard({ goToCompanion, startCinnoChat }) {
 
 // ─── From-Your-Journal recent watches strip ────────────────────────────────────
 
-function StarRating({ score }) {
-  // score is 0-100; render 5 stars with proportional fill width.
-  const pct = Math.max(0, Math.min(100, score || 0));
-  return (
-    <div className="star-rating" aria-label={`${(score / 20).toFixed(1)} stars`}>
-      <span className="star-rating-bg">★★★★★</span>
-      <span className="star-rating-fg" style={{ width: `${pct}%` }}>★★★★★</span>
-    </div>
-  );
-}
-
 function JournalRecentSection({ watchedMovies, watchedDates, watchedRatings, watchedNotes, onCardClick, goToJournal }) {
   const recent = useMemo(() => {
     if (!watchedMovies || !watchedDates) return [];
@@ -2085,7 +2074,7 @@ function JournalRecentSection({ watchedMovies, watchedDates, watchedRatings, wat
               <div className="journal-recent-info">
                 <div className="journal-recent-title">{movie.title}</div>
                 {dateLabel && <div className="journal-recent-date">{dateLabel}</div>}
-                {typeof rating === "number" && <StarRating score={rating} />}
+                {typeof rating === "number" && <div className="journal-recent-score">{rating}/100</div>}
                 {truncatedNote && <div className="journal-recent-note">{truncatedNote}</div>}
               </div>
             </button>

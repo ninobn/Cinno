@@ -6429,6 +6429,12 @@ body {
   background: var(--bg-primary);
 }
 
+/* Top nav bar */
+[data-theme="light"] .topbar {
+  background: #E8DDD0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+
 /* Movie Picker FAB - light theme handled above */
 
 /* Chat welcome */
@@ -7618,32 +7624,28 @@ body {
   align-items: stretch;
   gap: 14px;
   padding: 16px;
-  background: var(--bg-card);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  padding-left: 12px;
+  background: transparent;
+  border: none;
+  border-left: 3px solid var(--accent);
+  border-radius: 0;
   cursor: pointer;
   text-align: left;
-  transition: border-color 200ms ease, background 200ms ease, transform 120ms ease;
+  transition: border-color 200ms ease, transform 120ms ease;
   width: 100%;
   min-width: 0;
   font-family: inherit;
   color: inherit;
 }
 
-[data-theme="light"] .journal-recent-card {
-  border-color: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-}
-
 .journal-recent-card:hover {
-  border-color: var(--accent-burgundy);
-  background: var(--bg-elevated);
+  border-left-color: var(--accent-burgundy);
 }
 
 .journal-recent-poster {
-  flex: 0 0 48px;
-  width: 48px;
-  height: 72px;
+  flex: 0 0 60px;
+  width: 60px;
+  height: 90px;
   border-radius: 6px;
   overflow: hidden;
   background: var(--bg-elevated);
@@ -7684,6 +7686,16 @@ body {
   font-size: 11px;
   color: var(--text-muted);
   letter-spacing: 0.3px;
+}
+
+.journal-recent-score {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+  margin-top: 2px;
+  letter-spacing: -0.2px;
 }
 
 .journal-recent-note {
