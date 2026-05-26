@@ -39,6 +39,19 @@ function syncFailToast(e) {
   }
 }
 
+// ─── Esc-to-clear handler factory for search inputs ────────────────────────────
+// Returns an onKeyDown handler that, on Escape, clears the search state, optionally
+// collapses an associated dropdown/overlay, and blurs the input. Blurs via the
+// event target so inputs don't each need their own ref.
+function makeEscHandler(clearFn, collapseFn = null) {
+  return (e) => {
+    if (e.key !== "Escape") return;
+    if (clearFn) clearFn("");
+    if (collapseFn) collapseFn(false);
+    if (e.target && typeof e.target.blur === "function") e.target.blur();
+  };
+}
+
 // ─── Error Boundary ───────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -4127,6 +4140,377 @@ function StatsView({ watchedMovies, watchedRatings, watchedDates }) {
 
 // (Legacy bento-grid StatsView body removed — replaced by the editorial StatsView above.)
 
+// ─── Stats: computation helpers (shared, time-filterable) ───────────────────────
+
+function buildJournalEntries(watchedMovies, watchedRatings, watchedDates) {
+  // Flatten the watched Maps into a single array of journal entries.
+  const entries = [];
+  watchedMovies?.forEach((movie, id) => {
+    entries.push({
+      id,
+      movie,
+      rating: watchedRatings?.get(id),
+      watchedAt: watchedDates?.get(id) || null,
+    });
+  });
+  return entries;
+}
+
+function filterJournalByPeriod(entries, period) {
+  // period: 'all' | 'year' | 'month'. Entries without a watch date are excluded
+  // from time-bounded periods since they can't be placed on the timeline.
+  if (period === "all" || !period) return entries;
+  const now = DateTime.now();
+  let cutoff = null;
+  if (period === "year") cutoff = DateTime.fromObject({ year: now.year, month: 1, day: 1 }).startOf("day");
+  else if (period === "month") cutoff = now.minus({ days: 30 }).startOf("day");
+  if (!cutoff) return entries;
+  return entries.filter((e) => {
+    if (!e.watchedAt) return false;
+    const d = DateTime.fromISO(e.watchedAt.slice(0, 10));
+    return d.isValid && d >= cutoff;
+  });
+}
+
+function formatDecade(decade) {
+  // 1990 -> "90s", 1980 -> "80s", 2000 -> "2000s", 2010 -> "2010s"
+  if (decade >= 2000) return `${decade}s`;
+  return `${decade % 100}s`;
+}
+
+function computeStats(entries) {
+  const total = entries.length;
+
+  // Total runtime from the cache; flag if any film is missing runtime data.
+  const runtimeCache = loadFromStorage("cc_runtimeCache", {});
+  let totalMinutes = 0;
+  let runtimeMissing = false;
+  entries.forEach((e) => {
+    const r = runtimeCache[e.id];
+    if (typeof r === "number" && r > 0) totalMinutes += r;
+    else if (total > 0) runtimeMissing = true;
+  });
+  const totalHours = runtimeMissing || totalMinutes <= 0 ? null : Math.round(totalMinutes / 60);
+
+  // Ratings + average
+  const ratings = entries.map((e) => e.rating).filter((r) => typeof r === "number");
+  const avgRating = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
+
+  // Longest streak of consecutive watched days
+  const watchedDays = new Set();
+  entries.forEach((e) => { if (e.watchedAt) watchedDays.add(e.watchedAt.slice(0, 10)); });
+  let longest = 0;
+  if (watchedDays.size > 0) {
+    const sortedDays = Array.from(watchedDays).sort();
+    let run = 1;
+    longest = 1;
+    for (let i = 1; i < sortedDays.length; i++) {
+      const prev = DateTime.fromISO(sortedDays[i - 1]);
+      const cur = DateTime.fromISO(sortedDays[i]);
+      if (prev.isValid && cur.isValid && cur.diff(prev, "days").days === 1) {
+        run += 1;
+        if (run > longest) longest = run;
+      } else {
+        run = 1;
+      }
+    }
+  }
+
+  // Genre breakdown (top 8)
+  const genreCounts = {};
+  entries.forEach((e) => {
+    const g = e.movie?.genre;
+    if (!g || g === "Film") return;
+    genreCounts[g] = (genreCounts[g] || 0) + 1;
+  });
+  const genreEntries = Object.entries(genreCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const genreMax = genreEntries[0]?.[1] || 1;
+
+  // Rating distribution: 10 buckets [0–10, 11–20, … 91–100]
+  const buckets = Array.from({ length: 10 }, (_, i) => ({
+    label: i === 0 ? "0–10" : `${i * 10 + 1}–${(i + 1) * 10}`,
+    count: 0,
+  }));
+  ratings.forEach((r) => {
+    const idx = Math.min(9, r === 0 ? 0 : Math.floor((r - 1) / 10));
+    buckets[idx].count += 1;
+  });
+  const bucketMax = Math.max(1, ...buckets.map((b) => b.count));
+
+  // Highest / lowest rated film
+  let highest = null;
+  let lowest = null;
+  entries.forEach((e) => {
+    if (typeof e.rating !== "number") return;
+    if (!highest || e.rating > highest.rating) highest = { movie: e.movie, rating: e.rating };
+    if (!lowest || e.rating < lowest.rating) lowest = { movie: e.movie, rating: e.rating };
+  });
+
+  // Most-watched decade (from release year)
+  const decadeCounts = {};
+  entries.forEach((e) => {
+    const y = parseInt(e.movie?.year, 10);
+    if (isNaN(y)) return;
+    const dec = Math.floor(y / 10) * 10;
+    decadeCounts[dec] = (decadeCounts[dec] || 0) + 1;
+  });
+  let topDecade = null;
+  let topDecadeCount = 0;
+  Object.entries(decadeCounts).forEach(([dec, c]) => {
+    if (c > topDecadeCount) { topDecadeCount = c; topDecade = parseInt(dec, 10); }
+  });
+
+  return {
+    total,
+    totalHours,
+    avgRating,
+    longest,
+    genreEntries,
+    genreMax,
+    buckets,
+    bucketMax,
+    highest,
+    lowest,
+    decadeLabel: topDecade !== null ? formatDecade(topDecade) : null,
+    decadeCount: topDecadeCount,
+    hasRatings: ratings.length > 0,
+  };
+}
+
+// ─── Stats: bento cell icons (inline SVG — project has no icon font) ─────────────
+
+function StatIconMovie() {
+  return (
+    <svg className="stats-cell-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="5" width="18" height="14" rx="1.5" />
+      <path d="M3 9h18" />
+      <path d="M7 5l-1.5 4M12 5l-1.5 4M17 5l-1.5 4" />
+    </svg>
+  );
+}
+
+function StatIconFlame() {
+  return (
+    <svg className="stats-cell-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3c.8 2.5 2.8 3.8 2.8 6.2a2.8 2.8 0 0 1-5.6 0c0-.7.2-1.3.5-1.9C8.4 8.7 7 10.6 7 13a5 5 0 0 0 10 0c0-3.6-2.6-5.6-5-10z" />
+    </svg>
+  );
+}
+
+function StatIconClock() {
+  return (
+    <svg className="stats-cell-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 7 12 12 15 14" />
+    </svg>
+  );
+}
+
+// ─── Stats: bento grid (re-animates on mount + filter change via keyed remount) ──
+
+function StatsBento({ stats }) {
+  // Keyed remount (key={period} from the parent) resets `mounted` each filter
+  // change, so bars + the grid replay their entry animation every time.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setMounted(true), 20);
+    return () => clearTimeout(t);
+  }, []);
+
+  const avgAbove = stats.avgRating != null && stats.avgRating > 70;
+
+  return (
+    <div className={`stats-bento ${mounted ? "stats-bento--in" : "stats-bento--out"}`}>
+      {/* Row 1 — single-column stat blocks */}
+      <div className="stats-cell">
+        <StatIconMovie />
+        <div className="stats-number">{stats.total}</div>
+        <div className="stats-label">Films Watched</div>
+      </div>
+
+      <div className="stats-cell">
+        <div className="stats-number" style={{ color: avgAbove ? "var(--accent)" : "var(--text-muted)" }}>
+          {stats.avgRating != null ? stats.avgRating.toFixed(1) : "—"}
+          {stats.avgRating != null && <span className="stats-number-unit">/100</span>}
+        </div>
+        <div className="stats-label">Average Rating</div>
+      </div>
+
+      <div className="stats-cell">
+        <StatIconFlame />
+        <div className="stats-number">
+          {stats.longest > 0 ? stats.longest : "—"}
+          {stats.longest > 0 && <span className="stats-number-unit">days</span>}
+        </div>
+        <div className="stats-label">Longest Streak</div>
+      </div>
+
+      <div className="stats-cell">
+        <StatIconClock />
+        <div className="stats-number">
+          {stats.totalHours != null ? stats.totalHours : "—"}
+          {stats.totalHours != null && <span className="stats-number-unit">hrs</span>}
+        </div>
+        <div className="stats-label">Total Hours</div>
+      </div>
+
+      {/* Row 2 — highest / lowest rated film (2col each) */}
+      <div className="stats-cell stats-cell--2col">
+        <div className="stats-label">Highest Rated</div>
+        {stats.highest ? (
+          <div className="stats-film-row">
+            <div className="stats-film-poster">
+              <PosterImage posterPath={stats.highest.movie.poster_path} title={stats.highest.movie.title} />
+            </div>
+            <div className="stats-film-info">
+              <div className="stats-film-title">{stats.highest.movie.title}</div>
+              {stats.highest.movie.year && <div className="stats-film-year">{stats.highest.movie.year}</div>}
+              <div className="stats-film-score">{stats.highest.rating}/100</div>
+            </div>
+          </div>
+        ) : (
+          <div className="stats-cell-empty">No rated films in this period.</div>
+        )}
+      </div>
+
+      <div className="stats-cell stats-cell--2col">
+        <div className="stats-label">Lowest Rated</div>
+        {stats.lowest ? (
+          <div className="stats-film-row">
+            <div className="stats-film-poster">
+              <PosterImage posterPath={stats.lowest.movie.poster_path} title={stats.lowest.movie.title} />
+            </div>
+            <div className="stats-film-info">
+              <div className="stats-film-title">{stats.lowest.movie.title}</div>
+              {stats.lowest.movie.year && <div className="stats-film-year">{stats.lowest.movie.year}</div>}
+              <div className="stats-film-score">{stats.lowest.rating}/100</div>
+            </div>
+          </div>
+        ) : (
+          <div className="stats-cell-empty">No rated films in this period.</div>
+        )}
+      </div>
+
+      {/* Row 3 — favourite decade (1col) + genre breakdown (3col) */}
+      <div className="stats-cell">
+        <div className="stats-decade">{stats.decadeLabel || "—"}</div>
+        <div className="stats-label">Favourite Decade</div>
+        {stats.decadeLabel && (
+          <div className="stats-cell-sub">{stats.decadeCount} film{stats.decadeCount === 1 ? "" : "s"}</div>
+        )}
+      </div>
+
+      <div className="stats-cell stats-cell--3col">
+        <div className="stats-label">Genre Breakdown</div>
+        {stats.genreEntries.length > 0 ? (
+          <div className="stats-genre-list">
+            {stats.genreEntries.map(([name, count]) => {
+              const pct = (count / stats.genreMax) * 100;
+              return (
+                <div key={name} className="stats-genre-line">
+                  <div className="stats-genre-name">{name}</div>
+                  <div className="stats-genre-track">
+                    <div className="stats-genre-fill" style={{ width: mounted ? `${pct}%` : "0%" }} />
+                  </div>
+                  <div className="stats-genre-num">{count}</div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="stats-cell-empty">No genre data in this period.</div>
+        )}
+      </div>
+
+      {/* Row 4 — rating distribution histogram (full width) */}
+      <div className="stats-cell stats-cell--4col">
+        <div className="stats-label">Rating Distribution</div>
+        {stats.hasRatings ? (
+          <>
+            <div className="stats-hist">
+              {stats.buckets.map((b, i) => {
+                const pct = b.count === 0 ? 0 : Math.max(6, (b.count / stats.bucketMax) * 100);
+                return (
+                  <div key={b.label} className="stats-hist-col" title={`${b.count} film${b.count === 1 ? "" : "s"}`}>
+                    <div className="stats-hist-track">
+                      <div className="stats-hist-bar" style={{ height: mounted ? `${pct}%` : "0%" }} />
+                    </div>
+                    <div className="stats-hist-tick">{i % 2 === 0 ? b.label : ""}</div>
+                  </div>
+                );
+              })}
+            </div>
+            {stats.avgRating != null && (
+              <div className="stats-hist-avg">Your average: <strong>{stats.avgRating.toFixed(1)}</strong></div>
+            )}
+          </>
+        ) : (
+          <div className="stats-cell-empty">No ratings in this period.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Stats: full-page overlay (opened from Settings) ─────────────────────────────
+
+function StatsOverlay({ watchedMovies, watchedRatings, watchedDates, onClose }) {
+  const [period, setPeriod] = useState("all");
+
+  const allEntries = useMemo(
+    () => buildJournalEntries(watchedMovies, watchedRatings, watchedDates),
+    [watchedMovies, watchedRatings, watchedDates]
+  );
+  const stats = useMemo(() => computeStats(filterJournalByPeriod(allEntries, period)), [allEntries, period]);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const PERIODS = [
+    { key: "all", label: "All Time" },
+    { key: "year", label: "This Year" },
+    { key: "month", label: "Last 30 Days" },
+  ];
+
+  return (
+    <div className="stats-overlay">
+      <div className="stats-overlay-inner">
+        <div className="stats-header">
+          <div className="stats-header-titles">
+            <div className="browse-section-eyebrow">— YOUR VIEWING —</div>
+            <div className="browse-section-title">Your Stats</div>
+          </div>
+          <button className="modal-close-btn" style={{ position: "static" }} onClick={onClose} aria-label="Close stats">✕</button>
+        </div>
+
+        <div className="stats-time-filter">
+          {PERIODS.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              className={`stats-time-filter-btn ${period === p.key ? "active" : ""}`}
+              onClick={() => setPeriod(p.key)}
+            >{p.label}</button>
+          ))}
+        </div>
+
+        {stats.total === 0 ? (
+          <div className="stats-bento stats-bento--in">
+            <div className="stats-cell stats-cell--4col stats-cell-empty stats-cell-empty--full">
+              No films logged in this period.
+            </div>
+          </div>
+        ) : (
+          <StatsBento key={period} stats={stats} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Journal Tab ───────────────────────────────────────────────────────────────
 
 // Personal-rating colour buckets for poster overlays + ranking ring
@@ -5003,7 +5387,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
   const [cinnoSlideLoading, setCinnoSlideLoading] = useState(false);
   const [emptyJournal] = useState(() => pickRandom(EMPTY_JOURNAL));
   const [emptyRankings] = useState(() => pickRandom(EMPTY_RANKINGS));
-  const [emptyStats] = useState(() => pickRandom(EMPTY_STATS));
 
   // Sync sort preferences from Supabase on login
   useEffect(() => {
@@ -5362,9 +5745,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
     return base;
   }, []);
 
-  const TOGGLE_VIEWS = ["journal", "stats"];
-  const toggleIndex = TOGGLE_VIEWS.indexOf(view);
-
   // ── Group masthead component shared across all sort views ────────────
   function JournalGroupMasthead({ anchor, anchorItalic, anchorHighlight, label, count, isFirst }) {
     return (
@@ -5439,13 +5819,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                 <div className="saved-desc">{emptyJournal.desc}</div>
               </>
             )}
-            {view === "stats" && (
-              <>
-                <div className="saved-icon">{emptyStats.icon}</div>
-                <div className="saved-title">{emptyStats.title}</div>
-                <div className="saved-desc">{emptyStats.desc}</div>
-              </>
-            )}
           </div>
         )}
 
@@ -5475,6 +5848,7 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                       placeholder="Search your archive…"
                       value={journalSearch}
                       onChange={(e) => setJournalSearch(e.target.value)}
+                      onKeyDown={makeEscHandler(setJournalSearch)}
                     />
                     {journalSearch && (
                       <button className="search-clear" onClick={() => setJournalSearch("")}>✕</button>
@@ -5483,18 +5857,6 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                   <div className="je-sort-group">
                     <span className="je-sort-mono-label">SORT</span>
                     <SortDropdown options={JOURNAL_SORT_OPTIONS} value={journalSort} onChange={setJournalSort} />
-                  </div>
-                  <div className="je-view-toggle">
-                    <button
-                      className={`je-view-toggle-btn ${view === "journal" ? "active" : ""}`}
-                      onClick={() => setView("journal")}
-                      type="button"
-                    >Journal</button>
-                    <button
-                      className={`je-view-toggle-btn ${view === "stats" ? "active" : ""}`}
-                      onClick={() => setView("stats")}
-                      type="button"
-                    >Stats</button>
                   </div>
                 </div>
 
@@ -5660,25 +6022,10 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                 )}
               </>
             )}
-
-            {view === "stats" && (
-              <StatsView watchedMovies={watchedMovies} watchedRatings={watchedRatings} watchedDates={watchedDates} collections={collections} chats={chats} />
-            )}
           </>
         )}
         </div>
       </div>
-
-      {/* Floating Toggle Pill — portaled to body. Only shown in Stats view since the
-          Journal view's editorial header has its own inline segmented toggle. */}
-      {view === "stats" && createPortal(
-        <div className="journal-float-toggle">
-          <div className="journal-float-toggle-track" style={{ transform: `translateX(${toggleIndex * 100}%)` }} />
-          <button className={`journal-float-toggle-btn ${view === "journal" ? "active" : ""}`} onClick={() => setView("journal")}>Journal</button>
-          <button className={`journal-float-toggle-btn ${view === "stats" ? "active" : ""}`} onClick={() => setView("stats")}>Stats</button>
-        </div>,
-        document.body
-      )}
 
       {selectedMovie && (
         <JournalDetailModal
@@ -6309,7 +6656,7 @@ function SortDropdown({ options, value, onChange }) {
   );
 }
 
-function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
+function SettingsModal({ onClose, onClearData, theme, onToggleTheme, onViewStats }) {
   const { modalRef, overlayRef, animatedClose, swipeHandlers } = useSwipeToDismiss(onClose);
 
   return (
@@ -6332,6 +6679,16 @@ function SettingsModal({ onClose, onClearData, theme, onToggleTheme }) {
                 <div className="settings-toggle-thumb" />
               </div>
             </button>
+          </div>
+        </div>
+
+        <div className="settings-section">
+          <div className="settings-row">
+            <div>
+              <div className="settings-label">Your Stats</div>
+              <div className="settings-desc">Films watched, ratings, genres and more</div>
+            </div>
+            <button className="settings-link-btn" onClick={onViewStats}>View →</button>
           </div>
         </div>
 
@@ -7857,7 +8214,7 @@ const FEED_SEARCH_PLACEHOLDERS = {
   lists: "Search lists...",
 };
 
-function FriendsSearchBar({ wrapRef, query, open, loading, results, onChange, onFocusOpen, onSeeAll, onOpenProfile, activeSubTab }) {
+function FriendsSearchBar({ wrapRef, query, open, loading, results, onChange, onFocusOpen, onSeeAll, onOpenProfile, activeSubTab, onEscape }) {
   const total = results.people.length + results.lists.length + results.films.length;
   const placeholder = FEED_SEARCH_PLACEHOLDERS[activeSubTab] ?? "Search people, lists, films...";
   return (
@@ -7871,6 +8228,7 @@ function FriendsSearchBar({ wrapRef, query, open, loading, results, onChange, on
           value={query}
           onChange={(e) => onChange(e.target.value)}
           onFocus={onFocusOpen}
+          onKeyDown={onEscape}
         />
       </div>
       {open && (
@@ -9140,6 +9498,7 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
             results={feedSearchResults}
             onChange={handleFeedSearchChange}
             onFocusOpen={() => { if (feedSearchQuery.trim().length >= 2) setFeedSearchOpen(true); }}
+            onEscape={makeEscHandler(handleFeedSearchChange, setFeedSearchOpen)}
             onSeeAll={openSeeAll}
             onOpenProfile={handleSearchOpenProfile}
             activeSubTab={activeSubTab}
@@ -9280,6 +9639,7 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
                       placeholder="Search people, lists, films..."
                       value={feedSearchQuery}
                       onChange={(e) => handleFeedSearchChange(e.target.value)}
+                      onKeyDown={makeEscHandler(handleFeedSearchChange, closeSeeAll)}
                     />
                   </div>
                   <button type="button" className="feed-search-overlay-close" onClick={closeSeeAll} aria-label="Close">×</button>
@@ -9325,6 +9685,7 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
             results={feedSearchResults}
             onChange={handleFeedSearchChange}
             onFocusOpen={() => { if (feedSearchQuery.trim().length >= 2) setFeedSearchOpen(true); }}
+            onEscape={makeEscHandler(handleFeedSearchChange, setFeedSearchOpen)}
             onSeeAll={openSeeAll}
             onOpenProfile={handleSearchOpenProfile}
             activeSubTab={activeSubTab}
@@ -9352,6 +9713,7 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
                   placeholder="Search by username…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={makeEscHandler(setSearchQuery)}
                 />
               </div>
 
@@ -9404,6 +9766,7 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
             results={feedSearchResults}
             onChange={handleFeedSearchChange}
             onFocusOpen={() => { if (feedSearchQuery.trim().length >= 2) setFeedSearchOpen(true); }}
+            onEscape={makeEscHandler(handleFeedSearchChange, setFeedSearchOpen)}
             onSeeAll={openSeeAll}
             onOpenProfile={handleSearchOpenProfile}
             activeSubTab={activeSubTab}
@@ -9649,6 +10012,7 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
             results={feedSearchResults}
             onChange={handleFeedSearchChange}
             onFocusOpen={() => { if (feedSearchQuery.trim().length >= 2) setFeedSearchOpen(true); }}
+            onEscape={makeEscHandler(handleFeedSearchChange, setFeedSearchOpen)}
             onSeeAll={openSeeAll}
             onOpenProfile={handleSearchOpenProfile}
             activeSubTab={activeSubTab}
@@ -10111,6 +10475,7 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
                 placeholder="Search"
                 value={followsFilter}
                 onChange={(e) => setFollowsFilter(e.target.value)}
+                onKeyDown={makeEscHandler(setFollowsFilter)}
               />
 
               {showPending && (
@@ -10266,6 +10631,7 @@ function MainApp() {
     setFriendsSubTab(tab);
   }, [friendsSubTab]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const scrollPositions = useRef({});
 
   const [theme, setTheme] = useState(() => loadFromStorage("cc_theme", "dark"));
@@ -11154,6 +11520,7 @@ function MainApp() {
               placeholder="Search films, people, lists..."
               value={searchQuery}
               onChange={(e) => handleTopSearch(e.target.value)}
+              onKeyDown={makeEscHandler(setSearchQuery)}
             />
             {searchQuery && (
               <button className="topbar-search-clear" onClick={() => handleTopSearch("")}>✕</button>
@@ -11319,6 +11686,16 @@ function MainApp() {
           onClearData={requestClearAllData}
           theme={theme}
           onToggleTheme={toggleTheme}
+          onViewStats={() => { setSettingsOpen(false); setShowStats(true); }}
+        />
+      )}
+
+      {showStats && (
+        <StatsOverlay
+          watchedMovies={watchedMovies}
+          watchedRatings={watchedRatings}
+          watchedDates={watchedDates}
+          onClose={() => setShowStats(false)}
         />
       )}
 

@@ -14468,3 +14468,338 @@ body {
   .friends-empty + .friends-section { margin-top: 32px; }
 }
 
+/* ══ Stats overlay (relocated from Journal → Settings) ════════════════════════ */
+/* Full-page bento dashboard. Cells use --bg-secondary (a soft cream in light,
+   deep wine in dark) so they read as self-contained blocks without any white
+   background or box-shadow. Works in both themes via CSS variables. */
+
+.stats-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--bg-primary);
+  overflow-y: auto;
+  animation: statsOverlayIn 200ms ease;
+}
+
+@keyframes statsOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.stats-overlay-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 32px 24px 80px;
+}
+
+.stats-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.stats-header-titles { display: flex; flex-direction: column; gap: 6px; }
+
+.stats-header .browse-section-title {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+/* Segmented time filter — same pill pattern as the removed Journal/Stats toggle */
+.stats-time-filter {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+  margin-bottom: 28px;
+}
+
+.stats-time-filter-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  cursor: pointer;
+  border-radius: 999px;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.stats-time-filter-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.stats-time-filter-btn:not(.active):hover { color: var(--text-primary); }
+
+/* Bento grid */
+.stats-bento {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  transition: opacity 300ms ease, transform 300ms ease;
+}
+
+.stats-bento--out { opacity: 0; transform: translateY(12px); }
+.stats-bento--in  { opacity: 1; transform: translateY(0); }
+
+.stats-cell {
+  position: relative;
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  padding: 24px;
+  min-width: 0;
+  transition: transform 200ms ease;
+}
+
+.stats-cell:hover { transform: translateY(-2px); }
+
+.stats-cell--2col { grid-column: span 2; }
+.stats-cell--3col { grid-column: span 3; }
+.stats-cell--4col { grid-column: span 4; }
+
+.stats-cell-icon {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  color: var(--text-muted);
+  opacity: 0.65;
+}
+
+.stats-number {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 48px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -1px;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.stats-number-unit {
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: 4px;
+  letter-spacing: 0;
+}
+
+.stats-label {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.stats-decade {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.5px;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.stats-cell-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+/* Highest / lowest rated film cells */
+.stats-film-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.stats-film-poster {
+  flex: 0 0 60px;
+  width: 60px;
+  height: 90px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  transition: transform 200ms ease;
+}
+
+.stats-cell:hover .stats-film-poster { transform: scale(1.03); }
+
+.stats-film-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.stats-film-info { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+
+.stats-film-title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.25;
+  letter-spacing: -0.2px;
+}
+
+.stats-film-year {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.stats-film-score {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+/* Genre breakdown bars (transparent — inherits cell background) */
+.stats-genre-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+
+.stats-genre-line { display: flex; align-items: center; gap: 12px; }
+
+.stats-genre-name {
+  flex: 0 0 84px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stats-genre-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+[data-theme="dark"] .stats-genre-track { background: rgba(255, 255, 255, 0.08); }
+
+.stats-genre-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  transition: width 400ms ease;
+}
+
+.stats-genre-num {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+/* Rating distribution histogram (transparent — inherits cell background) */
+.stats-hist {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 140px;
+  margin-top: 18px;
+}
+
+.stats-hist-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+}
+
+.stats-hist-track { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+
+.stats-hist-bar {
+  width: 100%;
+  border-radius: 6px 6px 0 0;
+  background: var(--accent);
+  min-height: 2px;
+  transition: height 400ms ease;
+}
+
+.stats-hist-tick {
+  font-size: 9px;
+  color: var(--text-muted);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  letter-spacing: 0.2px;
+  height: 12px;
+}
+
+.stats-hist-avg {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.stats-hist-avg strong { color: var(--accent); font-weight: 700; }
+
+/* Empty cell state */
+.stats-cell-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 90px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+.stats-cell-empty--full { min-height: 220px; font-size: 15px; }
+
+/* Settings "View →" link button (subtle accent text button) */
+.settings-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.settings-link-btn:hover { opacity: 0.75; }
+
+/* Bento responsive — tablet/mobile collapse to 2 columns */
+@media (max-width: 1024px) {
+  .stats-bento { grid-template-columns: repeat(2, 1fr); }
+  .stats-cell--2col,
+  .stats-cell--3col,
+  .stats-cell--4col { grid-column: span 2; }
+}
+
+@media (max-width: 768px) {
+  .stats-overlay-inner { padding: 24px 16px 64px; }
+  .stats-bento { grid-template-columns: repeat(2, 1fr); }
+  /* Larger cells span full width; the four stat-number cells stay 1col */
+  .stats-cell--2col,
+  .stats-cell--3col,
+  .stats-cell--4col { grid-column: span 2; }
+  .stats-number { font-size: 38px; }
+  .stats-number-unit { font-size: 20px; }
+  .stats-decade { font-size: 32px; }
+  .stats-header .browse-section-title { font-size: 24px; }
+}
+
