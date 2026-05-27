@@ -8614,6 +8614,11 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
   const [openMenuListId, setOpenMenuListId] = useState(null);
   const menuRef = useRef(null);
 
+  // List Detail title is an UNCONTROLLED contentEditable driven by this ref.
+  // Controlling it (dangerouslySetInnerHTML + onInput) re-rendered on every
+  // keystroke and snapped the caret to 0 → backward/scrambled typing.
+  const listTitleRef = useRef(null);
+
   // Shared hidden file input for "Change cover" — tracks target list via state
   const coverPickerInputRef = useRef(null);
   const [coverPickerListId, setCoverPickerListId] = useState(null);
@@ -8769,6 +8774,15 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
       .finally(() => { if (!cancelled) setListLoading(false); });
     return () => { cancelled = true; };
   }, [activeList]);
+
+  // Seed the contentEditable title ONCE when the list changes (by id) — never on
+  // every name change. Re-syncing on name change would reset the caret to 0 and
+  // reintroduce the backward-typing bug.
+  useEffect(() => {
+    if (listTitleRef.current && listDetail?.name !== undefined) {
+      listTitleRef.current.textContent = listDetail.name;
+    }
+  }, [listDetail?.id]);
 
   // Close ListCard "..." menu on outside click
   useEffect(() => {
@@ -10284,15 +10298,29 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
                   ) : (
                     <div
                       key={listDetail.id}
+                      ref={listTitleRef}
                       className="ld-title-edit"
                       contentEditable={true}
                       suppressContentEditableWarning={true}
                       autoCorrect="off"
                       autoCapitalize="off"
                       spellCheck={false}
-                      dangerouslySetInnerHTML={{ __html: listDetail.name || "" }}
-                      onInput={(e) => handleInlineUpdateList(activeList.id, { name: e.currentTarget.textContent.trim() })}
-                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
+                      onBlur={(e) => {
+                        const newName = e.currentTarget.textContent.trim();
+                        if (newName && newName !== listDetail.name) {
+                          handleInlineUpdateList(activeList.id, { name: newName });
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          e.currentTarget.blur(); // triggers onBlur, which saves
+                        }
+                        if (e.key === "Escape") {
+                          e.currentTarget.textContent = listDetail.name; // reset, no save
+                          e.currentTarget.blur();
+                        }
+                      }}
                     />
                   )}
                   {isReadOnly ? (
