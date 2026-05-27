@@ -3266,6 +3266,10 @@ function CreateCollectionModal({ onClose, onCreate }) {
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
           maxLength={40}
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          autoComplete="off"
         />
         <div className="collection-create-actions">
           <button className="collection-create-cancel" onClick={onClose}>Cancel</button>
@@ -3355,6 +3359,10 @@ function CollectionDetailView({ collection, savedMovies, savedIds, toggleSave, w
                 onBlur={handleSaveName}
                 onKeyDown={(e) => { if (e.key === "Enter") handleSaveName(); if (e.key === "Escape") { setEditName(collection.name); setEditing(false); } }}
                 maxLength={40}
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                autoComplete="off"
               />
             ) : (
               <div className="collection-detail-title" onClick={() => !collection.isDefault && setEditing(true)}>
@@ -9888,23 +9896,23 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
                 {ownLists.slice(0, 4).map((list) => {
                   const filmCount = list.list_films?.[0]?.count || 0;
                   const previews = list.previewPosters || [];
+                  const firstPosterUrl = list.cover_image_url
+                    ? list.cover_image_url
+                    : previews[0]
+                    ? `${IMG_BASE}/w185${previews[0]}`
+                    : null;
                   const menuOpen = openMenuListId === list.id;
                   return (
                     <div key={list.id} className="list-card-wrap">
                       <button type="button" className="list-card" onClick={() => openList(list)}>
                         <div className="list-card-cover">
-                          {list.cover_image_url ? (
-                            <img src={list.cover_image_url} alt="" className="list-card-cover-img" />
-                          ) : previews.length > 0 ? (
-                            <div className="list-card-cover-grid">
-                              {[0, 1, 2, 3].map((i) => previews[i] ? (
-                                <img key={i} src={`${IMG_BASE}/w185${previews[i]}`} alt="" />
-                              ) : (
-                                <div key={i} className="list-card-cover-quadrant-empty" />
-                              ))}
-                            </div>
+                          {firstPosterUrl ? (
+                            <img src={firstPosterUrl} alt={list.name} />
                           ) : (
-                            <div className="list-card-cover-fallback" />
+                            <div className="list-card-cover-placeholder">
+                              {/* Project has no Tabler icon font; inline SVG matches the codebase's icon convention */}
+                              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line x1="3" y1="18" x2="3.01" y2="18" /></svg>
+                            </div>
                           )}
                           <span className="list-card-privacy" aria-label={list.is_public ? "Public" : "Private"}>
                             {list.is_public ? (
@@ -10279,6 +10287,9 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
                       className="ld-title-edit"
                       contentEditable={true}
                       suppressContentEditableWarning={true}
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
                       dangerouslySetInnerHTML={{ __html: listDetail.name || "" }}
                       onInput={(e) => handleInlineUpdateList(activeList.id, { name: e.currentTarget.textContent.trim() })}
                       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
@@ -10295,6 +10306,10 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
                       placeholder="Add a description..."
                       maxLength={300}
                       rows={2}
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck={false}
+                      autoComplete="off"
                       onBlur={(e) => {
                         const v = e.target.value.trim();
                         if (v !== (listDetail.description || "")) handleInlineUpdateList(listDetail.id, { description: v || null });

@@ -1438,7 +1438,12 @@ body {
 .chat-input-float {
   flex-shrink: 0;
   padding: 0 16px;
-  padding-bottom: calc(16px + var(--tab-height));
+  /* The input is the bottom flex child of the full-height chat column (the app
+     uses a top nav — there is no bottom tab bar), so it already sits flush to
+     the bottom. Only the iOS safe-area inset should offset it; the old
+     `var(--tab-height)` offset was stale and left an ~80px gap on mobile. */
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  background: var(--bg-primary);
   z-index: 5;
   display: flex;
   flex-direction: column;
@@ -7578,9 +7583,13 @@ body {
 
 .taste-actions {
   display: flex;
+  align-items: center;
+  justify-content: center;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 28px;
+  /* vh-based padding keeps the buttons visually centered between the stats row
+     and the Cinno card on both small and large phones (replaces fixed margin) */
+  padding: clamp(20px, 4vh, 40px) 0;
 }
 
 .taste-btn {
@@ -12791,9 +12800,10 @@ body {
   .friends-profile-layout .feed-center { margin-bottom: 24px; }
 }
 
-/* ── Profile right-column lists: enforce uniform card sizing ──────────────── */
+/* ── Profile right-column lists: uniform card sizing ──────────────────────── */
+/* The square (aspect-ratio 1/1) cover plus a single-line title + count give
+   every card an identical natural height — no explicit card height needed. */
 .profile-lists-grid--sidebar { align-items: start; }
-.profile-lists-grid--sidebar .list-card { height: 100%; }
 
 /* ── Full Lists sub-tab (magazine grid) ───────────────────────────────────── */
 .lists-page { max-width: 1160px; margin: 0 auto; }
@@ -13452,8 +13462,26 @@ body {
 .list-card-cover {
   width: 100%;
   aspect-ratio: 1 / 1;
-  position: relative;
   overflow: hidden;
+  border-radius: 10px 10px 0 0;
+  position: relative;
+}
+.list-card-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+  display: block;
+}
+.list-card-cover-placeholder {
+  width: 100%;
+  height: 100%;
+  background: var(--card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: var(--text-muted);
 }
 .list-card-cover-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .list-card-cover-fallback {
@@ -13490,7 +13518,7 @@ body {
   pointer-events: none;
 }
 
-.list-card-info { padding: 10px 12px; }
+.list-card-info { padding: 10px 12px 12px; overflow: hidden; }
 .list-card-name {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 14px;

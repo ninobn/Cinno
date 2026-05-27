@@ -366,7 +366,29 @@ export async function getOwnExpressiveActivity(userId, limit = 20) {
   const movieMap = {};
   (movies || []).forEach((m) => { movieMap[m.tmdb_id] = m; });
 
-  return rows.map((item) => ({ ...item, movie: movieMap[item.tmdb_id] || null }));
+  // Rating source: journal_entries.personal_rating — same as Journal.
+  // The `activity` table keeps its own `rating` copy that can drift from the
+  // journal (e.g. a "logged" row freezes the rating at log time, while
+  // re-rating updates journal_entries.personal_rating). The Profile post must
+  // show the *exact* value the Journal shows, so we read personal_rating
+  // straight from journal_entries and ignore activity.rating entirely.
+  // Same source, same field, same value always.
+  const { data: journalRows } = await supabase
+    .from('journal_entries')
+    .select('tmdb_id, personal_rating')
+    .eq('user_id', userId)
+    .in('tmdb_id', tmdbIds);
+
+  const journalRatingMap = {};
+  (journalRows || []).forEach((j) => {
+    journalRatingMap[j.tmdb_id] = j.personal_rating != null ? Number(j.personal_rating) : null;
+  });
+
+  return rows.map((item) => ({
+    ...item,
+    rating: journalRatingMap[item.tmdb_id] ?? null,
+    movie: movieMap[item.tmdb_id] || null,
+  }));
 }
 
 export async function getTrendingInCircle(userId, limit = 3) {
