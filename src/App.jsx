@@ -39,6 +39,27 @@ function syncFailToast(e) {
   }
 }
 
+// Shared error message for failed optimistic follow/accept/decline actions.
+const FOLLOW_ERR_TITLE = "Something went wrong. Please try again.";
+
+// ─── useSyncDim: 1500ms loading dim for optimistic-UI buttons ─────────────────
+// Pass the in-flight promise to `run`. After 1500ms the `syncing` flag flips on
+// (apply opacity: 0.6 in the consumer); it clears when the promise settles.
+// Fast networks never see the dim. This is NOT a spinner — just a faint signal
+// that the background sync is taking longer than usual.
+function useSyncDim() {
+  const [syncing, setSyncing] = useState(false);
+  const run = useCallback((promise) => {
+    if (!promise || typeof promise.then !== "function") return;
+    const timer = setTimeout(() => setSyncing(true), 1500);
+    Promise.resolve(promise).finally(() => {
+      clearTimeout(timer);
+      setSyncing(false);
+    });
+  }, []);
+  return [syncing, run];
+}
+
 // ─── Esc-to-clear handler factory for search inputs ────────────────────────────
 // Returns an onKeyDown handler that, on Escape, clears the search state, optionally
 // collapses an associated dropdown/overlay, and blurs the input. Blurs via the
@@ -4595,161 +4616,197 @@ function PosterRatingDot({ rating, size = 32 }) {
   );
 }
 
-// Resolves a movie's backdrop_path even if the cached watchedMovies entry is missing it.
-// Persists the resolved path (or null) to localStorage so we don't re-fetch on every visit.
-function useResolvedBackdrop(movie) {
-  const [path, setPath] = useState(() => {
-    if (movie?.backdrop_path) return movie.backdrop_path;
-    if (!movie) return null;
-    const cache = loadFromStorage("cc_backdrop_cache", {});
-    return cache[movie.id] !== undefined ? cache[movie.id] : null;
-  });
-
-  useEffect(() => {
-    if (!movie) { setPath(null); return; }
-    if (movie.backdrop_path) { setPath(movie.backdrop_path); return; }
-    const cache = loadFromStorage("cc_backdrop_cache", {});
-    if (cache[movie.id] !== undefined) { setPath(cache[movie.id]); return; }
-
-    let cancelled = false;
-    getMovieDetails(movie.id)
-      .then((d) => {
-        if (cancelled) return;
-        const resolved = d?.backdrop_path || null;
-        const next = { ...loadFromStorage("cc_backdrop_cache", {}), [movie.id]: resolved };
-        saveToStorage("cc_backdrop_cache", next);
-        setPath(resolved);
-      })
-      .catch((err) => {
-        console.error("[Rankings] backdrop fetch failed:", err?.message || err);
-      });
-    return () => { cancelled = true; };
-  }, [movie?.id, movie?.backdrop_path]);
-
-  return path;
+// Seed the manual rankings order. Idempotent — only derives an order from scores
+// the first time. Reads/writes user-scoped localStorage (cc_rankingsOrder, cc_rankingsSeeded).
+// If a saved manual order already exists, returns it unchanged. Otherwise sorts
+// watched films by personal_rating DESC (unrated go to the end), persists to
+// localStorage + Supabase (journal_entries.rank_position), and returns the new order.
+function initializeRankingsFromScores(watchedRatings, watchedMovies, userId) {
+  const seeded = loadFromStorage("cc_rankingsSeeded", false);
+  const existing = loadFromStorage("cc_rankingsOrder", []);
+  if (seeded && Array.isArray(existing) && existing.length > 0) {
+    return existing;
+  }
+  const ids = Array.from(watchedMovies.keys());
+  if (ids.length === 0) return [];
+  const rated = ids
+    .filter((id) => watchedRatings.has(id))
+    .sort((a, b) => (watchedRatings.get(b) ?? 0) - (watchedRatings.get(a) ?? 0));
+  const unrated = ids.filter((id) => !watchedRatings.has(id));
+  const order = [...rated, ...unrated];
+  saveToStorage("cc_rankingsOrder", order);
+  saveToStorage("cc_rankingsSeeded", true);
+  if (userId) {
+    journalService.reorderJournal(userId, order).catch(syncFailToast);
+  }
+  return order;
 }
 
-// Cinematic rankings layout: #1 hero with backdrop, #2/#3 side-by-side, then numbered list.
-function RankingsLayout({ ranked, watchedRatings, watchedDates, onOpen }) {
-  if (ranked.length < 3) {
-    return (
-      <div className="rankings-list rankings-list-simple">
-        {ranked.map((movie, i) => {
-          const rank = i + 1;
-          const r = watchedRatings.get(movie.id);
-          return (
-            <div key={movie.id} className="ranking-item" onClick={() => onOpen(movie)}>
-              <span className="ranking-num">{rank}</span>
-              <div className="ranking-poster">
-                <PosterImage posterPath={movie.poster_path} title={movie.title} />
-              </div>
-              <div className="ranking-info">
-                <div className="ranking-title">{movie.title}</div>
-                <div className="ranking-meta">{movie.genre} · {movie.year}{watchedDates?.get(movie.id) ? ` · ${formatWatchDate(watchedDates.get(movie.id))}` : ""}</div>
-              </div>
-              <PosterRatingDot rating={r} size={36} />
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
+// Beli-style personal leaderboard. Every row identical; no podium, no hero.
+// "Edit" enters a drag-and-drop mode (HTML5 DnD on desktop, touch on mobile).
+// onReorder receives the new tmdb_id order array and persists it.
+function RankingsLayout({ ranked, onOpen, onReorder }) {
+  const [editing, setEditing] = useState(false);
+  const [draftOrder, setDraftOrder] = useState(null);
+  const [draggedIndex, setDraggedIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+  const [touchDelta, setTouchDelta] = useState(0);
+  const rowRefs = useRef([]);
+  const touchStateRef = useRef({ startY: 0, startIndex: null });
 
-  const top1 = ranked[0];
-  const top2 = ranked[1];
-  const top3 = ranked[2];
-  const rest = ranked.slice(3);
-  const top1Rating = watchedRatings.get(top1.id);
-  const top1BackdropPath = useResolvedBackdrop(top1);
-  const heroBackdrop = top1BackdropPath ? `${IMG_BASE}/w1280${top1BackdropPath}` : null;
+  // Lookup table: tmdb_id → movie object. Built from the prop so draftOrder can
+  // be a plain id array and we still render full rows.
+  const movieMap = useMemo(() => {
+    const m = new Map();
+    ranked.forEach((mv) => m.set(mv.id, mv));
+    return m;
+  }, [ranked]);
+
+  const list = useMemo(() => {
+    if (editing && draftOrder) {
+      return draftOrder.map((id) => movieMap.get(id)).filter(Boolean);
+    }
+    return ranked;
+  }, [editing, draftOrder, ranked, movieMap]);
+
+  const startEdit = () => {
+    setDraftOrder(ranked.map((m) => m.id));
+    setEditing(true);
+  };
+
+  const finishEdit = async () => {
+    if (!draftOrder) {
+      setEditing(false);
+      return;
+    }
+    try {
+      await onReorder(draftOrder);
+      Toast.fire({ icon: "success", title: "Rankings saved" });
+    } catch (e) {
+      console.error("Failed to save rankings:", e);
+      Toast.fire({ icon: "error", title: "Couldn't save rankings" });
+    }
+    setEditing(false);
+    setDraftOrder(null);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const moveItem = (from, to) => {
+    if (from == null || to == null || from === to) return;
+    setDraftOrder((prev) => {
+      if (!prev) return prev;
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+  };
+
+  // ── Desktop drag handlers ──
+  const onDragStart = (i) => (e) => {
+    setDraggedIndex(i);
+    e.dataTransfer.effectAllowed = "move";
+    try { e.dataTransfer.setData("text/plain", String(i)); } catch {}
+  };
+  const onDragOver = (i) => (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverIndex !== i) setDragOverIndex(i);
+  };
+  const onDrop = (i) => (e) => {
+    e.preventDefault();
+    moveItem(draggedIndex, i);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+  const onDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  // ── Mobile touch handlers ──
+  const onTouchStart = (i) => (e) => {
+    touchStateRef.current = { startY: e.touches[0].clientY, startIndex: i };
+    setDraggedIndex(i);
+    setDragOverIndex(i);
+    setTouchDelta(0);
+  };
+  const onTouchMove = (e) => {
+    if (touchStateRef.current.startIndex == null) return;
+    e.preventDefault();
+    const y = e.touches[0].clientY;
+    const delta = y - touchStateRef.current.startY;
+    setTouchDelta(delta);
+    // Find which row the finger is over right now.
+    let hover = touchStateRef.current.startIndex;
+    for (let j = 0; j < rowRefs.current.length; j++) {
+      const ref = rowRefs.current[j];
+      if (!ref) continue;
+      const r = ref.getBoundingClientRect();
+      if (y >= r.top && y <= r.bottom) { hover = j; break; }
+    }
+    if (hover !== dragOverIndex) setDragOverIndex(hover);
+  };
+  const onTouchEnd = () => {
+    const start = touchStateRef.current.startIndex;
+    if (start != null && dragOverIndex != null) moveItem(start, dragOverIndex);
+    touchStateRef.current = { startY: 0, startIndex: null };
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+    setTouchDelta(0);
+  };
 
   return (
-    <div className="rk-wrap">
-      {/* #1 Hero */}
-      <button className="rk-hero" onClick={() => onOpen(top1)} type="button">
-        {heroBackdrop && <img src={heroBackdrop} alt="" className="rk-hero-bg" />}
-        <div className="rk-hero-gradient" />
-        <div className="rk-hero-content">
-          <div className="rk-hero-poster">
-            <PosterImage posterPath={top1.poster_path} title={top1.title} />
-          </div>
-          <div className="rk-hero-meta">
-            <span className="rk-hero-badge">#1</span>
-            <div className="rk-hero-eyebrow">Your all-time favourite</div>
-            <h2 className="rk-hero-title">{top1.title}</h2>
-            <div className="rk-hero-sub">
-              {top1.genre} · {top1.year}
-              {typeof top1Rating === "number" && (
-                <span className="rk-hero-stars">
-                  <span className="star-rating">
-                    <span className="star-rating-bg">★★★★★</span>
-                    <span className="star-rating-fg" style={{ width: `${top1Rating}%` }}>★★★★★</span>
-                  </span>
-                </span>
-              )}
-            </div>
-          </div>
-          {typeof top1Rating === "number" && (
-            <div className="rk-hero-ring">
-              <svg width="44" height="44" viewBox="0 0 44 44">
-                <circle cx="22" cy="22" r="19" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="3" />
-                <circle cx="22" cy="22" r="19" fill="none" stroke="#D4B05C" strokeWidth="3" strokeLinecap="round"
-                  strokeDasharray={2 * Math.PI * 19}
-                  strokeDashoffset={2 * Math.PI * 19 * (1 - top1Rating / 100)}
-                  transform="rotate(-90 22 22)"
-                />
-                <text x="22" y="22" textAnchor="middle" dominantBaseline="central" fill="#D4B05C" fontSize="13" fontWeight="700" fontFamily="Plus Jakarta Sans, sans-serif">{top1Rating}</text>
-              </svg>
-            </div>
-          )}
-        </div>
-      </button>
-
-      {/* #2 + #3 row */}
-      <div className="rk-podium">
-        {[
-          { movie: top2, rank: 2, color: "#C0C0C0" },
-          { movie: top3, rank: 3, color: "#CD7F32" },
-        ].map(({ movie, rank, color }) => {
-          const r = watchedRatings.get(movie.id);
-          return (
-            <button key={movie.id} className="rk-podium-card" onClick={() => onOpen(movie)} type="button">
-              <div className="rk-podium-poster" style={{ borderColor: color }}>
-                <PosterImage posterPath={movie.poster_path} title={movie.title} />
-              </div>
-              <div className="rk-podium-info">
-                <span className="rk-podium-badge" style={{ background: color, color: "#1A0A14" }}>#{rank}</span>
-                <div className="rk-podium-title">{movie.title}</div>
-                <div className="rk-podium-meta">{movie.genre} · {movie.year}</div>
-              </div>
-              <PosterRatingDot rating={r} size={32} />
-            </button>
-          );
-        })}
+    <div className={`rankings-list${editing ? " rankings-list--edit" : ""}`}>
+      <div className="rankings-toolbar">
+        {!editing ? (
+          <button className="rankings-edit-btn" onClick={startEdit} type="button">Edit</button>
+        ) : (
+          <button className="rankings-done-btn" onClick={finishEdit} type="button">Done</button>
+        )}
       </div>
-
-      {/* Remaining ranked list */}
-      {rest.length > 0 && (
-        <div className="rankings-list">
-          {rest.map((movie, i) => {
-            const rank = i + 4;
-            const r = watchedRatings.get(movie.id);
-            return (
-              <div key={movie.id} className="ranking-item" onClick={() => onOpen(movie)}>
-                <span className="ranking-num">{rank}</span>
-                <div className="ranking-poster">
-                  <PosterImage posterPath={movie.poster_path} title={movie.title} />
-                </div>
-                <div className="ranking-info">
-                  <div className="ranking-title">{movie.title}</div>
-                  <div className="ranking-meta">{movie.genre} · {movie.year}{watchedDates?.get(movie.id) ? ` · ${formatWatchDate(watchedDates.get(movie.id))}` : ""}</div>
-                </div>
-                <PosterRatingDot rating={r} size={36} />
+      {list.map((movie, i) => {
+        const isDragging = editing && draggedIndex === i;
+        const isOver = editing && dragOverIndex === i && draggedIndex !== i;
+        const style = isDragging && touchDelta !== 0
+          ? { transform: `translateY(${touchDelta}px)` }
+          : undefined;
+        return (
+          <div
+            key={movie.id}
+            ref={(el) => (rowRefs.current[i] = el)}
+            className={`rankings-row${editing ? " rankings-row--edit" : ""}${isDragging ? " rankings-row--dragging" : ""}${isOver ? " rankings-row--dragover" : ""}`}
+            draggable={editing}
+            onDragStart={editing ? onDragStart(i) : undefined}
+            onDragOver={editing ? onDragOver(i) : undefined}
+            onDrop={editing ? onDrop(i) : undefined}
+            onDragEnd={editing ? onDragEnd : undefined}
+            onTouchStart={editing ? onTouchStart(i) : undefined}
+            onTouchMove={editing ? onTouchMove : undefined}
+            onTouchEnd={editing ? onTouchEnd : undefined}
+            onClick={editing ? undefined : () => onOpen(movie)}
+            style={style}
+          >
+            {editing && (
+              <span className="rankings-drag-handle" aria-hidden="true">
+                <span /><span /><span />
+              </span>
+            )}
+            <span className="rankings-row-num">{i + 1}</span>
+            <div className="rankings-row-poster">
+              <PosterImage posterPath={movie.poster_path} title={movie.title} />
+            </div>
+            <div className="rankings-row-info">
+              <div className="rankings-row-title">{movie.title}</div>
+              <div className="rankings-row-meta">
+                {movie.year}
+                {movie.genre && movie.genre !== "Film" ? ` · ${movie.genre}` : ""}
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -5383,6 +5440,11 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
     const stored = loadFromStorage("cc_journalSort", "date_desc");
     return JOURNAL_SORT_OPTIONS.some((o) => o.value === stored) ? stored : "date_desc";
   });
+  // Manual rankings order — array of tmdb_ids. Seeded from personal_rating DESC
+  // on first use; thereafter the user owns it via drag-and-drop.
+  const [manualRankingOrder, setManualRankingOrder] = useState(() =>
+    loadFromStorage("cc_rankingsOrder", [])
+  );
   const [runtimeCache, setRuntimeCache] = useState(() => loadFromStorage("cc_runtimeCache", {}));
   const [insightLoading, setInsightLoading] = useState(false);
   const [insight, setInsight] = useState(() =>
@@ -5629,12 +5691,47 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
     return sortedJournalMovies.filter((m) => (m.title || "").toLowerCase().includes(q));
   }, [sortedJournalMovies, journalSearch]);
 
-  // For "Your rankings" sort: only movies with a personal rating count toward the podium/list.
-  // Rated movies are sorted desc by rating in sortMovies("rating_desc").
-  const ratedRanked = useMemo(
-    () => filteredJournalMovies.filter((m) => watchedRatings.has(m.id)),
-    [filteredJournalMovies, watchedRatings]
-  );
+  // ── "Your rankings" — Beli-style manual leaderboard ──
+  // Seed from personal_rating DESC on first use, then preserve user's manual order.
+  // Also appends new films and drops removed ones automatically (Part 6).
+  useEffect(() => {
+    if (watchedMovies.size === 0) {
+      setManualRankingOrder([]);
+      return;
+    }
+    const seeded = initializeRankingsFromScores(watchedRatings, watchedMovies, user?.id);
+    const known = new Set(watchedMovies.keys());
+    const trimmed = seeded.filter((id) => known.has(id));
+    const newcomers = Array.from(known).filter((id) => !trimmed.includes(id));
+    const next = [...trimmed, ...newcomers];
+    if (newcomers.length > 0 || trimmed.length !== seeded.length) {
+      saveToStorage("cc_rankingsOrder", next);
+      if (user?.id) journalService.reorderJournal(user.id, next).catch(syncFailToast);
+    }
+    setManualRankingOrder(next);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedMovies, user?.id]);
+
+  const handleRankingsReorder = useCallback(async (newOrder) => {
+    setManualRankingOrder(newOrder);
+    saveToStorage("cc_rankingsOrder", newOrder);
+    if (user?.id) {
+      await journalService.reorderJournal(user.id, newOrder);
+    }
+  }, [user?.id]);
+
+  // The displayed ranked list — manual order, filtered by the search box.
+  const rankedMovies = useMemo(() => {
+    const q = journalSearch.trim().toLowerCase();
+    const out = [];
+    manualRankingOrder.forEach((id) => {
+      const m = watchedMovies.get(id);
+      if (!m) return;
+      if (q && !(m.title || "").toLowerCase().includes(q)) return;
+      out.push(m);
+    });
+    return out;
+  }, [manualRankingOrder, watchedMovies, journalSearch]);
 
   // Editorial-header stat strip — derived from the same filtered list.
   const journalStats = useMemo(() => {
@@ -5871,15 +5968,16 @@ function JournalTab({ watchedMovies, watchedNotes, setWatchedNote, watchedIds, t
                 {filteredJournalMovies.length === 0 && journalSearch.trim() ? (
                   <div className="journal-no-results">No movies found</div>
                 ) : journalSort === "rating_desc" ? (
-                  /* "Your rankings" — hero #1 + podium #2/#3 + numbered list */
-                  ratedRanked.length === 0 ? (
-                    <div className="rankings-empty">Rate movies to build your rankings.</div>
+                  /* "Your rankings" — Beli-style drag-and-drop leaderboard */
+                  rankedMovies.length === 0 ? (
+                    <div className="rankings-empty">
+                      {journalSearch.trim() ? "No movies found" : "Log a movie to build your rankings."}
+                    </div>
                   ) : (
                     <RankingsLayout
-                      ranked={ratedRanked}
-                      watchedRatings={watchedRatings}
-                      watchedDates={watchedDates}
+                      ranked={rankedMovies}
                       onOpen={setSelectedMovie}
+                      onReorder={handleRankingsReorder}
                     />
                   )
                 ) : journalSort === "genre_group" ? (
@@ -8092,15 +8190,14 @@ function ActivityCard({
   );
 }
 
-// Inline "suggested for you" card, slotted between activity cards every 4th item
+// Inline "suggested for you" card, slotted between activity cards every 4th item.
+// Optimistic: parent removes the card from the list on click. Dim only shows
+// if the parent re-inserts on failure and the call is still in flight at 1500ms.
 function FeedSuggestedCard({ suggested, onFollow, onOpenProfile }) {
-  const [busy, setBusy] = useState(false);
-  const handleFollow = async () => {
-    if (busy) return;
-    setBusy(true);
-    try { await onFollow(suggested.id); } finally { setBusy(false); }
-  };
+  const [syncing, runSync] = useSyncDim();
+  const handleFollow = () => runSync(onFollow(suggested));
   const open = onOpenProfile ? () => onOpenProfile(suggested) : null;
+  const dim = syncing ? { opacity: 0.6 } : undefined;
   return (
     <div className="feed-suggested-card">
       <div className="feed-suggested-eyebrow">SUGGESTED FOR YOU</div>
@@ -8122,7 +8219,7 @@ function FeedSuggestedCard({ suggested, onFollow, onOpenProfile }) {
           )}
           <div className="feed-suggested-taste">Film enthusiast</div>
         </div>
-        <button type="button" className="feed-suggested-follow" disabled={busy} onClick={handleFollow}>
+        <button type="button" className="feed-suggested-follow" style={dim} onClick={handleFollow}>
           Follow
         </button>
       </div>
@@ -8130,15 +8227,12 @@ function FeedSuggestedCard({ suggested, onFollow, onOpenProfile }) {
   );
 }
 
-// Compact suggested-user row for the right feed sidebar
+// Compact suggested-user row for the right feed sidebar (optimistic via parent)
 function FeedRailSuggestedRow({ suggested, onFollow, onOpenProfile }) {
-  const [busy, setBusy] = useState(false);
-  const handleFollow = async () => {
-    if (busy) return;
-    setBusy(true);
-    try { await onFollow(suggested.id); } finally { setBusy(false); }
-  };
+  const [syncing, runSync] = useSyncDim();
+  const handleFollow = () => runSync(onFollow(suggested));
   const open = onOpenProfile ? () => onOpenProfile(suggested) : null;
+  const dim = syncing ? { opacity: 0.6 } : undefined;
   return (
     <div className="feed-right-suggested-row">
       {open ? (
@@ -8156,7 +8250,7 @@ function FeedRailSuggestedRow({ suggested, onFollow, onOpenProfile }) {
         )}
         <div className="feed-right-suggested-taste">Film enthusiast</div>
       </div>
-      <button type="button" className="feed-right-follow" disabled={busy} onClick={handleFollow}>Follow</button>
+      <button type="button" className="feed-right-follow" style={dim} onClick={handleFollow}>Follow</button>
     </div>
   );
 }
@@ -8326,13 +8420,13 @@ function FriendsLeftSidebar({ ownProfile, filmCount, followingCount, followersCo
               <div className="feed-mini-stat-num">{filmCount}</div>
               <div className="feed-mini-stat-label">Films</div>
             </div>
-            <button type="button" className="feed-mini-stat" onClick={onShowFollowing}>
-              <div className="feed-mini-stat-num">{followingCount}</div>
-              <div className="feed-mini-stat-label">Following</div>
-            </button>
             <button type="button" className="feed-mini-stat" onClick={onShowFollowers}>
               <div className="feed-mini-stat-num">{followersCount}</div>
               <div className="feed-mini-stat-label">Followers</div>
+            </button>
+            <button type="button" className="feed-mini-stat" onClick={onShowFollowing}>
+              <div className="feed-mini-stat-num">{followingCount}</div>
+              <div className="feed-mini-stat-label">Following</div>
             </button>
           </div>
         </div>
@@ -8487,13 +8581,37 @@ function ListMagazineCard({ list, onOpen, saved = false, menuOpen, onToggleMenu,
   );
 }
 
+// Inline Follow/Following pill used by the Followers/Following detail rows.
+// Owns its own dim timer so each row syncs independently.
+function FollowRowToggle({ profile, isFollowed, onFollow, onUnfollow }) {
+  const [syncing, runSync] = useSyncDim();
+  const dim = syncing ? { opacity: 0.6 } : undefined;
+  if (isFollowed) {
+    return (
+      <button className="pill pill--ghost" style={dim} onClick={() => runSync(onUnfollow(profile.id))}>Following</button>
+    );
+  }
+  return (
+    <button className="pill pill--wine" style={dim} onClick={() => runSync(onFollow(profile))}>Follow</button>
+  );
+}
+
+// Follow/Requested/Following pill for the viewing-profile header.
+function ViewedFollowButton({ status, onToggle }) {
+  const [syncing, runSync] = useSyncDim();
+  const dim = syncing ? { opacity: 0.6 } : undefined;
+  const label = status === null ? "Follow" : status === "pending" ? "Requested" : "✓ Following";
+  const className = `pill ${status === null ? "pill--wine" : "pill--ghost"}${status === "pending" ? " pill--muted" : ""} vp-follow-btn`;
+  return (
+    <button type="button" className={className} style={dim} onClick={() => runSync(onToggle())}>
+      {label}
+    </button>
+  );
+}
+
 function UserCard({ profile, status, currentUserId, onFollow, onUnfollow, onAccept, onDecline, mode, onOpenProfile }) {
-  const [busy, setBusy] = useState(false);
-  const wrap = async (fn) => {
-    if (busy) return;
-    setBusy(true);
-    try { await fn(); } finally { setBusy(false); }
-  };
+  const [syncing, runSync] = useSyncDim();
+  const dim = syncing ? { opacity: 0.6 } : undefined;
   const handleOpen = onOpenProfile && profile.id !== currentUserId ? () => onOpenProfile(profile) : null;
 
   if (profile.id === currentUserId) {
@@ -8513,16 +8631,16 @@ function UserCard({ profile, status, currentUserId, onFollow, onUnfollow, onAcce
   if (mode === "pending") {
     action = (
       <div className="user-card-actions">
-        <button className="pill pill--wine" disabled={busy} onClick={() => wrap(() => onAccept(profile.id))}>Accept</button>
-        <button className="pill pill--ghost" disabled={busy} onClick={() => wrap(() => onDecline(profile.id))}>Decline</button>
+        <button className="pill pill--wine" style={dim} onClick={() => runSync(onAccept(profile))}>Accept</button>
+        <button className="pill pill--ghost" style={dim} onClick={() => runSync(onDecline(profile))}>Decline</button>
       </div>
     );
   } else if (status === "accepted") {
-    action = <button className="pill pill--ghost" disabled={busy} onClick={() => wrap(() => onUnfollow(profile.id))}>✓ Following</button>;
+    action = <button className="pill pill--ghost" style={dim} onClick={() => runSync(onUnfollow(profile.id))}>✓ Following</button>;
   } else if (status === "pending") {
     action = <button className="pill pill--ghost pill--muted" disabled>Requested</button>;
   } else {
-    action = <button className="pill pill--wine" disabled={busy} onClick={() => wrap(() => onFollow(profile.id))}>Follow</button>;
+    action = <button className="pill pill--wine" style={dim} onClick={() => runSync(onFollow(profile))}>Follow</button>;
   }
 
   return (
@@ -8904,24 +9022,53 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
     return () => { cancelled = true; };
   }, [userId, isGuest]);
 
-  const handleViewedFollowToggle = async () => {
-    if (!userId || !viewingProfile) return;
-    try {
-      if (viewedFollowStatus === null) {
-        const result = await friendsService.followUser(userId, viewingProfile.id);
-        setViewedFollowStatus(result);
-        refreshFollowLists();
-      } else {
-        await friendsService.unfollowUser(userId, viewingProfile.id);
-        setViewedFollowStatus(null);
-        refreshFollowLists();
-        // If account is private, hide its lists/activity after unfollow
-        if (viewedProfile?.is_private) {
-          setViewedLists([]);
-          setViewedActivity([]);
-        }
+  // Optimistic toggle: flip viewedFollowStatus + `following` list immediately,
+  // then fire the Supabase call. Revert state + error toast if the call fails.
+  // Returns the in-flight promise so the calling button can dim after 1500ms.
+  const handleViewedFollowToggle = () => {
+    if (!userId || !viewingProfile) return Promise.resolve();
+    const prevStatus = viewedFollowStatus;
+    const prevFollowing = following;
+    const prevLists = viewedLists;
+    const prevActivity = viewedActivity;
+    if (viewedFollowStatus !== null) {
+      // Unfollow
+      setViewedFollowStatus(null);
+      setFollowing((prev) => prev.filter((p) => p.id !== viewingProfile.id));
+      if (viewedProfile?.is_private) {
+        setViewedLists([]);
+        setViewedActivity([]);
       }
-    } catch (e) { console.error(e); }
+      return friendsService.unfollowUser(userId, viewingProfile.id)
+        .then(() => refreshFollowLists())
+        .catch((e) => {
+          console.error(e);
+          setViewedFollowStatus(prevStatus);
+          setFollowing(prevFollowing);
+          setViewedLists(prevLists);
+          setViewedActivity(prevActivity);
+          Toast.fire({ icon: "error", title: FOLLOW_ERR_TITLE });
+        });
+    }
+    // Follow — assume "accepted" for public, "pending" for private. Refresh
+    // corrects either way once the call resolves.
+    const optimisticStatus = viewedProfile?.is_private ? "pending" : "accepted";
+    setViewedFollowStatus(optimisticStatus);
+    if (optimisticStatus === "accepted" && !followingIdSet.has(viewingProfile.id)) {
+      const target = viewedProfile || viewingProfile;
+      setFollowing((prev) => [...prev, { ...target, followStatus: "accepted", _optimistic: true }]);
+    }
+    return friendsService.followUser(userId, viewingProfile.id)
+      .then((status) => {
+        setViewedFollowStatus(status);
+        refreshFollowLists();
+      })
+      .catch((e) => {
+        console.error(e);
+        setViewedFollowStatus(prevStatus);
+        setFollowing(prevFollowing);
+        Toast.fire({ icon: "error", title: FOLLOW_ERR_TITLE });
+      });
   };
 
   const handleToggleSavedList = async (listId) => {
@@ -8973,33 +9120,75 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
     setPendingRequests(pend);
   }, [userId]);
 
-  const handleFollow = async (targetId) => {
-    if (!userId) return;
-    try {
-      await friendsService.followUser(userId, targetId);
-      await refreshFollowLists();
-    } catch (e) { console.error(e); }
+  // Follow: flip `following` immediately (so followingIdSet picks the new target
+  // up before the network round-trip), fire Supabase, revert + toast on error.
+  // Accepts either a profile object (preferred) or a bare id.
+  const handleFollow = (target) => {
+    if (!userId) return Promise.resolve();
+    const targetId = typeof target === "string" ? target : target?.id;
+    if (!targetId) return Promise.resolve();
+    const targetProfile = typeof target === "object" && target ? target : { id: targetId };
+    const prevFollowing = following;
+    if (!followingIdSet.has(targetId)) {
+      setFollowing((prev) => [...prev, { ...targetProfile, followStatus: "accepted", _optimistic: true }]);
+    }
+    return friendsService.followUser(userId, targetId)
+      .then((status) => {
+        // Private target → status is "pending", not "accepted" — drop the stub.
+        if (status === "pending") setFollowing(prevFollowing);
+        refreshFollowLists();
+      })
+      .catch((e) => {
+        console.error(e);
+        setFollowing(prevFollowing);
+        Toast.fire({ icon: "error", title: FOLLOW_ERR_TITLE });
+      });
   };
-  const handleUnfollow = async (targetId) => {
-    if (!userId) return;
-    try {
-      await friendsService.unfollowUser(userId, targetId);
-      await refreshFollowLists();
-    } catch (e) { console.error(e); }
+  const handleUnfollow = (targetId) => {
+    if (!userId) return Promise.resolve();
+    const prevFollowing = following;
+    setFollowing((prev) => prev.filter((p) => p.id !== targetId));
+    return friendsService.unfollowUser(userId, targetId)
+      .then(() => refreshFollowLists())
+      .catch((e) => {
+        console.error(e);
+        setFollowing(prevFollowing);
+        Toast.fire({ icon: "error", title: FOLLOW_ERR_TITLE });
+      });
   };
-  const handleAccept = async (followerId) => {
-    if (!userId) return;
-    try {
-      await friendsService.acceptFollowRequest(followerId, userId);
-      await refreshFollowLists();
-    } catch (e) { console.error(e); }
+  // Accept: move the request from pendingRequests → followers instantly.
+  // Accepts a profile object (preferred) or a bare follower id.
+  const handleAccept = (target) => {
+    if (!userId) return Promise.resolve();
+    const followerId = typeof target === "string" ? target : target?.id;
+    if (!followerId) return Promise.resolve();
+    const prevPending = pendingRequests;
+    const prevFollowers = followers;
+    const matched = pendingRequests.find((p) => p.id === followerId) || (typeof target === "object" ? target : null);
+    setPendingRequests((prev) => prev.filter((p) => p.id !== followerId));
+    if (matched) setFollowers((prev) => [...prev, { ...matched, followStatus: "accepted" }]);
+    return friendsService.acceptFollowRequest(followerId, userId)
+      .then(() => refreshFollowLists())
+      .catch((e) => {
+        console.error(e);
+        setPendingRequests(prevPending);
+        setFollowers(prevFollowers);
+        Toast.fire({ icon: "error", title: FOLLOW_ERR_TITLE });
+      });
   };
-  const handleDecline = async (followerId) => {
-    if (!userId) return;
-    try {
-      await friendsService.unfollowUser(followerId, userId);
-      await refreshFollowLists();
-    } catch (e) { console.error(e); }
+  const handleDecline = (target) => {
+    if (!userId) return Promise.resolve();
+    const followerId = typeof target === "string" ? target : target?.id;
+    if (!followerId) return Promise.resolve();
+    const prevPending = pendingRequests;
+    setPendingRequests((prev) => prev.filter((p) => p.id !== followerId));
+    return friendsService.unfollowUser(followerId, userId)
+      .then(() => refreshFollowLists())
+      .catch((e) => {
+        console.error(e);
+        setPendingRequests(prevPending);
+        Toast.fire({ icon: "error", title: FOLLOW_ERR_TITLE });
+      });
   };
   const handleReaction = useCallback((activityId) => {
     if (!userId) return;
@@ -9067,15 +9256,33 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
       .catch(() => {});
   }, [userId]);
 
-  // Follow a suggested user from an inline feed card, then drop them from the list
-  const handleFollowSuggested = useCallback(async (suggestedId) => {
-    if (!userId) return;
-    try {
-      await friendsService.followUser(userId, suggestedId);
-      setSuggestedUsers((prev) => prev.filter((u) => u.id !== suggestedId));
-      refreshFollowLists();
-    } catch (e) { console.error(e); }
-  }, [userId, refreshFollowLists]);
+  // Follow a suggested user from an inline feed card. Optimistic: drop them
+  // from the suggested list AND seed `following` so their card stays gone if
+  // anything else re-derives from it. Revert + toast on failure.
+  // Returns the in-flight promise so the calling button can dim after 1500ms.
+  const handleFollowSuggested = useCallback((suggested) => {
+    if (!userId) return Promise.resolve();
+    const suggestedId = typeof suggested === "string" ? suggested : suggested?.id;
+    if (!suggestedId) return Promise.resolve();
+    const suggestedProfile = typeof suggested === "object" && suggested ? suggested : { id: suggestedId };
+    const prevSuggested = suggestedUsers;
+    const prevFollowing = following;
+    setSuggestedUsers((prev) => prev.filter((u) => u.id !== suggestedId));
+    if (!followingIdSet.has(suggestedId)) {
+      setFollowing((prev) => [...prev, { ...suggestedProfile, followStatus: "accepted", _optimistic: true }]);
+    }
+    return friendsService.followUser(userId, suggestedId)
+      .then((status) => {
+        if (status === "pending") setFollowing(prevFollowing);
+        refreshFollowLists();
+      })
+      .catch((e) => {
+        console.error(e);
+        setSuggestedUsers(prevSuggested);
+        setFollowing(prevFollowing);
+        Toast.fire({ icon: "error", title: FOLLOW_ERR_TITLE });
+      });
+  }, [userId, suggestedUsers, following, followingIdSet, refreshFollowLists]);
 
   // ── Unified feed search handlers ──
   const runFeedSearch = useCallback((q) => {
@@ -9821,13 +10028,13 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
                     <div className="feed-mini-stat-num">{watchedMovies ? watchedMovies.size : 0}</div>
                     <div className="feed-mini-stat-label">Films</div>
                   </button>
-                  <button type="button" className="feed-mini-stat" onClick={() => { setFollowsFilter(""); setActiveSubTab("following"); }}>
-                    <div className="feed-mini-stat-num">{following.length}</div>
-                    <div className="feed-mini-stat-label">Following</div>
-                  </button>
                   <button type="button" className="feed-mini-stat" onClick={() => { setFollowsFilter(""); setActiveSubTab("followers"); }}>
                     <div className="feed-mini-stat-num">{followers.length}</div>
                     <div className="feed-mini-stat-label">Followers</div>
+                  </button>
+                  <button type="button" className="feed-mini-stat" onClick={() => { setFollowsFilter(""); setActiveSubTab("following"); }}>
+                    <div className="feed-mini-stat-num">{following.length}</div>
+                    <div className="feed-mini-stat-label">Following</div>
                   </button>
                 </div>
 
@@ -10135,20 +10342,13 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
                   <div className="profile-display-v2">{viewedProfile.display_name || viewedProfile.username}</div>
                   <div className="profile-username-v2">@{viewedProfile.username}</div>
                   <div className="vp-stats">
-                    {viewedActivity.length} films · {viewedFollowing.length} following · {viewedFollowers.length} followers
+                    {viewedActivity.length} films · {viewedFollowers.length} followers · {viewedFollowing.length} following
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className={`pill ${viewedFollowStatus === null ? "pill--wine" : "pill--ghost"}${viewedFollowStatus === "pending" ? " pill--muted" : ""} vp-follow-btn`}
-                  onClick={handleViewedFollowToggle}
-                >
-                  {viewedFollowStatus === null
-                    ? "Follow"
-                    : viewedFollowStatus === "pending"
-                    ? "Requested"
-                    : "✓ Following"}
-                </button>
+                <ViewedFollowButton
+                  status={viewedFollowStatus}
+                  onToggle={handleViewedFollowToggle}
+                />
               </div>
 
               {viewedProfile.is_private && viewedFollowStatus !== "accepted" ? (
@@ -10545,8 +10745,8 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
                             {p.display_name && <div className="follow-row-display">{p.display_name}</div>}
                           </div>
                           <div className="pending-request-actions">
-                            <button type="button" className="pill pill--wine pending-accept-btn" onClick={() => handleAccept(p.id)}>Accept</button>
-                            <button type="button" className="pill pill--ghost pending-decline-btn" onClick={() => handleDecline(p.id)}>Decline</button>
+                            <button type="button" className="pill pill--wine pending-accept-btn" onClick={() => handleAccept(p)}>Accept</button>
+                            <button type="button" className="pill pill--ghost pending-decline-btn" onClick={() => handleDecline(p)}>Decline</button>
                           </div>
                         </div>
                       );
@@ -10581,11 +10781,12 @@ function FriendsTab({ toggleSave, savedIds, watchedIds, watchedMovies, watchedRa
                           {p.display_name && <div className="follow-row-display">{p.display_name}</div>}
                         </div>
                         {p.id !== userId && (
-                          isFollowed ? (
-                            <button className="pill pill--ghost" onClick={() => handleUnfollow(p.id)}>Following</button>
-                          ) : (
-                            <button className="pill pill--wine" onClick={() => handleFollow(p.id)}>Follow</button>
-                          )
+                          <FollowRowToggle
+                            profile={p}
+                            isFollowed={isFollowed}
+                            onFollow={handleFollow}
+                            onUnfollow={handleUnfollow}
+                          />
                         )}
                       </div>
                     );

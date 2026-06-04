@@ -299,7 +299,8 @@ export async function getActivityFeed(userId, limit = 20) {
     .limit(limit);
   if (error) throw error;
 
-  const tmdbIds = [...new Set((data || []).map(a => a.tmdb_id))];
+  const rows = data || [];
+  const tmdbIds = [...new Set(rows.map(a => a.tmdb_id))];
   const { data: movies } = await supabase
     .from('movies_cache')
     .select('tmdb_id, title, poster_path, year, rating, genre_ids')
@@ -308,11 +309,42 @@ export async function getActivityFeed(userId, limit = 20) {
   const movieMap = {};
   (movies || []).forEach(m => { movieMap[m.tmdb_id] = m; });
 
-  return (data || []).map(item => ({
-    ...item,
-    user: item.user_profiles,
-    movie: movieMap[item.tmdb_id] || null,
-  }));
+  // Rating source: journal_entries.personal_rating — same as Journal.
+  // activity.rating is a frozen snapshot from log time and drifts when the
+  // user re-rates. Batch-fetch the live rating for every (user_id, tmdb_id)
+  // pair seen in the feed and overwrite activity.rating with it so the feed
+  // always shows what the Journal shows.
+  const ratedRows = rows.filter((r) => r.action_type === 'rated');
+  const ratedUserIds = [...new Set(ratedRows.map((r) => r.user_id))];
+  const ratedTmdbIds = [...new Set(ratedRows.map((r) => r.tmdb_id))];
+  const ratingMap = new Map(); // key: `${user_id}|${tmdb_id}` → personal_rating
+  if (ratedUserIds.length > 0 && ratedTmdbIds.length > 0) {
+    const { data: journalRows } = await supabase
+      .from('journal_entries')
+      .select('user_id, tmdb_id, personal_rating')
+      .in('user_id', ratedUserIds)
+      .in('tmdb_id', ratedTmdbIds);
+    (journalRows || []).forEach((j) => {
+      ratingMap.set(
+        `${j.user_id}|${j.tmdb_id}`,
+        j.personal_rating != null ? Number(j.personal_rating) : null,
+      );
+    });
+  }
+
+  return rows.map(item => {
+    const liveRating = item.action_type === 'rated'
+      ? ratingMap.get(`${item.user_id}|${item.tmdb_id}`)
+      : undefined;
+    return {
+      ...item,
+      // Only overwrite when we successfully resolved a journal entry; otherwise
+      // keep the activity-table snapshot so older "rated" rows still render.
+      rating: liveRating !== undefined ? liveRating : item.rating,
+      user: item.user_profiles,
+      movie: movieMap[item.tmdb_id] || null,
+    };
+  });
 }
 
 export async function getOwnActivity(userId, limit = 30) {
